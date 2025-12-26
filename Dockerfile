@@ -12,11 +12,14 @@ COPY src ./src
 # Compilar sin tests CON encoding UTF-8 explícito
 RUN mvn clean package -DskipTests -B -Dproject.build.sourceEncoding=UTF-8 -Dproject.reporting.outputEncoding=UTF-8
 
+# DEBUGGING: Listar archivos generados
+RUN ls -la /build/target/
+
 # Etapa 2: Runtime
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
-# Copiar JAR compilado
+# Copiar JAR compilado (ahora con el path correcto)
 COPY --from=build /build/target/vitalexa-backend.jar app.jar
 
 # Variables de entorno
