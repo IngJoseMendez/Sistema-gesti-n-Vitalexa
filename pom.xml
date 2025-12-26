@@ -202,7 +202,7 @@
 
 
         </plugins>
-        <finalName>vitalexa-backend</finalName>
+        <finalName>Sistema-gesti-n-Vitalexa</finalName>
     </build>
 
 </project>
