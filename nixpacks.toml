@@ -1,11 +1,14 @@
 ﻿[phases.setup]
-nixPkgs = ["openjdk17"]
+nixPkgs = ["maven", "openjdk17"]
 
 [phases.build]
 cmds = [
-  "chmod +x mvnw",
-  "./mvnw clean package -DskipTests -Dfile.encoding=UTF-8"
+    "mvn --version",
+    "mvn clean package -DskipTests -Dmaven.test.skip=true"
 ]
 
+[phases.start]
+cmd = "java -Xmx512m -Xms256m -Dserver.port=$PORT -Dspring.profiles.active=prod -jar target/vitalexa-backend.jar"
+
 [start]
-cmd = "java -Dserver.port=$PORT -Dspring.profiles.active=prod -Dfile.encoding=UTF-8 -jar target/vitalexa-backend.jar"
+runImage = "eclipse-temurin:17-jre"
