@@ -1,5 +1,7 @@
 package org.example.sistema_gestion_vitalexa.service.impl;
 
+import com.itextpdf.io.image.ImageData;
+import com.itextpdf.io.image.ImageDataFactory;
 import com.itextpdf.kernel.colors.ColorConstants;
 import com.itextpdf.kernel.colors.DeviceRgb;
 import com.itextpdf.kernel.pdf.PdfDocument;
@@ -7,6 +9,7 @@ import com.itextpdf.kernel.pdf.PdfWriter;
 import com.itextpdf.kernel.pdf.canvas.draw.SolidLine;  // ✅ CAMBIO AQUÍ
 import com.itextpdf.layout.Document;
 import com.itextpdf.layout.element.*;
+import com.itextpdf.layout.properties.HorizontalAlignment;
 import com.itextpdf.layout.properties.TextAlignment;
 import com.itextpdf.layout.properties.UnitValue;
 import lombok.RequiredArgsConstructor;
@@ -93,13 +96,17 @@ public class InvoiceServiceImpl implements InvoiceService {
 
     private void addCompanyHeader(Document document) {
         // Logo o nombre de la empresa
-        Paragraph companyName = new Paragraph("VITALEXA")
-                .setFontSize(28)
-                .setBold()
-                .setFontColor(BRAND_COLOR)
-                .setTextAlignment(TextAlignment.CENTER)
-                .setMarginBottom(5);
-        document.add(companyName);
+        try {
+            ImageData imageData = ImageDataFactory.create("src/main/resources/static/images/logo.png");
+            Image logo = new Image(imageData);
+            logo.setWidth(200);
+            logo.setHeight(100);
+            logo.setHorizontalAlignment(HorizontalAlignment.CENTER);
+            document.add(logo);
+        } catch (Exception e) {
+            // Fallback si no encuentra el logo
+            Paragraph companyName = new Paragraph("VITALEXA");
+        }
 
         Paragraph slogan = new Paragraph("Sistema de Gestión de Pedidos")
                 .setFontSize(12)

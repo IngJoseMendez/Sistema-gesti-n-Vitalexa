@@ -10,13 +10,11 @@ import org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption;
 import org.example.sistema_gestion_vitalexa.mapper.OrderMapper;
 import org.example.sistema_gestion_vitalexa.repository.OrdenRepository;
 import org.example.sistema_gestion_vitalexa.repository.UserRepository;
-import org.example.sistema_gestion_vitalexa.service.ClientService;
-import org.example.sistema_gestion_vitalexa.service.NotificationService;
-import org.example.sistema_gestion_vitalexa.service.OrdenService;
-import org.example.sistema_gestion_vitalexa.service.ProductService;
+import org.example.sistema_gestion_vitalexa.service.*;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -33,6 +31,7 @@ public class OrderServiceImpl implements OrdenService {
     private final UserRepository userRepository;
     private final OrderMapper orderMapper;
     private final NotificationService notificationService;
+    private final SaleGoalService saleGoalService;
 
     // =========================
     // CREATE ORDER (VENDEDOR)
@@ -124,6 +123,15 @@ public class OrderServiceImpl implements OrdenService {
         if (nuevoEstado == OrdenStatus.COMPLETADO && oldStatus != OrdenStatus.COMPLETADO) {
             notificationService.sendOrderCompletedNotification(id.toString());
             log.info("Orden {} completada, notificación enviada", id);
+
+            // ✅ ACTUALIZAR PROGRESO DE META DEL VENDEDOR
+            LocalDate fecha = order.getFecha().toLocalDate();
+            saleGoalService.updateGoalProgress(
+                    order.getVendedor().getId(),
+                    order.getTotal(),
+                    fecha.getMonthValue(),
+                    fecha.getYear()
+            );
         }
 
         return orderMapper.toResponse(updated);

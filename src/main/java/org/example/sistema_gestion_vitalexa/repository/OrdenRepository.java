@@ -6,6 +6,7 @@ import org.example.sistema_gestion_vitalexa.entity.User;
 import org.example.sistema_gestion_vitalexa.enums.OrdenStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -18,6 +19,30 @@ public interface OrdenRepository extends JpaRepository <Order, UUID> {
     List<Order> findByVendedor(User vendedor);
     Optional<Order> findByIdAndVendedorUsername(UUID id, String username);
     List<Order> findByEstado(OrdenStatus estado);
-    List<Order> findByFechaBetween(LocalDateTime start, LocalDateTime end);
     List<Order> findByCliente(Client client);
+
+    /**
+     * ✅ NUEVO: Buscar órdenes completadas de un vendedor en un mes/año específico
+     */
+    @Query("""
+        SELECT o FROM Order o 
+        WHERE o.vendedor.id = :vendedorId 
+        AND o.estado = 'COMPLETADO'
+        AND MONTH(o.fecha) = :month 
+        AND YEAR(o.fecha) = :year
+        """)
+    List<Order> findCompletedOrdersByVendedorAndMonthYear(
+            @Param("vendedorId") UUID vendedorId,
+            @Param("month") int month,
+            @Param("year") int year
+    );
+
+    /**
+     * Para reportes: órdenes en un rango de fechas
+     */
+    @Query("SELECT o FROM Order o WHERE o.fecha BETWEEN :start AND :end")
+    List<Order> findByFechaBetween(
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end
+    );
 }

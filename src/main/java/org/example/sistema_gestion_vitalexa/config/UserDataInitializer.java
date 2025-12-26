@@ -17,8 +17,8 @@ public class UserDataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        createOrUpdate("owner", "1234", Role.OWNER);
-        createOrUpdate("admin", "1234", Role.ADMIN);
+        createOrUpdate("DueñoArnold", "12345", Role.OWNER);
+        createOrUpdate("AdminHilary", "12345", Role.ADMIN);
         createOrUpdate("vendedor", "1234", Role.VENDEDOR);
         createOrUpdate("Marcelo", "1234", Role.VENDEDOR);
         createOrUpdate("carlos", "1234", Role.VENDEDOR);
