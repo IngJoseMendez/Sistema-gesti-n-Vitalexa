@@ -134,6 +134,13 @@ public class OrderServiceImpl implements OrdenService {
             );
         }
 
+        if (nuevoEstado == OrdenStatus.COMPLETADO) {
+            notificationService.sendOrderCompletedNotification(order.getId().toString());
+        }
+
+        // 🔔 NOTIFICAR CAMBIO DE INVENTARIO (las órdenes también afectan stock)
+        notificationService.sendInventoryUpdate(order.getId().toString().toString(), "ORDER_STATUS_CHANGED");
+
         return orderMapper.toResponse(updated);
     }
 

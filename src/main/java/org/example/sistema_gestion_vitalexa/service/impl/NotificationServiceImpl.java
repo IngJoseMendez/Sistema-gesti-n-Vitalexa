@@ -22,7 +22,7 @@ public class NotificationServiceImpl implements NotificationService {
         String title = "Nueva Orden Recibida";
         String message = String.format("Nueva orden #%s creada por %s para cliente %s",
                 orderId.substring(0, 8), vendorName, clientName);
-        String targetUrl = "/admin"; // ← CAMBIAR PARA QUE VAYA AL DASHBOARD
+        String targetUrl = "/admin";
 
         NotificationData data = new NotificationData(orderId, null, null, null, null);
         NotificationDTO notification = createNotification(
@@ -33,9 +33,7 @@ public class NotificationServiceImpl implements NotificationService {
                 data
         );
 
-        // ✅ ENVIAR SOLO A UN TOPIC PARA ADMIN Y OWNER
         messagingTemplate.convertAndSend("/topic/admin-owner/notifications", notification);
-
         log.info("Notificación enviada: Nueva orden {}", orderId);
     }
 
@@ -43,7 +41,7 @@ public class NotificationServiceImpl implements NotificationService {
     public void sendOrderCompletedNotification(String orderId) {
         String title = "Orden Completada";
         String message = String.format("La orden #%s ha sido completada exitosamente", orderId.substring(0, 8));
-        String targetUrl = "/admin"; // ← Dashboard general
+        String targetUrl = "/admin";
 
         NotificationData data = new NotificationData(orderId, null, null, null, null);
         NotificationDTO notification = createNotification(
@@ -64,7 +62,7 @@ public class NotificationServiceImpl implements NotificationService {
         String title = "⚠️ Stock Bajo";
         String message = String.format("El producto '%s' tiene solo %d unidades. Punto de reorden: %d",
                 productName, currentStock, reorderPoint);
-        String targetUrl = "/admin"; // ← Dashboard general
+        String targetUrl = "/admin";
 
         NotificationData data = new NotificationData(null, productId, productName, currentStock, reorderPoint);
         NotificationDTO notification = createNotification(
@@ -75,9 +73,7 @@ public class NotificationServiceImpl implements NotificationService {
                 data
         );
 
-        // ✅ SOLO PARA ADMIN Y OWNER
         messagingTemplate.convertAndSend("/topic/admin-owner/notifications", notification);
-
         log.warn("Alerta de stock bajo: {} - Stock: {}/{}", productName, currentStock, reorderPoint);
     }
 
@@ -85,7 +81,7 @@ public class NotificationServiceImpl implements NotificationService {
     public void sendOutOfStockAlert(String productId, String productName) {
         String title = "🚨 Sin Stock";
         String message = String.format("El producto '%s' se ha quedado sin stock", productName);
-        String targetUrl = "/admin"; // ← Dashboard general
+        String targetUrl = "/admin";
 
         NotificationData data = new NotificationData(null, productId, productName, 0, null);
         NotificationDTO notification = createNotification(
@@ -96,10 +92,47 @@ public class NotificationServiceImpl implements NotificationService {
                 data
         );
 
+        messagingTemplate.convertAndSend("/topic/admin-owner/notifications", notification);
+        log.error("Alerta: Producto sin stock - {}", productName);
+    }
+
+    // ✅ NUEVO: Notificar actualizaciones de inventario
+    @Override
+    public void sendInventoryUpdate(String productId, String action) {
+        log.info("🔔 Notificando actualización de inventario: {} - Producto ID: {}", action, productId);
+
+        // Enviar evento simple para que todos los dashboards refresquen
+        InventoryUpdateEvent event = new InventoryUpdateEvent(
+                action,
+                productId,
+                System.currentTimeMillis()
+        );
+
+        // ✅ ENVIAR A TOPIC DE INVENTARIO (todos los dashboards lo escuchan)
+        messagingTemplate.convertAndSend("/topic/inventory", event);
+        log.info("Evento de inventario enviado: {}", action);
+    }
+
+    // ✅ NUEVO: Notificar reembolso creado
+    @Override
+    public void sendReembolsoCreated(String reembolsoId, String empacadorName) {
+        String title = "Nuevo Reembolso";
+        String message = String.format("Reembolso #%s creado por %s",
+                reembolsoId.substring(0, 8), empacadorName);
+        String targetUrl = "/admin";
+
+        NotificationData data = new NotificationData(reembolsoId, null, null, null, null);
+        NotificationDTO notification = createNotification(
+                NotificationType.REEMBOLSO_CREATED,
+                title,
+                message,
+                targetUrl,
+                data
+        );
+
         // ✅ SOLO PARA ADMIN Y OWNER
         messagingTemplate.convertAndSend("/topic/admin-owner/notifications", notification);
-
-        log.error("Alerta: Producto sin stock - {}", productName);
+        log.info("Notificación enviada: Nuevo reembolso {}", reembolsoId);
     }
 
     @Override
@@ -115,4 +148,7 @@ public class NotificationServiceImpl implements NotificationService {
                 (NotificationData) data
         );
     }
+
+    // ✅ DTO para eventos de inventario
+    public record InventoryUpdateEvent(String action, String productId, Long timestamp) {}
 }

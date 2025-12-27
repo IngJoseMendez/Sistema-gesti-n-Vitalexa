@@ -2,8 +2,11 @@ package org.example.sistema_gestion_vitalexa.mapper;
 
 import org.example.sistema_gestion_vitalexa.dto.CreateProductRequest;
 import org.example.sistema_gestion_vitalexa.dto.ProductResponse;
+import org.example.sistema_gestion_vitalexa.dto.ReembolsoResponse;
 import org.example.sistema_gestion_vitalexa.dto.UpdateProductRequest;
 import org.example.sistema_gestion_vitalexa.entity.Product;
+import org.example.sistema_gestion_vitalexa.entity.Reembolso;
+import org.example.sistema_gestion_vitalexa.entity.ReembolsoItem;
 import org.mapstruct.BeanMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -11,6 +14,7 @@ import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Mapper(componentModel = "spring")
 public interface ProductMapper {
@@ -36,4 +40,23 @@ public interface ProductMapper {
     @Mapping(target = "stock", source = "stock")
     @Mapping(target = "imageUrl", source = "imageUrl")
     void updateEntity(UpdateProductRequest dto, @MappingTarget Product product);
+
+
+    @Mapping(target = "empacadorUsername", source = "empacador.username")
+    @Mapping(target = "items", expression = "java(mapReembolsoItems(reembolso.getItems()))")
+    @Mapping(target = "estado", expression = "java(reembolso.getEstado().toString())")
+    ReembolsoResponse toReembolsoResponse(Reembolso reembolso);
+
+    default List<ReembolsoResponse.ReembolsoItemResponse> mapReembolsoItems(List<ReembolsoItem> items) {
+        return items.stream()
+                .map(item -> ReembolsoResponse.ReembolsoItemResponse.builder()
+                        .productoId(item.getProducto().getId())
+                        .productoNombre(item.getProducto().getNombre())
+                        .productoImageUrl(item.getProducto().getImageUrl())
+                        .cantidad(item.getCantidad())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    List<ReembolsoResponse> toReembolsoResponseList(List<Reembolso> reembolsos);
 }

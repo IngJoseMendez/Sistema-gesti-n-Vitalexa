@@ -29,7 +29,12 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public ProductResponse create(CreateProductRequest request) {
         Product product = mapper.toEntity(request);
-        return mapper.toResponse(repository.save(product));
+        Product saved = repository.save(product);
+
+        // 🔔 NOTIFICAR CREACIÓN
+        notificationService.sendInventoryUpdate(saved.getId().toString(), "PRODUCT_CREATED");
+
+        return mapper.toResponse(saved);
     }
 
     @Override
@@ -68,6 +73,9 @@ public class ProductServiceImpl implements ProductService {
         // ✅ VERIFICAR NIVELES DE STOCK
         checkStockLevels(updated);
 
+        // 🔔 NOTIFICAR ACTUALIZACIÓN
+        notificationService.sendInventoryUpdate(updated.getId().toString(), "PRODUCT_UPDATED");
+
         return mapper.toResponse(updated);
     }
 
@@ -80,6 +88,10 @@ public class ProductServiceImpl implements ProductService {
         log.info("Soft deleting producto ID: {}", id);
         product.setActive(false);
         repository.save(product);
+
+        // 🔔 NOTIFICAR ELIMINACIÓN
+        notificationService.sendInventoryUpdate(id.toString(), "PRODUCT_DELETED");
+
         log.info("Producto eliminado (soft delete) correctamente: {}", id);
     }
 
@@ -90,6 +102,10 @@ public class ProductServiceImpl implements ProductService {
                 .orElseThrow(() -> new BusinessExeption("Producto no encontrado"));
         log.info("Hard deleting producto ID: {}", id);
         repository.deleteById(id);
+
+        // 🔔 NOTIFICAR ELIMINACIÓN
+        notificationService.sendInventoryUpdate(id.toString(), "PRODUCT_DELETED");
+
         log.info("Producto eliminado físicamente: {}", id);
     }
 
@@ -120,9 +136,10 @@ public class ProductServiceImpl implements ProductService {
 
         product.setActive(activo);
         repository.save(product);
+
+        // 🔔 NOTIFICAR CAMBIO DE ESTADO
+        notificationService.sendInventoryUpdate(productId.toString(), "PRODUCT_STATUS_CHANGED");
     }
-
-
 
     @Override
     public List<ProductResponse> findAllAdmin() {
@@ -139,9 +156,9 @@ public class ProductServiceImpl implements ProductService {
                 .map(mapper::toResponse)
                 .toList();
     }
+
     // Método auxiliar para verificar stock
     private void checkStockLevels(Product product) {
-        // Verificar si tiene punto de reorden configurado
         if (product.getReorderPoint() != null && product.getReorderPoint() > 0) {
             if (product.getStock() == 0) {
                 notificationService.sendOutOfStockAlert(
@@ -158,7 +175,4 @@ public class ProductServiceImpl implements ProductService {
             }
         }
     }
-
-
-
 }

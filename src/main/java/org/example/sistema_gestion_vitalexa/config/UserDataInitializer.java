@@ -21,6 +21,7 @@ public class UserDataInitializer implements CommandLineRunner {
         createOrUpdate("AdminHilary", "OL98Jaika", Role.ADMIN);
         createOrUpdate("nina", "ninori123jam", Role.VENDEDOR);
         createOrUpdate("rosario", "1234", Role.VENDEDOR);
+        createOrUpdate("luis", "JKMaoqi213", Role.EMPACADOR);
     }
 
     private void create(String username, String password, Role role) {

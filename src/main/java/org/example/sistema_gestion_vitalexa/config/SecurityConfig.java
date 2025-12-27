@@ -51,6 +51,7 @@ public class SecurityConfig {
                         .requestMatchers("/uploads/**").permitAll()
                         .requestMatchers("/api/images/**").permitAll()
                         .requestMatchers("/error").permitAll()
+                        .requestMatchers("/api/empacador/").hasRole("EMPACADOR")
                         // Preflight requests
                         .requestMatchers("OPTIONS", "/**").permitAll()
                         // Todas las demás requieren autenticación
