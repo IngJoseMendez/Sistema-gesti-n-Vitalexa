@@ -1,0 +1,5 @@
+-- V3: Agregar rol EMPACADOR
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+
+ALTER TABLE users ADD CONSTRAINT users_role_check
+    CHECK (role IN ('ROLE_ADMIN', 'ROLE_OWNER', 'ROLE_VENDEDOR', 'ROLE_EMPACADOR'));
