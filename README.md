@@ -44,6 +44,7 @@ Diseñar e implementar un backend **escalable, mantenible y seguro**, aplicando 
 - Docker
 - Railway (deploy backend)
 - Configuración por perfiles (`dev`, `prod`)
+- Cloudinary (almacenamiento de recursos)
 
 ---
 
