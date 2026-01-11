@@ -62,7 +62,7 @@ Diseñar e implementar un backend **escalable, mantenible y seguro**, aplicando 
 ---
 
 ## 🗂️ Estructura del proyecto
-
+```text
 src/main/java/org/example/sistema_gestion_vitalexa
 ├── config
 ├── controller
@@ -82,6 +82,7 @@ src/main/java/org/example/sistema_gestion_vitalexa
 ├── repository
 ├── security
 └── service
+```
 
 
 ---
