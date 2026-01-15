@@ -116,15 +116,23 @@ public class OrderServiceImpl implements OrdenService {
                 .orElseThrow(() -> new BusinessExeption("Orden no encontrada"));
 
         OrdenStatus oldStatus = order.getEstado();
-        order.setEstado(nuevoEstado);
-        Order updated = ordenRepository.save(order);
 
-        // ENVIAR NOTIFICACIÓN SI SE COMPLETA
+        // Si no cambia el estado, no hagas nada
+        if (oldStatus == nuevoEstado) {
+            return orderMapper.toResponse(order);
+        }
+
+        // Asignar invoiceNumber SOLO cuando hay transición real a COMPLETADO
         if (nuevoEstado == OrdenStatus.COMPLETADO && oldStatus != OrdenStatus.COMPLETADO) {
-            notificationService.sendOrderCompletedNotification(id.toString());
-            log.info("Orden {} completada, notificación enviada", id);
 
-            // ACTUALIZAR PROGRESO DE META DEL VENDEDOR
+            if (order.getInvoiceNumber() == null) {
+                Long nextInvoice = ordenRepository.nextInvoiceNumber();
+                order.setInvoiceNumber(nextInvoice);
+            }
+
+            order.setEstado(OrdenStatus.COMPLETADO);
+
+            // Actualizar progreso de meta del vendedor
             LocalDate fecha = order.getFecha().toLocalDate();
             saleGoalService.updateGoalProgress(
                     order.getVendedor().getId(),
@@ -132,14 +140,20 @@ public class OrderServiceImpl implements OrdenService {
                     fecha.getMonthValue(),
                     fecha.getYear()
             );
-        }
 
-        if (nuevoEstado == OrdenStatus.COMPLETADO) {
+            // Notificación de orden completada (una sola vez)
             notificationService.sendOrderCompletedNotification(order.getId().toString());
+            log.info("Orden {} completada (invoiceNumber={})", order.getId(), order.getInvoiceNumber());
+        } else {
+            // Otros estados
+            order.setEstado(nuevoEstado);
         }
 
-        // NOTIFICAR CAMBIO DE INVENTARIO (las órdenes también afectan stock)
-        notificationService.sendInventoryUpdate(order.getId().toString().toString(), "ORDER_STATUS_CHANGED");
+        // Guardar cambios
+        Order updated = ordenRepository.save(order);
+
+        // Notificar cambio de inventario/estado (una sola vez)
+        notificationService.sendInventoryUpdate(order.getId().toString(), "ORDER_STATUS_CHANGED");
 
         return orderMapper.toResponse(updated);
     }

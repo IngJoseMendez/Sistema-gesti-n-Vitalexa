@@ -11,6 +11,8 @@ import org.example.sistema_gestion_vitalexa.service.NotificationService;
 import org.example.sistema_gestion_vitalexa.service.ProductService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -157,6 +159,7 @@ public class ProductServiceImpl implements ProductService {
                 .toList();
     }
 
+
     // Método auxiliar para verificar stock
     private void checkStockLevels(Product product) {
         if (product.getReorderPoint() != null && product.getReorderPoint() > 0) {
@@ -175,4 +178,20 @@ public class ProductServiceImpl implements ProductService {
             }
         }
     }
+
+    @Override
+    public Page<ProductResponse> findAllActive(Pageable pageable) {
+        return repository.findByActiveTrue(pageable).map(mapper::toResponse);
+    }
+
+    @Override
+    public Page<ProductResponse> findAllActiveInStock(Pageable pageable) {
+        return repository.findByActiveTrueAndStockGreaterThan(0, pageable).map(mapper::toResponse);
+    }
+
+    @Override
+    public Page<ProductResponse> searchActive(String q, Pageable pageable) {
+        return repository.searchActive(q, pageable).map(mapper::toResponse);
+    }
+
 }

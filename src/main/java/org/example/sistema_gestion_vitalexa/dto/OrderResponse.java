@@ -13,6 +13,8 @@ public record OrderResponse(
         String estado,
         LocalDateTime fecha,
         List<OrderItemResponse> items,
-        String notas
+        String notas,
+        Long invoiceNumber
+
 ) {
 }

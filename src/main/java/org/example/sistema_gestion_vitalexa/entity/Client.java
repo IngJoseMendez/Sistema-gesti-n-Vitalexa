@@ -36,13 +36,20 @@ public class Client {
 
     private boolean active = true;
 
+    // NUEVO: User que se autentica como CLIENTE
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", unique = true)
+    private User user;
+
+    // NUEVO: Vendedor asignado a este cliente (no default global)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "vendedor_asignado_id")
+    private User vendedorAsignado;
 
     public void registerPurchase(BigDecimal monto) {
-        // Verificar que totalCompras no sea null antes de sumar
-        if (this.totalCompras == null) {
-            this.totalCompras = BigDecimal.ZERO;
-        }
+        if (this.totalCompras == null) this.totalCompras = BigDecimal.ZERO;
         this.totalCompras = this.totalCompras.add(monto);
         this.ultimaCompra = LocalDateTime.now();
     }
 }
+

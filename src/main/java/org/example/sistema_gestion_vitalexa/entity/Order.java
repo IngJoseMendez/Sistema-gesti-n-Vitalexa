@@ -36,6 +36,10 @@ public class Order {
     @Column(columnDefinition = "TEXT")
     private String notas;
 
+    @Column(name = "invoice_number", unique = true)
+    private Long invoiceNumber;
+
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "vendedor_id", nullable = false)
     private User vendedor;

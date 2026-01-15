@@ -20,6 +20,8 @@ public interface OrdenRepository extends JpaRepository <Order, UUID> {
     Optional<Order> findByIdAndVendedorUsername(UUID id, String username);
     List<Order> findByEstado(OrdenStatus estado);
     List<Order> findByCliente(Client client);
+    @Query(value = "SELECT nextval('invoice_number_seq')", nativeQuery = true)
+    Long nextInvoiceNumber();
 
     /**
      * Buscar órdenes completadas de un vendedor en un mes/año específico

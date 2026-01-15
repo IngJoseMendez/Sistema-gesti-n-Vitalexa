@@ -311,4 +311,79 @@ public class ReportServiceImpl implements ReportService {
             return quantitySold;
         }
     }
+
+    @Override
+    public List<VendorDailySalesDTO> getVendorDailySalesReport(LocalDate startDate, LocalDate endDate) {
+        LocalDateTime start = startDate.atStartOfDay();
+        LocalDateTime end = endDate.atTime(23, 59, 59);
+
+        // 1. Obtener todas las órdenes completadas en el período
+        List<Order> completedOrders = ordenRepository.findByFechaBetween(start, end).stream()
+                .filter(o -> o.getEstado() == OrdenStatus.COMPLETADO)
+                .toList();
+
+        // 2. Agrupar por vendedor
+        Map<String, List<Order>> ordersByVendor = completedOrders.stream()
+                .collect(Collectors.groupingBy(o -> o.getVendedor().getId().toString()));
+
+        // 3. Crear reporte por vendedor
+        return ordersByVendor.entrySet().stream()
+                .map(vendorEntry -> {
+                    String vendedorId = vendorEntry.getKey();
+                    List<Order> vendorOrders = vendorEntry.getValue();
+                    String vendedorName = vendorOrders.get(0).getVendedor().getUsername();
+
+                    // 3.1 Agrupar órdenes por día
+                    Map<LocalDate, List<Order>> ordersByDay = vendorOrders.stream()
+                            .collect(Collectors.groupingBy(o -> o.getFecha().toLocalDate()));
+
+                    // 3.2 Crear grupos diarios con cálculo de totalDia
+                    List<VendorDailyGroupDTO> dailyGroups = ordersByDay.entrySet().stream()
+                            .map(dayEntry -> {
+                                LocalDate dia = dayEntry.getKey();
+                                List<Order> dayOrders = dayEntry.getValue();
+
+                                // Crear filas de facturas para este día
+                                List<VendorInvoiceRowDTO> facturas = dayOrders.stream()
+                                        .map(order -> new VendorInvoiceRowDTO(
+                                                dia,
+                                                order.getInvoiceNumber() != null
+                                                        ? order.getInvoiceNumber().toString()
+                                                        : order.getId().toString().substring(0, 8),
+                                                order.getCliente() != null
+                                                        ? order.getCliente().getNombre()
+                                                        : "N/A",
+                                                order.getTotal()
+                                        ))
+                                        .sorted(Comparator.comparing(VendorInvoiceRowDTO::numeroFactura))
+                                        .toList();
+
+                                // Calcular total del día
+                                BigDecimal totalDia = dayOrders.stream()
+                                        .map(Order::getTotal)
+                                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                                return new VendorDailyGroupDTO(dia, facturas, totalDia);
+                            })
+                            .sorted(Comparator.comparing(VendorDailyGroupDTO::fecha))
+                            .toList();
+
+                    // 3.3 Calcular total del período
+                    BigDecimal totalPeriod = dailyGroups.stream()
+                            .map(VendorDailyGroupDTO::totalDia)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                    return new VendorDailySalesDTO(
+                            vendedorId,
+                            vendedorName,
+                            startDate,
+                            endDate,
+                            dailyGroups,
+                            totalPeriod
+                    );
+                })
+                .sorted(Comparator.comparing(VendorDailySalesDTO::vendedorName))
+                .toList();
+    }
+
 }

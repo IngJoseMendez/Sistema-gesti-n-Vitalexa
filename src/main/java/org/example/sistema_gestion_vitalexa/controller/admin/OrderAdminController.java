@@ -31,8 +31,9 @@ public class OrderAdminController {
     }
 
     @GetMapping("/{id}")
-    public OrderResponse findById(@PathVariable UUID id) {
-        return ordenService.findById(id);
+    public ResponseEntity<OrderResponse> findById(@PathVariable UUID id) {
+
+        return ResponseEntity.ok(ordenService.findById(id));
     }
 
     @PatchMapping("/{id}/status")

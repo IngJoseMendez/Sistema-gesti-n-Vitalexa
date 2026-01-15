@@ -13,6 +13,7 @@ import com.opencsv.CSVWriter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.example.sistema_gestion_vitalexa.dto.*;
 import org.example.sistema_gestion_vitalexa.service.ReportExportService;
@@ -22,9 +23,10 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayOutputStream;
 import java.io.StringWriter;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.Locale;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -124,6 +126,10 @@ public class ReportExportServiceImpl implements ReportExportService {
             // HOJA 5: CLIENTES TOP
             createTopClientsSheet(workbook, report.clientReport(), headerStyle, dataStyle, currencyStyle);
 
+            List<VendorDailySalesDTO> vendorSalesReports =
+                    reportService.getVendorDailySalesReport(startDate, endDate);
+            createVendorDailySalesSheets(workbook, vendorSalesReports, headerStyle, dataStyle, currencyStyle);
+
             workbook.write(baos);
             return baos.toByteArray();
 
@@ -170,8 +176,7 @@ public class ReportExportServiceImpl implements ReportExportService {
             // HEADER
             csvWriter.writeNext(new String[]{"REPORTE GENERAL DE GESTIÓN - VITALEXA"});
             csvWriter.writeNext(new String[]{"Período: " + startDate.format(DATE_FORMATTER) + " - " + endDate.format(DATE_FORMATTER)});
-            csvWriter.writeNext(new String[]{""});
-
+            csvWriter.writeNext(new String[]{""}); // línea en blanco
             // VENTAS
             csvWriter.writeNext(new String[]{"===== RESUMEN DE VENTAS ====="});
             csvWriter.writeNext(new String[]{"Métrica", "Valor"});
@@ -220,7 +225,18 @@ public class ReportExportServiceImpl implements ReportExportService {
                     })
             );
 
-            return sw.toString().getBytes();
+            String csvContent = sw.toString();
+            // ✅ Agregar BOM UTF-8 para que Excel lo reconozca
+            byte[] bom = new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+            byte[] csvBytes = csvContent.getBytes(StandardCharsets.UTF_8);
+
+            byte[] result = new byte[bom.length + csvBytes.length];
+            System.arraycopy(bom, 0, result, 0, bom.length);
+            System.arraycopy(csvBytes, 0, result, bom.length, csvBytes.length);
+
+            return result;
+
+
 
         } catch (Exception e) {
             log.error("Error generando CSV", e);
@@ -691,4 +707,101 @@ public class ReportExportServiceImpl implements ReportExportService {
             sheet.autoSizeColumn(i);
         }
     }
+
+    /**
+     * Crea una hoja separada para cada vendedora mostrando sus ventas diarias
+     * Columnas: Fecha | # Factura | # Cliente | Valor | Total Día
+     */
+    public void createVendorDailySalesSheets(Workbook workbook,
+                                             List<VendorDailySalesDTO> vendorSalesReports,
+                                             CellStyle headerStyle, CellStyle dataStyle, CellStyle currencyStyle) {
+
+        for (VendorDailySalesDTO vendor : vendorSalesReports) {
+            // Usar WorkbookUtil para sanitizar el nombre de la hoja (máx 31 caracteres)
+            String sheetName = org.apache.poi.ss.util.WorkbookUtil.createSafeSheetName(vendor.vendedorName());
+            Sheet sheet = workbook.createSheet(sheetName);
+
+            int rowNum = 0;
+
+            // Título
+            Row titleRow = sheet.createRow(rowNum++);
+            Cell titleCell = titleRow.createCell(0);
+            titleCell.setCellValue("VENTAS DIARIAS - " + vendor.vendedorName().toUpperCase());
+            titleCell.setCellStyle(headerStyle);
+            sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(
+                    titleRow.getRowNum(), titleRow.getRowNum(), 0, 4
+            ));
+
+            // Período
+            Row periodRow = sheet.createRow(rowNum++);
+            periodRow.createCell(0).setCellValue("Período:");
+            periodRow.createCell(1).setCellValue(
+                    vendor.startDate().format(DATE_FORMATTER) + " a " +
+                            vendor.endDate().format(DATE_FORMATTER)
+            );
+            rowNum++;
+
+            // Encabezados
+            Row headerRow = sheet.createRow(rowNum++);
+            String[] headers = {"Fecha", "# Factura", "# Cliente", "Valor", "Total Día"};
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            // Datos: iterar por cada día
+            for (VendorDailyGroupDTO dailyGroup : vendor.dailyGroups()) {
+                int facturaIndex = 0;
+
+                // Por cada factura del día
+                for (VendorInvoiceRowDTO invoice : dailyGroup.facturas()) {
+                    Row row = sheet.createRow(rowNum++);
+
+                    // Fecha
+                    row.createCell(0).setCellValue(invoice.fecha().format(DATE_FORMATTER));
+
+                    // # Factura
+                    row.createCell(1).setCellValue(invoice.numeroFactura());
+
+                    // # Cliente
+                    row.createCell(2).setCellValue(invoice.numeroCliente());
+
+                    // Valor individual
+                    Cell valorCell = row.createCell(3);
+                    valorCell.setCellValue(invoice.valor().doubleValue());
+                    valorCell.setCellStyle(currencyStyle);
+
+                    // Total del día (solo en la ÚLTIMA factura del día)
+                    Cell totalDiaCell = row.createCell(4);
+                    if (facturaIndex == dailyGroup.facturas().size() - 1) {
+                        // Última factura del día: mostrar total
+                        totalDiaCell.setCellValue(dailyGroup.totalDia().doubleValue());
+                        totalDiaCell.setCellStyle(currencyStyle);
+                    } else {
+                        // Facturas anteriores: dejar vacío
+                        totalDiaCell.setCellValue("");
+                    }
+
+                    facturaIndex++;
+                }
+            }
+
+            // Fila final: Total período
+            Row totalRow = sheet.createRow(rowNum + 1);
+            Cell totalLabelCell = totalRow.createCell(3);
+            totalLabelCell.setCellValue("TOTAL VENDEDORA:");
+            totalLabelCell.setCellStyle(headerStyle);
+
+            Cell totalValueCell = totalRow.createCell(4);
+            totalValueCell.setCellValue(vendor.totalPeriod().doubleValue());
+            totalValueCell.setCellStyle(currencyStyle);
+
+            // Ajustar ancho de columnas
+            for (int i = 0; i < headers.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
+        }
+    }
+
 }

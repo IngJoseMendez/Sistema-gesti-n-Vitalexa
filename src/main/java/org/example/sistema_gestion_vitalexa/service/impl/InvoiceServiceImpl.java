@@ -137,7 +137,7 @@ public class InvoiceServiceImpl implements InvoiceService {
                 .useAllAvailableWidth()
                 .setMarginBottom(15);
 
-        addInfoRow(infoTable, "N° Orden:", order.getId().toString().substring(0, 8).toUpperCase());
+        addInfoRow(infoTable, "N° Orden:", order.getInvoiceNumber().toString().toUpperCase());
         addInfoRow(infoTable, "Fecha:", order.getFecha().format(DATE_FORMATTER));
         addInfoRow(infoTable, "Estado:", order.getEstado().toString());
         addInfoRow(infoTable, "Vendedor:", order.getVendedor().getUsername());

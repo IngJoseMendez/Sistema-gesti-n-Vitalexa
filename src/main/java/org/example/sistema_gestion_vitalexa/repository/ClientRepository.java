@@ -11,6 +11,8 @@ import java.util.UUID;
 public interface ClientRepository extends JpaRepository<Client, UUID> {
     Optional<Client> findBynombre(String name);
     Optional<Client> findByEmail(String email);
+    Optional<Client> findByUserUsername(String username);
+    boolean existsByUserUsername(String username);
 
     boolean existsByEmail(@NotBlank(message = "El email es obligatorio") @Email(message = "Email inválido") String email);
 }
