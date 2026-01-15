@@ -3,6 +3,18 @@
 -- Diseñado para no fallar si las tablas ya existen.
 
 -- UUID default helper (Postgres)
+
+DO $$
+BEGIN
+BEGIN
+    CREATE EXTENSION IF NOT EXISTS pgcrypto;
+EXCEPTION
+    WHEN insufficient_privilege THEN
+      RAISE NOTICE 'No permission to create pgcrypto, skipping';
+END;
+END $$;
+
+
 CREATE EXTENSION IF NOT EXISTS pgcrypto; -- para gen_random_uuid() [web:516][web:517]
 
 -- ============================
