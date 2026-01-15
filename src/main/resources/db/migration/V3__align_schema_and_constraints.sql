@@ -193,7 +193,7 @@ END IF;
 END IF;
 END $$;
 
--- SALE_GOALS
+-- SALE_GOALSs
 DO $$
 BEGIN
   IF to_regclass('public.sale_goals') IS NOT NULL THEN
