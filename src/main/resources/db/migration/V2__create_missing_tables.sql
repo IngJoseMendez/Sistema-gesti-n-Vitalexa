@@ -1,4 +1,4 @@
--- V3__create_missing_tables.sql
+-- V2__create_missing_tables.sql
 -- Crea tablas faltantes para Vitalexa (PostgreSQL)
 -- Diseñado para no fallar si las tablas ya existen.
 
