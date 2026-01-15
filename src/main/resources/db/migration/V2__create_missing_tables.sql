@@ -1,6 +1,6 @@
 -- V2__create_missing_tables.sql
 -- Crea tablas faltantes para Vitalexa (PostgreSQL).
--- IMPORTANTÍSIMO: sin constraints aquí. Solo CREATE TABLE / extensión.
+-- Sin constraints aquí. Solo CREATE TABLE / extensión.
 
 -- Intentar habilitar pgcrypto sin tumbar el deploy si no hay permisos.
 DO $$

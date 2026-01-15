@@ -7,48 +7,48 @@
 -- ============================
 
 -- clients
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS user_id UUID; [web:616]
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS vendedor_asignado_id UUID; [web:616]
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS user_id UUID;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS vendedor_asignado_id UUID;
 
 -- orders
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS invoice_number BIGINT; [web:616]
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS vendedor_id UUID; [web:616]
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS client_id UUID; [web:616]
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS invoice_number BIGINT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS vendedor_id UUID;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS client_id UUID;
 
 -- products
-ALTER TABLE products ADD COLUMN IF NOT EXISTS reorder_point INTEGER; [web:616]
-ALTER TABLE products ADD COLUMN IF NOT EXISTS created_at TIMESTAMP; [web:616]
-ALTER TABLE products ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP; [web:616]
+ALTER TABLE products ADD COLUMN IF NOT EXISTS reorder_point INTEGER;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS created_at TIMESTAMP;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;
 
 -- shopping_lists
-ALTER TABLE shopping_lists ADD COLUMN IF NOT EXISTS client_id UUID; [web:616]
-ALTER TABLE shopping_lists ADD COLUMN IF NOT EXISTS name VARCHAR(255); [web:616]
-ALTER TABLE shopping_lists ADD COLUMN IF NOT EXISTS created_at TIMESTAMP; [web:616]
+ALTER TABLE shopping_lists ADD COLUMN IF NOT EXISTS client_id UUID;
+ALTER TABLE shopping_lists ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+ALTER TABLE shopping_lists ADD COLUMN IF NOT EXISTS created_at TIMESTAMP;
 
 -- shopping_list_items
-ALTER TABLE shopping_list_items ADD COLUMN IF NOT EXISTS list_id UUID; [web:616]
-ALTER TABLE shopping_list_items ADD COLUMN IF NOT EXISTS product_id UUID; [web:616]
-ALTER TABLE shopping_list_items ADD COLUMN IF NOT EXISTS default_qty INTEGER; [web:616]
+ALTER TABLE shopping_list_items ADD COLUMN IF NOT EXISTS list_id UUID;
+ALTER TABLE shopping_list_items ADD COLUMN IF NOT EXISTS product_id UUID;
+ALTER TABLE shopping_list_items ADD COLUMN IF NOT EXISTS default_qty INTEGER;
 
 -- reembolsos
-ALTER TABLE reembolsos ADD COLUMN IF NOT EXISTS empacador_id UUID; [web:616]
-ALTER TABLE reembolsos ADD COLUMN IF NOT EXISTS fecha TIMESTAMP; [web:616]
-ALTER TABLE reembolsos ADD COLUMN IF NOT EXISTS notas VARCHAR(500); [web:616]
-ALTER TABLE reembolsos ADD COLUMN IF NOT EXISTS estado VARCHAR(50); [web:616]
+ALTER TABLE reembolsos ADD COLUMN IF NOT EXISTS empacador_id UUID;
+ALTER TABLE reembolsos ADD COLUMN IF NOT EXISTS fecha TIMESTAMP;
+ALTER TABLE reembolsos ADD COLUMN IF NOT EXISTS notas VARCHAR(500);
+ALTER TABLE reembolsos ADD COLUMN IF NOT EXISTS estado VARCHAR(50);
 
 -- reembolso_items
-ALTER TABLE reembolso_items ADD COLUMN IF NOT EXISTS reembolso_id UUID; [web:616]
-ALTER TABLE reembolso_items ADD COLUMN IF NOT EXISTS producto_id UUID; [web:616]
-ALTER TABLE reembolso_items ADD COLUMN IF NOT EXISTS cantidad INTEGER; [web:616]
+ALTER TABLE reembolso_items ADD COLUMN IF NOT EXISTS reembolso_id UUID;
+ALTER TABLE reembolso_items ADD COLUMN IF NOT EXISTS producto_id UUID;
+ALTER TABLE reembolso_items ADD COLUMN IF NOT EXISTS cantidad INTEGER;
 
 -- sale_goals
-ALTER TABLE sale_goals ADD COLUMN IF NOT EXISTS vendedor_id UUID; [web:616]
-ALTER TABLE sale_goals ADD COLUMN IF NOT EXISTS target_amount NUMERIC(12,2); [web:616]
-ALTER TABLE sale_goals ADD COLUMN IF NOT EXISTS current_amount NUMERIC(12,2); [web:616]
-ALTER TABLE sale_goals ADD COLUMN IF NOT EXISTS month INTEGER; [web:616]
-ALTER TABLE sale_goals ADD COLUMN IF NOT EXISTS year INTEGER; [web:616]
-ALTER TABLE sale_goals ADD COLUMN IF NOT EXISTS created_at TIMESTAMP; [web:616]
-ALTER TABLE sale_goals ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP; [web:616]
+ALTER TABLE sale_goals ADD COLUMN IF NOT EXISTS vendedor_id UUID;
+ALTER TABLE sale_goals ADD COLUMN IF NOT EXISTS target_amount NUMERIC(12,2);
+ALTER TABLE sale_goals ADD COLUMN IF NOT EXISTS current_amount NUMERIC(12,2);
+ALTER TABLE sale_goals ADD COLUMN IF NOT EXISTS month INTEGER;
+ALTER TABLE sale_goals ADD COLUMN IF NOT EXISTS year INTEGER;
+ALTER TABLE sale_goals ADD COLUMN IF NOT EXISTS created_at TIMESTAMP;
+ALTER TABLE sale_goals ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;
 
 -- ============================
 -- B) Constraints / FKs (safe)
@@ -166,4 +166,47 @@ END $$;
 
 -- REEMBOLSOS
 DO $$
-B
+BEGIN
+  IF to_regclass('public.reembolsos') IS NOT NULL AND to_regclass('public.users') IS NOT NULL THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_reembolsos_empacador') THEN
+ALTER TABLE reembolsos
+    ADD CONSTRAINT fk_reembolsos_empacador FOREIGN KEY (empacador_id) REFERENCES users(id);
+END IF;
+END IF;
+END $$;
+
+-- REEMBOLSO_ITEMS
+DO $$
+BEGIN
+  IF to_regclass('public.reembolso_items') IS NOT NULL AND to_regclass('public.reembolsos') IS NOT NULL THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_reembolso_items_reembolso') THEN
+ALTER TABLE reembolso_items
+    ADD CONSTRAINT fk_reembolso_items_reembolso FOREIGN KEY (reembolso_id) REFERENCES reembolsos(id);
+END IF;
+END IF;
+
+  IF to_regclass('public.reembolso_items') IS NOT NULL AND to_regclass('public.products') IS NOT NULL THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_reembolso_items_producto') THEN
+ALTER TABLE reembolso_items
+    ADD CONSTRAINT fk_reembolso_items_producto FOREIGN KEY (producto_id) REFERENCES products(id);
+END IF;
+END IF;
+END $$;
+
+-- SALE_GOALS
+DO $$
+BEGIN
+  IF to_regclass('public.sale_goals') IS NOT NULL THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uk_sale_goal_vendedor_month_year') THEN
+ALTER TABLE sale_goals
+    ADD CONSTRAINT uk_sale_goal_vendedor_month_year UNIQUE (vendedor_id, month, year);
+END IF;
+END IF;
+
+  IF to_regclass('public.sale_goals') IS NOT NULL AND to_regclass('public.users') IS NOT NULL THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_sale_goals_vendedor') THEN
+ALTER TABLE sale_goals
+    ADD CONSTRAINT fk_sale_goals_vendedor FOREIGN KEY (vendedor_id) REFERENCES users(id);
+END IF;
+END IF;
+END $$;
