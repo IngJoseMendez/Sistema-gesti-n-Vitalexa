@@ -10,6 +10,8 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+
 @Component
 @RequiredArgsConstructor
 public class UserDataInitializer implements CommandLineRunner {
@@ -73,6 +75,7 @@ public class UserDataInitializer implements CommandLineRunner {
         client.setDireccion(direccion);
         client.setActive(true);
         client.setVendedorAsignado(vendedor);
+        client.setTotalCompras(BigDecimal.ZERO);
 
         clientRepository.save(client);
     }
