@@ -9,6 +9,7 @@ import org.example.sistema_gestion_vitalexa.mapper.ProductMapper;
 import org.example.sistema_gestion_vitalexa.repository.ProductRepository;
 import org.example.sistema_gestion_vitalexa.service.NotificationService;
 import org.example.sistema_gestion_vitalexa.service.ProductService;
+import org.example.sistema_gestion_vitalexa.service.ProductTagService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -27,10 +28,17 @@ public class ProductServiceImpl implements ProductService {
     private final ProductRepository repository;
     private final ProductMapper mapper;
     private final NotificationService notificationService;
+    private final ProductTagService productTagService;
 
     @Override
     public ProductResponse create(CreateProductRequest request) {
         Product product = mapper.toEntity(request);
+
+        // Asignar tag si se proporciona
+        if (request.tagId() != null) {
+            product.setTag(productTagService.findEntityById(request.tagId()));
+        }
+
         Product saved = repository.save(product);
 
         // NOTIFICAR CREACIÓN
@@ -68,6 +76,9 @@ public class ProductServiceImpl implements ProductService {
         }
         if (request.active() != null) {
             product.setActive(request.active());
+        }
+        if (request.tagId() != null) {
+            product.setTag(productTagService.findEntityById(request.tagId()));
         }
 
         Product updated = repository.save(product);
@@ -192,6 +203,16 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public Page<ProductResponse> searchActive(String q, Pageable pageable) {
         return repository.searchActive(q, pageable).map(mapper::toResponse);
+    }
+
+    @Override
+    public Page<ProductResponse> findByTag(UUID tagId, Pageable pageable) {
+        return repository.findByTagId(tagId, pageable).map(mapper::toResponse);
+    }
+
+    @Override
+    public Page<ProductResponse> searchByTag(String q, UUID tagId, Pageable pageable) {
+        return repository.searchByTagId(q, tagId, pageable).map(mapper::toResponse);
     }
 
 }

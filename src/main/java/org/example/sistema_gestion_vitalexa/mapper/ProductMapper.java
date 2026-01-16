@@ -28,6 +28,8 @@ public interface ProductMapper {
     @Mapping(target = "stock", source = "stock")
     @Mapping(target = "imageUrl", source = "imageUrl")
     @Mapping(target = "active", source = "active")
+    @Mapping(target = "tagId", expression = "java(product.getTag() != null ? product.getTag().getId() : null)")
+    @Mapping(target = "tagName", expression = "java(product.getTag() != null ? product.getTag().getName() : null)")
     ProductResponse toResponse(Product product);
 
     List<ProductResponse> toResponseList(List<Product> products);

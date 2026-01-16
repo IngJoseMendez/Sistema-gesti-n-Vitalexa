@@ -2,8 +2,10 @@ package org.example.sistema_gestion_vitalexa.service.impl;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.example.sistema_gestion_vitalexa.dto.OrderRequestDto;
 import org.example.sistema_gestion_vitalexa.dto.OrderResponse;
+import org.example.sistema_gestion_vitalexa.dto.OrderItemRequestDTO;
 import org.example.sistema_gestion_vitalexa.entity.*;
 import org.example.sistema_gestion_vitalexa.enums.OrdenStatus;
 import org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption;
@@ -18,11 +20,10 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
-import static org.example.sistema_gestion_vitalexa.service.impl.ProductServiceImpl.log;
-
 @Service
 @RequiredArgsConstructor
 @Transactional
+@Slf4j
 public class OrderServiceImpl implements OrdenService {
 
     private final OrdenRepository ordenRepository;
@@ -32,6 +33,7 @@ public class OrderServiceImpl implements OrdenService {
     private final OrderMapper orderMapper;
     private final NotificationService notificationService;
     private final SaleGoalService saleGoalService;
+    private final ProductTagService productTagService;
 
     // =========================
     // CREATE ORDER (VENDEDOR)
@@ -50,34 +52,65 @@ public class OrderServiceImpl implements OrdenService {
             client = clientService.findEntityById(request.clientId());
         }
 
+        // Obtener etiqueta del sistema "S/R" (puede no existir aún)
+        ProductTag srTag = null;
+        try {
+            srTag = productTagService.getSRTagEntity();
+        } catch (Exception e) {
+            log.warn("Etiqueta del sistema S/R no encontrada, continuando sin split");
+        }
+
+        // Separar items en dos listas: con tag S/R y sin tag S/R
+        List<OrderItemRequestDTO> normalItems = new java.util.ArrayList<>();
+        List<OrderItemRequestDTO> srItems = new java.util.ArrayList<>();
+
+        ProductTag finalSrTag = srTag;
+        request.items().forEach(itemReq -> {
+            Product product = productService.findEntityById(itemReq.productId());
+            boolean isSRProduct = finalSrTag != null && product.getTag() != null && product.getTag().getId().equals(finalSrTag.getId());
+
+            if (isSRProduct) {
+                srItems.add(itemReq);
+            } else {
+                normalItems.add(itemReq);
+            }
+        });
+
+        // Decidir si necesitamos split
+        boolean needsSplit = srTag != null && !srItems.isEmpty();
+
+        if (!needsSplit) {
+            // Caso normal: crear una sola orden sin productos S/R
+            return createSingleOrder(vendedor, client, request, username);
+        } else if (normalItems.isEmpty()) {
+            // Caso especial: solo hay productos S/R
+            OrderRequestDto srOnlyRequest = new OrderRequestDto(
+                    request.clientId(),
+                    srItems,
+                    request.notas()
+            );
+            return createSingleOrder(vendedor, client, srOnlyRequest, username);
+        } else {
+            // Caso split: crear dos órdenes con números de factura consecutivos
+            // Esto debe ser atómico
+            return createSplitOrders(vendedor, client, normalItems, srItems, request.notas(), username);
+        }
+    }
+
+    /**
+     * Crear una sola orden (sin split o solo S/R)
+     */
+    private OrderResponse createSingleOrder(User vendedor, Client client, OrderRequestDto request, String username) {
         Order order = new Order(vendedor, client);
 
-        // Agregar notas si existen
         if (request.notas() != null && !request.notas().isBlank()) {
             order.setNotas(request.notas());
         }
 
-        request.items().forEach(itemReq -> {
-            Product product = productService.findEntityById(itemReq.productId());
-
-            // Permitir productos sin stock si hay una nota
-            if (product.getStock() < itemReq.cantidad() &&
-                    (request.notas() == null || request.notas().isBlank())) {
-                throw new BusinessExeption("Stock insuficiente para: " + product.getNombre());
-            }
-
-            // Solo decrementar stock si hay suficiente
-            if (product.getStock() >= itemReq.cantidad()) {
-                product.decreaseStock(itemReq.cantidad());
-            }
-
-            OrderItem item = new OrderItem(product, itemReq.cantidad());
-            order.addItem(item);
-        });
+        processOrderItems(order, request.items());
 
         Order savedOrder = ordenRepository.save(order);
 
-        // ENVIAR NOTIFICACIÓN DE NUEVA ORDEN
         notificationService.sendNewOrderNotification(
                 savedOrder.getId().toString(),
                 vendedor.getUsername(),
@@ -89,6 +122,86 @@ public class OrderServiceImpl implements OrdenService {
         }
 
         return orderMapper.toResponse(savedOrder);
+    }
+
+    /**
+     * Crear dos órdenes con split y números de factura consecutivos
+     */
+    private OrderResponse createSplitOrders(
+            User vendedor,
+            Client client,
+            List<OrderItemRequestDTO> normalItems,
+            List<OrderItemRequestDTO> srItems,
+            String notas,
+            String username
+    ) {
+        // Crear orden normal
+        Order normalOrder = new Order(vendedor, client);
+        if (notas != null && !notas.isBlank()) {
+            normalOrder.setNotas(notas + " [Normal]");
+        }
+        processOrderItems(normalOrder, normalItems);
+
+        // Crear orden S/R
+        Order srOrder = new Order(vendedor, client);
+        if (notas != null && !notas.isBlank()) {
+            srOrder.setNotas(notas + " [S/R]");
+        }
+        processOrderItems(srOrder, srItems);
+
+        // Guardar normal order primero para obtener número de factura
+        Order savedNormalOrder = ordenRepository.save(normalOrder);
+
+        // Guardar SR order
+        Order savedSROrder = ordenRepository.save(srOrder);
+
+        // Ambas órdenes se tratan como "reales" en términos de facturación
+        // Los números de factura se asignan cuando se completen
+
+        notificationService.sendNewOrderNotification(
+                savedNormalOrder.getId().toString(),
+                vendedor.getUsername(),
+                client != null ? client.getNombre() : "Sin cliente"
+        );
+
+        notificationService.sendNewOrderNotification(
+                savedSROrder.getId().toString(),
+                vendedor.getUsername(),
+                client != null ? client.getNombre() : "Sin cliente"
+        );
+
+        if (client != null) {
+            client.registerPurchase(savedNormalOrder.getTotal().add(savedSROrder.getTotal()));
+        }
+
+        // Log para auditoria
+        log.info("Orden dividida: Normal ({}) + S/R ({}) por vendedor {}",
+                savedNormalOrder.getId(), savedSROrder.getId(), username);
+
+        // Retornamos la orden normal como respuesta principal
+        // El cliente puede consultar ambas órdenes luego
+        return orderMapper.toResponse(savedNormalOrder);
+    }
+
+    /**
+     * Procesar items de una orden (decrementar stock, etc)
+     */
+    private void processOrderItems(Order order, List<OrderItemRequestDTO> items) {
+        items.forEach(itemReq -> {
+            Product product = productService.findEntityById(itemReq.productId());
+
+            if (product.getStock() < itemReq.cantidad() &&
+                    (order.getNotas() == null || order.getNotas().isBlank())) {
+                throw new BusinessExeption("Stock insuficiente para: " + product.getNombre());
+            }
+
+            if (product.getStock() >= itemReq.cantidad()) {
+                product.decreaseStock(itemReq.cantidad());
+            }
+
+            OrderItem item = new OrderItem(product, itemReq.cantidad());
+            order.addItem(item);
+        });
     }
 
 

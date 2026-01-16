@@ -28,4 +28,19 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
           AND (:q IS NULL OR :q = '' OR lower(p.nombre) LIKE lower(concat('%', :q, '%')))
         """)
     Page<Product> searchActive(@Param("q") String q, Pageable pageable);
+
+    // Tag filtering
+    @Query("""
+        SELECT p FROM Product p
+        WHERE p.active = true AND p.tag.id = :tagId
+        """)
+    Page<Product> findByTagId(@Param("tagId") UUID tagId, Pageable pageable);
+
+    @Query("""
+        SELECT p FROM Product p
+        WHERE p.active = true 
+          AND p.tag.id = :tagId
+          AND (:q IS NULL OR :q = '' OR lower(p.nombre) LIKE lower(concat('%', :q, '%')))
+        """)
+    Page<Product> searchByTagId(@Param("q") String q, @Param("tagId") UUID tagId, Pageable pageable);
 }

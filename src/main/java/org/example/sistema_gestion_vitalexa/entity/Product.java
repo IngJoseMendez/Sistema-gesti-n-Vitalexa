@@ -76,6 +76,7 @@ public class Product {
     @Column(name = "reorder_point")
     private Integer reorderPoint;
 
-
-
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "product_tag_id")
+    private ProductTag tag;
 }

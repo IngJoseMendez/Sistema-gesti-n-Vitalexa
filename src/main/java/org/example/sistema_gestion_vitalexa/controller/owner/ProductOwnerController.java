@@ -151,7 +151,8 @@ public class ProductOwnerController {
                     stockVal,
                     reorderPointVal,
                     imageUrl,
-                    active
+                    active,
+                    null  // tagId no se actualiza aquí
             );
 
             ProductResponse response = productService.update(id, request);

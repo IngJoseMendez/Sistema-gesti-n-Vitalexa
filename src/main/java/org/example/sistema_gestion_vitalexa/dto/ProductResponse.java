@@ -10,6 +10,14 @@ public record ProductResponse(
         BigDecimal precio,
         Integer stock,
         String imageUrl,
-        Boolean active
+        Boolean active,
+        UUID tagId,
+        String tagName
 ) {
+    /**
+     * Constructor sin tag (backward compatibility)
+     */
+    public ProductResponse(UUID id, String nombre, String descripcion, BigDecimal precio, Integer stock, String imageUrl, Boolean active) {
+        this(id, nombre, descripcion, precio, stock, imageUrl, active, null, null);
+    }
 }

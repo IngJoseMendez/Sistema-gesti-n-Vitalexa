@@ -14,7 +14,8 @@ public record OrderResponse(
         LocalDateTime fecha,
         List<OrderItemResponse> items,
         String notas,
-        Long invoiceNumber
+        Long invoiceNumber,
+        Boolean isSROrder
 
 ) {
 }

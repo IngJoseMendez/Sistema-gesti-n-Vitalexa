@@ -45,34 +45,32 @@ public class InvoiceServiceImpl implements InvoiceService {
             Order order = ordenRepository.findById(orderId)
                     .orElseThrow(() -> new BusinessExeption("Orden no encontrada"));
 
+            // Detectar si es orden S/R
+            boolean isSROrder = order.getNotas() != null && order.getNotas().contains("[S/R]");
+
             PdfWriter writer = new PdfWriter(baos);
             PdfDocument pdf = new PdfDocument(writer);
             Document document = new Document(pdf);
 
             // ===== HEADER DE LA EMPRESA =====
-            addCompanyHeader(document);
+            addCompanyHeader(document, isSROrder);
 
             // ===== INFORMACIÓN DE LA ORDEN =====
-            addOrderInfo(document, order);
-
-            // ===== INFORMACIÓN DEL CLIENTE (si existe) =====
-            if (order.getCliente() != null) {
-                addClientInfo(document, order);
-            }
+            addOrderInfo(document, order, isSROrder);
 
             // ===== TABLA DE PRODUCTOS =====
-            addProductsTable(document, order);
+            addProductsTable(document, order, isSROrder);
 
             // ===== TOTALES =====
-            addTotals(document, order);
+            addTotals(document, order, isSROrder);
 
             // ===== NOTAS (si existen) =====
             if (order.getNotas() != null && !order.getNotas().isBlank()) {
-                addNotes(document, order);
+                addNotes(document, order, isSROrder);
             }
 
             // ===== FOOTER =====
-            addFooter(document);
+            addFooter(document, isSROrder);
 
             document.close();
             return baos.toByteArray();
@@ -94,7 +92,7 @@ public class InvoiceServiceImpl implements InvoiceService {
     // MÉTODOS AUXILIARES PARA PDF
     // =============================================
 
-    private void addCompanyHeader(Document document) {
+    private void addCompanyHeader(Document document, boolean isSROrder) {
         // Logo o nombre de la empresa
         try {
             ImageData imageData = ImageDataFactory.create("src/main/resources/static/images/logo.png");
@@ -114,70 +112,107 @@ public class InvoiceServiceImpl implements InvoiceService {
                 .setMarginBottom(20);
         document.add(slogan);
 
+        // Watermark para facturas S/R
+        if (isSROrder) {
+            Paragraph watermark = new Paragraph("SIN REGISTRO - S/N")
+                    .setFontSize(16)
+                    .setBold()
+                    .setFontColor(new DeviceRgb(220, 53, 69)) // Rojo
+                    .setTextAlignment(TextAlignment.CENTER)
+                    .setMarginBottom(10);
+            document.add(watermark);
+        }
 
         SolidLine lineDrawer = new SolidLine();
-        lineDrawer.setColor(BRAND_COLOR);
-        lineDrawer.setLineWidth(2f);
+        lineDrawer.setColor(isSROrder ? new DeviceRgb(220, 53, 69) : BRAND_COLOR);
+        lineDrawer.setLineWidth(isSROrder ? 3f : 2f);
         LineSeparator separator = new LineSeparator(lineDrawer);
         document.add(separator);
         document.add(new Paragraph("\n"));
     }
 
-    private void addOrderInfo(Document document, Order order) {
-        // Título
-        Paragraph title = new Paragraph("ORDEN DE PEDIDO")
+    private void addOrderInfo(Document document, Order order, boolean isSROrder) {
+        // Indicador S/N si es una orden S/R
+        if (isSROrder) {
+            Paragraph srIndicator = new Paragraph("S/N")
+                    .setFontSize(14)
+                    .setBold()
+                    .setTextAlignment(TextAlignment.LEFT)
+                    .setFontColor(new DeviceRgb(220, 53, 69)) // Rojo
+                    .setMarginBottom(5);
+            document.add(srIndicator);
+        }
+
+        // Título con color diferente si es S/N
+        Paragraph title = new Paragraph("FACTURA DE PEDIDO")
                 .setFontSize(18)
                 .setBold()
                 .setTextAlignment(TextAlignment.CENTER)
+                .setFontColor(isSROrder ? new DeviceRgb(220, 53, 69) : BRAND_COLOR)
                 .setMarginBottom(15);
         document.add(title);
 
-        // Información en tabla
-        Table infoTable = new Table(UnitValue.createPercentArray(new float[]{1, 1}))
+        // Información comprimida en tabla de una fila con múltiples columnas
+        Table infoTable = new Table(UnitValue.createPercentArray(new float[]{1.5f, 1.5f, 1.5f, 1.5f}))
                 .useAllAvailableWidth()
-                .setMarginBottom(15);
+                .setMarginBottom(10);
 
-        addInfoRow(infoTable, "N° Orden:", order.getInvoiceNumber().toString().toUpperCase());
-        addInfoRow(infoTable, "Fecha:", order.getFecha().format(DATE_FORMATTER));
-        addInfoRow(infoTable, "Estado:", order.getEstado().toString());
-        addInfoRow(infoTable, "Vendedor:", order.getVendedor().getUsername());
+        // Color de fondo diferente si es S/N
+        DeviceRgb backgroundColor = isSROrder ? new DeviceRgb(255, 229, 229) : (DeviceRgb) ColorConstants.WHITE;
+
+        // Primera línea: N° Factura, Fecha, Estado, Vendedor
+        addInfoCell(infoTable, "N° Factura:", order.getInvoiceNumber() != null ? order.getInvoiceNumber().toString() : "---", true, backgroundColor);
+        addInfoCell(infoTable, "Fecha:", order.getFecha().format(DATE_FORMATTER), true, backgroundColor);
+        addInfoCell(infoTable, "Estado:", order.getEstado().toString(), true, backgroundColor);
+        addInfoCell(infoTable, "Vendedor:", order.getVendedor().getUsername(), true, backgroundColor);
 
         document.add(infoTable);
+
+        // Segunda línea: Información del cliente (si existe)
+        if (order.getCliente() != null) {
+            Table clientTable = new Table(UnitValue.createPercentArray(new float[]{1.5f, 1.5f, 1.5f, 1.5f}))
+                    .useAllAvailableWidth()
+                    .setMarginBottom(15);
+
+            String telefono = order.getCliente().getTelefono() != null ? order.getCliente().getTelefono() : "---";
+            String email = order.getCliente().getEmail() != null ? order.getCliente().getEmail() : "---";
+            String direccion = order.getCliente().getDireccion() != null ? order.getCliente().getDireccion() : "---";
+
+            addInfoCell(clientTable, "Cliente:", order.getCliente().getNombre(), true, backgroundColor);
+            addInfoCell(clientTable, "Teléfono:", telefono, true, backgroundColor);
+            addInfoCell(clientTable, "Email:", email, true, backgroundColor);
+            addInfoCell(clientTable, "Dirección:", direccion, true, backgroundColor);
+
+            document.add(clientTable);
+        }
     }
 
-    private void addClientInfo(Document document, Order order) {
-        Paragraph clientTitle = new Paragraph("INFORMACIÓN DEL CLIENTE")
-                .setFontSize(14)
-                .setBold()
-                .setMarginTop(10)
-                .setMarginBottom(5);
-        document.add(clientTitle);
+    /**
+     * Agregar celda de información con etiqueta y valor
+     */
+    private void addInfoCell(Table table, String label, String value, boolean isBold, DeviceRgb backgroundColor) {
+        com.itextpdf.layout.element.Cell labelCell = new com.itextpdf.layout.element.Cell()
+                .add(new Paragraph(label).setBold().setFontSize(9))
+                .setBorder(null)
+                .setPadding(2)
+                .setBackgroundColor(backgroundColor)
+                .setTextAlignment(TextAlignment.LEFT);
+        table.addCell(labelCell);
 
-        Table clientTable = new Table(UnitValue.createPercentArray(new float[]{1, 2}))
-                .useAllAvailableWidth()
-                .setMarginBottom(15);
-
-        addInfoRow(clientTable, "Cliente:", order.getCliente().getNombre());
-
-        if (order.getCliente().getTelefono() != null) {
-            addInfoRow(clientTable, "Teléfono:", order.getCliente().getTelefono());
-        }
-
-        if (order.getCliente().getEmail() != null) {
-            addInfoRow(clientTable, "Email:", order.getCliente().getEmail());
-        }
-
-        if (order.getCliente().getDireccion() != null) {
-            addInfoRow(clientTable, "Dirección:", order.getCliente().getDireccion());
-        }
-
-        document.add(clientTable);
+        com.itextpdf.layout.element.Cell valueCell = new com.itextpdf.layout.element.Cell()
+                .add(new Paragraph(value).setFontSize(9))
+                .setBorder(null)
+                .setPadding(2)
+                .setBackgroundColor(backgroundColor)
+                .setTextAlignment(TextAlignment.LEFT);
+        table.addCell(valueCell);
     }
 
-    private void addProductsTable(Document document, Order order) {
+    private void addProductsTable(Document document, Order order, boolean isSROrder) {
         Paragraph productsTitle = new Paragraph("DETALLE DE PRODUCTOS")
                 .setFontSize(14)
                 .setBold()
+                .setFontColor(isSROrder ? new DeviceRgb(220, 53, 69) : BRAND_COLOR)
                 .setMarginTop(10)
                 .setMarginBottom(5);
         document.add(productsTitle);
@@ -185,11 +220,12 @@ public class InvoiceServiceImpl implements InvoiceService {
         Table table = new Table(UnitValue.createPercentArray(new float[]{3, 1, 2, 2}))
                 .useAllAvailableWidth();
 
-        // Header
-        addTableHeaderCell(table, "Producto");
-        addTableHeaderCell(table, "Cant.");
-        addTableHeaderCell(table, "P. Unitario");
-        addTableHeaderCell(table, "Subtotal");
+        // Header con color según tipo de factura
+        DeviceRgb headerColor = isSROrder ? new DeviceRgb(220, 53, 69) : BRAND_COLOR;
+        addTableHeaderCell(table, "Producto", headerColor);
+        addTableHeaderCell(table, "Cant.", headerColor);
+        addTableHeaderCell(table, "P. Unitario", headerColor);
+        addTableHeaderCell(table, "Subtotal", headerColor);
 
         // Items
         for (OrderItem item : order.getItems()) {
@@ -202,10 +238,14 @@ public class InvoiceServiceImpl implements InvoiceService {
         document.add(table);
     }
 
-    private void addTotals(Document document, Order order) {
+    private void addTotals(Document document, Order order, boolean isSROrder) {
         Table totalsTable = new Table(UnitValue.createPercentArray(new float[]{3, 1}))
                 .useAllAvailableWidth()
                 .setMarginTop(15);
+
+        // Colores según tipo de factura
+        DeviceRgb totalColor = isSROrder ? new DeviceRgb(220, 53, 69) : BRAND_COLOR;
+        DeviceRgb lightBg = isSROrder ? new DeviceRgb(255, 229, 229) : LIGHT_GRAY;
 
         // Subtotal
         com.itextpdf.layout.element.Cell labelCell = new com.itextpdf.layout.element.Cell()
@@ -224,54 +264,56 @@ public class InvoiceServiceImpl implements InvoiceService {
 
         // Total (en este caso es igual, pero puedes agregar impuestos después)
         com.itextpdf.layout.element.Cell totalLabelCell = new com.itextpdf.layout.element.Cell()
-                .add(new Paragraph("TOTAL:").setFontSize(14).setBold())
+                .add(new Paragraph("TOTAL:").setFontSize(14).setBold().setFontColor(ColorConstants.WHITE))
                 .setTextAlignment(TextAlignment.RIGHT)
                 .setBorder(null)
-                .setBackgroundColor(LIGHT_GRAY)
+                .setBackgroundColor(totalColor)
                 .setPadding(8);
         totalsTable.addCell(totalLabelCell);
 
         com.itextpdf.layout.element.Cell totalValueCell = new com.itextpdf.layout.element.Cell()
-                .add(new Paragraph(formatCurrency(order.getTotal())).setFontSize(14).setBold())
+                .add(new Paragraph(formatCurrency(order.getTotal())).setFontSize(14).setBold().setFontColor(ColorConstants.WHITE))
                 .setTextAlignment(TextAlignment.RIGHT)
                 .setBorder(null)
-                .setBackgroundColor(LIGHT_GRAY)
+                .setBackgroundColor(totalColor)
                 .setPadding(8);
         totalsTable.addCell(totalValueCell);
 
         document.add(totalsTable);
     }
 
-    private void addNotes(Document document, Order order) {
+    private void addNotes(Document document, Order order, boolean isSROrder) {
         Paragraph notesTitle = new Paragraph("NOTAS")
                 .setFontSize(12)
                 .setBold()
+                .setFontColor(isSROrder ? new DeviceRgb(220, 53, 69) : BRAND_COLOR)
                 .setMarginTop(15)
                 .setMarginBottom(5);
         document.add(notesTitle);
 
+        DeviceRgb noteBg = isSROrder ? new DeviceRgb(255, 229, 229) : LIGHT_GRAY;
         Paragraph notesContent = new Paragraph(order.getNotas())
                 .setFontSize(10)
                 .setItalic()
-                .setBackgroundColor(LIGHT_GRAY)
+                .setBackgroundColor(noteBg)
                 .setPadding(10);
         document.add(notesContent);
     }
 
-    private void addFooter(Document document) {
+    private void addFooter(Document document, boolean isSROrder) {
         document.add(new Paragraph("\n"));
 
-
         SolidLine lineDrawer = new SolidLine();
-        lineDrawer.setColor(ColorConstants.LIGHT_GRAY);
-        lineDrawer.setLineWidth(1f);
+        lineDrawer.setColor(isSROrder ? new DeviceRgb(220, 53, 69) : ColorConstants.LIGHT_GRAY);
+        lineDrawer.setLineWidth(isSROrder ? 2f : 1f);
         LineSeparator separator = new LineSeparator(lineDrawer);
         document.add(separator);
 
         Paragraph footer = new Paragraph("Gracias por su compra - VITALEXA")
                 .setFontSize(10)
                 .setTextAlignment(TextAlignment.CENTER)
-                .setMarginTop(10);
+                .setMarginTop(10)
+                .setFontColor(isSROrder ? new DeviceRgb(220, 53, 69) : ColorConstants.BLACK);
         document.add(footer);
 
         Paragraph contact = new Paragraph("Contacto: info@vitalexa.com | Tel: +57 300 123 4567")
@@ -297,10 +339,10 @@ public class InvoiceServiceImpl implements InvoiceService {
         table.addCell(valueCell);
     }
 
-    private void addTableHeaderCell(Table table, String content) {
+    private void addTableHeaderCell(Table table, String content, DeviceRgb backgroundColor) {
         com.itextpdf.layout.element.Cell cell = new com.itextpdf.layout.element.Cell()
                 .add(new Paragraph(content).setBold().setFontSize(11))
-                .setBackgroundColor(BRAND_COLOR)
+                .setBackgroundColor(backgroundColor)
                 .setFontColor(ColorConstants.WHITE)
                 .setTextAlignment(TextAlignment.CENTER)
                 .setPadding(8);

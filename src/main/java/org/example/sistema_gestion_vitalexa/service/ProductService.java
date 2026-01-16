@@ -30,4 +30,8 @@ public interface ProductService {
     ProductResponse findById(UUID id);
     void changeStatus(UUID id, boolean status);
     List<ProductResponse> findLowStock(int threshold);
+
+    // Tag filtering
+    Page<ProductResponse> findByTag(UUID tagId, Pageable pageable);
+    Page<ProductResponse> searchByTag(String q, UUID tagId, Pageable pageable);
 }

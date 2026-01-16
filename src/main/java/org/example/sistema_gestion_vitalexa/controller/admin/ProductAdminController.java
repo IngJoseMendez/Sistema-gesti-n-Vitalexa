@@ -12,6 +12,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -40,7 +42,8 @@ public class ProductAdminController {
             @RequestParam String descripcion,
             @RequestParam BigDecimal precio,
             @RequestParam Integer stock,
-            @RequestParam(required = false, defaultValue = "10") Integer reorderPoint,  // ← CORREGIDO
+            @RequestParam(required = false, defaultValue = "10") Integer reorderPoint,
+            @RequestParam(required = false) UUID tagId,
             @RequestParam(required = false) MultipartFile image) {
         try {
             String imageUrl = null;
@@ -48,14 +51,14 @@ public class ProductAdminController {
                 imageUrl = imageService.saveImage(image);
             }
 
-
             CreateProductRequest request = new CreateProductRequest(
                     nombre,
                     descripcion,
                     precio,
                     stock,
                     reorderPoint,
-                    imageUrl
+                    imageUrl,
+                    tagId
             );
 
             ProductResponse response = productService.create(request);
@@ -76,7 +79,8 @@ public class ProductAdminController {
             @RequestParam(required = false) String descripcion,
             @RequestParam(required = false) String precio,
             @RequestParam(required = false) String stock,
-            @RequestParam(required = false) String reorderPoint,  // ← AGREGAR AQUÍ
+            @RequestParam(required = false) String reorderPoint,
+            @RequestParam(required = false) UUID tagId,
             @RequestParam(required = false) MultipartFile image,
             @RequestParam(required = false) Boolean active) {
         try {
@@ -105,7 +109,6 @@ public class ProductAdminController {
                 }
             }
 
-
             if (reorderPoint != null && !reorderPoint.isBlank()) {
                 try {
                     reorderPointVal = Integer.valueOf(reorderPoint);
@@ -120,7 +123,6 @@ public class ProductAdminController {
                 imageUrl = imageService.saveImage(image);
             }
 
-
             UpdateProductRequest request = new UpdateProductRequest(
                     nombre,
                     descripcion,
@@ -128,7 +130,8 @@ public class ProductAdminController {
                     stockVal,
                     reorderPointVal,
                     imageUrl,
-                    active
+                    active,
+                    tagId
             );
 
             ProductResponse response = productService.update(id, request);
@@ -156,9 +159,10 @@ public class ProductAdminController {
             @RequestParam(required = false) String precio,
             @RequestParam(required = false) String stock,
             @RequestParam(required = false) String reorderPoint,
+            @RequestParam(required = false) UUID tagId,
             @RequestParam(required = false) MultipartFile image,
             @RequestParam(required = false) Boolean active) {
-        return update(id, nombre, descripcion, precio, stock, reorderPoint, image, active);
+        return update(id, nombre, descripcion, precio, stock, reorderPoint, tagId, image, active);
     }
 
     /**
@@ -230,5 +234,28 @@ public class ProductAdminController {
             log.error("Unexpected error changing status for {}", id, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error cambiando estado");
         }
+    }
+
+    /**
+     * GET /api/admin/products/tag/{tagId} - Filtrar productos por etiqueta
+     */
+    @GetMapping("/tag/{tagId}")
+    public ResponseEntity<Page<ProductResponse>> findByTag(
+            @PathVariable UUID tagId,
+            Pageable pageable) {
+        Page<ProductResponse> productos = productService.findByTag(tagId, pageable);
+        return ResponseEntity.ok(productos);
+    }
+
+    /**
+     * GET /api/admin/products/tag/{tagId}/search - Buscar productos por etiqueta y término
+     */
+    @GetMapping("/tag/{tagId}/search")
+    public ResponseEntity<Page<ProductResponse>> searchByTag(
+            @PathVariable UUID tagId,
+            @RequestParam(required = false) String q,
+            Pageable pageable) {
+        Page<ProductResponse> productos = productService.searchByTag(q, tagId, pageable);
+        return ResponseEntity.ok(productos);
     }
 }
