@@ -138,15 +138,13 @@ public class OrderServiceImpl implements OrdenService {
         // Crear orden normal
         Order normalOrder = new Order(vendedor, client);
         if (notas != null && !notas.isBlank()) {
-            normalOrder.setNotas(notas + " [Normal]");
+            normalOrder.setNotas(notas + "[Normal]");
         }
         processOrderItems(normalOrder, normalItems);
 
         // Crear orden S/R
         Order srOrder = new Order(vendedor, client);
-        if (notas != null && !notas.isBlank()) {
-            srOrder.setNotas(notas + " [S/R]");
-        }
+        srOrder.setNotas(notas + "[S/R]");
         processOrderItems(srOrder, srItems);
 
         // Guardar normal order primero para obtener número de factura
