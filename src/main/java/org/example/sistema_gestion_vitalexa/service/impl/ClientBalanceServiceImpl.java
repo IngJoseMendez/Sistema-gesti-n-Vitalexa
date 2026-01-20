@@ -48,8 +48,6 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
         public List<ClientBalanceDTO> getAllClientBalances() {
                 return clientRepository.findAll().stream()
                                 .map(this::calculateClientBalance)
-                                .filter(balance -> balance.pendingBalance().compareTo(BigDecimal.ZERO) > 0
-                                                || balance.initialBalance().compareTo(BigDecimal.ZERO) > 0)
                                 .collect(Collectors.toList());
         }
 
@@ -57,8 +55,6 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
         public List<ClientBalanceDTO> getClientBalancesByVendedor(UUID vendedorId) {
                 return clientRepository.findByVendedorAsignadoId(vendedorId).stream()
                                 .map(this::calculateClientBalance)
-                                .filter(balance -> balance.pendingBalance().compareTo(BigDecimal.ZERO) > 0
-                                                || balance.initialBalance().compareTo(BigDecimal.ZERO) > 0)
                                 .collect(Collectors.toList());
         }
 

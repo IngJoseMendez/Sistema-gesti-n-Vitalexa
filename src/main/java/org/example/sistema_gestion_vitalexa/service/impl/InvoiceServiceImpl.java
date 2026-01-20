@@ -64,11 +64,6 @@ public class InvoiceServiceImpl implements InvoiceService {
                         // ===== TOTALES =====
                         addTotals(document, order, isSROrder);
 
-                        // ===== NOTAS (si existen) =====
-                        if (order.getNotas() != null && !order.getNotas().isBlank()) {
-                                addNotes(document, order, isSROrder);
-                        }
-
                         // ===== FOOTER =====
                         addFooter(document, isSROrder);
 
