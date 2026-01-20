@@ -16,6 +16,7 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.example.sistema_gestion_vitalexa.dto.*;
+import org.example.sistema_gestion_vitalexa.service.ClientBalanceService;
 import org.example.sistema_gestion_vitalexa.service.ReportExportService;
 import org.example.sistema_gestion_vitalexa.service.ReportService;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,7 @@ import java.util.List;
 public class ReportExportServiceImpl implements ReportExportService {
 
     private final ReportService reportService;
+    private final ClientBalanceService clientBalanceService;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     // =============================================
@@ -104,7 +106,7 @@ public class ReportExportServiceImpl implements ReportExportService {
     @Override
     public byte[] exportReportToExcel(ReportDTO report, LocalDate startDate, LocalDate endDate) {
         try (Workbook workbook = new XSSFWorkbook();
-             ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
 
             // Crear estilos
             CellStyle headerStyle = createHeaderStyle(workbook);
@@ -126,9 +128,11 @@ public class ReportExportServiceImpl implements ReportExportService {
             // HOJA 5: CLIENTES TOP
             createTopClientsSheet(workbook, report.clientReport(), headerStyle, dataStyle, currencyStyle);
 
-            List<VendorDailySalesDTO> vendorSalesReports =
-                    reportService.getVendorDailySalesReport(startDate, endDate);
+            List<VendorDailySalesDTO> vendorSalesReports = reportService.getVendorDailySalesReport(startDate, endDate);
             createVendorDailySalesSheets(workbook, vendorSalesReports, headerStyle, dataStyle, currencyStyle);
+
+            // HOJA: SALDO POR CLIENTE
+            createClientBalanceSheet(workbook, headerStyle, dataStyle, currencyStyle);
 
             workbook.write(baos);
             return baos.toByteArray();
@@ -145,7 +149,7 @@ public class ReportExportServiceImpl implements ReportExportService {
     @Override
     public byte[] exportProductReportToExcel() {
         try (Workbook workbook = new XSSFWorkbook();
-             ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
 
             ProductReportDTO productReport = reportService.getProductReport();
 
@@ -171,63 +175,63 @@ public class ReportExportServiceImpl implements ReportExportService {
     @Override
     public byte[] exportReportToCsv(ReportDTO report, LocalDate startDate, LocalDate endDate) {
         try (StringWriter sw = new StringWriter();
-             CSVWriter csvWriter = new CSVWriter(sw)) {
+                CSVWriter csvWriter = new CSVWriter(sw)) {
 
             // HEADER
-            csvWriter.writeNext(new String[]{"REPORTE GENERAL DE GESTIÓN - VITALEXA"});
-            csvWriter.writeNext(new String[]{"Período: " + startDate.format(DATE_FORMATTER) + " - " + endDate.format(DATE_FORMATTER)});
-            csvWriter.writeNext(new String[]{""}); // línea en blanco
+            csvWriter.writeNext(new String[] { "REPORTE GENERAL DE GESTIÓN - VITALEXA" });
+            csvWriter.writeNext(new String[] {
+                    "Período: " + startDate.format(DATE_FORMATTER) + " - " + endDate.format(DATE_FORMATTER) });
+            csvWriter.writeNext(new String[] { "" }); // línea en blanco
             // VENTAS
-            csvWriter.writeNext(new String[]{"===== RESUMEN DE VENTAS ====="});
-            csvWriter.writeNext(new String[]{"Métrica", "Valor"});
-            csvWriter.writeNext(new String[]{"Ingresos Totales", "$" + report.salesReport().totalRevenue()});
-            csvWriter.writeNext(new String[]{"Total Órdenes", String.valueOf(report.salesReport().totalOrders())});
-            csvWriter.writeNext(new String[]{"Órdenes Completadas", String.valueOf(report.salesReport().completedOrders())});
-            csvWriter.writeNext(new String[]{"Valor Promedio", "$" + report.salesReport().averageOrderValue()});
-            csvWriter.writeNext(new String[]{""});
+            csvWriter.writeNext(new String[] { "===== RESUMEN DE VENTAS =====" });
+            csvWriter.writeNext(new String[] { "Métrica", "Valor" });
+            csvWriter.writeNext(new String[] { "Ingresos Totales", "$" + report.salesReport().totalRevenue() });
+            csvWriter.writeNext(new String[] { "Total Órdenes", String.valueOf(report.salesReport().totalOrders()) });
+            csvWriter.writeNext(
+                    new String[] { "Órdenes Completadas", String.valueOf(report.salesReport().completedOrders()) });
+            csvWriter.writeNext(new String[] { "Valor Promedio", "$" + report.salesReport().averageOrderValue() });
+            csvWriter.writeNext(new String[] { "" });
 
             // PRODUCTOS
-            csvWriter.writeNext(new String[]{"===== INVENTARIO DE PRODUCTOS ====="});
-            csvWriter.writeNext(new String[]{"Total Productos", String.valueOf(report.productReport().totalProducts())});
-            csvWriter.writeNext(new String[]{"Productos Activos", String.valueOf(report.productReport().activeProducts())});
-            csvWriter.writeNext(new String[]{"Valor Inventario", "$" + report.productReport().totalInventoryValue()});
-            csvWriter.writeNext(new String[]{""});
+            csvWriter.writeNext(new String[] { "===== INVENTARIO DE PRODUCTOS =====" });
+            csvWriter.writeNext(
+                    new String[] { "Total Productos", String.valueOf(report.productReport().totalProducts()) });
+            csvWriter.writeNext(
+                    new String[] { "Productos Activos", String.valueOf(report.productReport().activeProducts()) });
+            csvWriter
+                    .writeNext(new String[] { "Valor Inventario", "$" + report.productReport().totalInventoryValue() });
+            csvWriter.writeNext(new String[] { "" });
 
             // TOP PRODUCTOS
-            csvWriter.writeNext(new String[]{"Producto", "Cantidad Vendida", "Ingresos"});
-            report.productReport().topSellingProducts().forEach(p ->
-                    csvWriter.writeNext(new String[]{p.productName(), String.valueOf(p.quantitySold()), "$" + p.revenue()})
-            );
-            csvWriter.writeNext(new String[]{""});
+            csvWriter.writeNext(new String[] { "Producto", "Cantidad Vendida", "Ingresos" });
+            report.productReport().topSellingProducts().forEach(p -> csvWriter
+                    .writeNext(new String[] { p.productName(), String.valueOf(p.quantitySold()), "$" + p.revenue() }));
+            csvWriter.writeNext(new String[] { "" });
 
             // VENDEDORES
-            csvWriter.writeNext(new String[]{"===== TOP VENDEDORES ====="});
-            csvWriter.writeNext(new String[]{"Vendedor", "Órdenes", "Ingresos", "Promedio por Orden"});
-            report.vendorReport().topVendors().forEach(v ->
-                    csvWriter.writeNext(new String[]{
-                            v.vendorName(),
-                            String.valueOf(v.totalOrders()),
-                            "$" + v.totalRevenue(),
-                            "$" + v.averageOrderValue()
-                    })
-            );
-            csvWriter.writeNext(new String[]{""});
+            csvWriter.writeNext(new String[] { "===== TOP VENDEDORES =====" });
+            csvWriter.writeNext(new String[] { "Vendedor", "Órdenes", "Ingresos", "Promedio por Orden" });
+            report.vendorReport().topVendors().forEach(v -> csvWriter.writeNext(new String[] {
+                    v.vendorName(),
+                    String.valueOf(v.totalOrders()),
+                    "$" + v.totalRevenue(),
+                    "$" + v.averageOrderValue()
+            }));
+            csvWriter.writeNext(new String[] { "" });
 
             // CLIENTES
-            csvWriter.writeNext(new String[]{"===== TOP CLIENTES ====="});
-            csvWriter.writeNext(new String[]{"Cliente", "Teléfono", "Total Compras", "Órdenes"});
-            report.clientReport().topClients().forEach(c ->
-                    csvWriter.writeNext(new String[]{
-                            c.clientName(),
-                            c.clientPhone() != null ? c.clientPhone() : "N/A",
-                            "$" + c.totalSpent(),
-                            String.valueOf(c.totalOrders())
-                    })
-            );
+            csvWriter.writeNext(new String[] { "===== TOP CLIENTES =====" });
+            csvWriter.writeNext(new String[] { "Cliente", "Teléfono", "Total Compras", "Órdenes" });
+            report.clientReport().topClients().forEach(c -> csvWriter.writeNext(new String[] {
+                    c.clientName(),
+                    c.clientPhone() != null ? c.clientPhone() : "N/A",
+                    "$" + c.totalSpent(),
+                    String.valueOf(c.totalOrders())
+            }));
 
             String csvContent = sw.toString();
             // ✅ Agregar BOM UTF-8 para que Excel lo reconozca
-            byte[] bom = new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+            byte[] bom = new byte[] { (byte) 0xEF, (byte) 0xBB, (byte) 0xBF };
             byte[] csvBytes = csvContent.getBytes(StandardCharsets.UTF_8);
 
             byte[] result = new byte[bom.length + csvBytes.length];
@@ -235,8 +239,6 @@ public class ReportExportServiceImpl implements ReportExportService {
             System.arraycopy(csvBytes, 0, result, bom.length, csvBytes.length);
 
             return result;
-
-
 
         } catch (Exception e) {
             log.error("Error generando CSV", e);
@@ -250,25 +252,23 @@ public class ReportExportServiceImpl implements ReportExportService {
     @Override
     public byte[] exportClientReportToCsv() {
         try (StringWriter sw = new StringWriter();
-             CSVWriter csvWriter = new CSVWriter(sw)) {
+                CSVWriter csvWriter = new CSVWriter(sw)) {
 
             ClientReportDTO clientReport = reportService.getClientReport();
 
-            csvWriter.writeNext(new String[]{"REPORTE DE CLIENTES - VITALEXA"});
-            csvWriter.writeNext(new String[]{""});
-            csvWriter.writeNext(new String[]{"Total Clientes", String.valueOf(clientReport.totalClients())});
-            csvWriter.writeNext(new String[]{"Clientes Activos", String.valueOf(clientReport.activeClients())});
-            csvWriter.writeNext(new String[]{""});
-            csvWriter.writeNext(new String[]{"Cliente", "Teléfono", "Total Compras", "Número de Órdenes"});
+            csvWriter.writeNext(new String[] { "REPORTE DE CLIENTES - VITALEXA" });
+            csvWriter.writeNext(new String[] { "" });
+            csvWriter.writeNext(new String[] { "Total Clientes", String.valueOf(clientReport.totalClients()) });
+            csvWriter.writeNext(new String[] { "Clientes Activos", String.valueOf(clientReport.activeClients()) });
+            csvWriter.writeNext(new String[] { "" });
+            csvWriter.writeNext(new String[] { "Cliente", "Teléfono", "Total Compras", "Número de Órdenes" });
 
-            clientReport.topClients().forEach(c ->
-                    csvWriter.writeNext(new String[]{
-                            c.clientName(),
-                            c.clientPhone() != null ? c.clientPhone() : "N/A",
-                            "$" + c.totalSpent(),
-                            String.valueOf(c.totalOrders())
-                    })
-            );
+            clientReport.topClients().forEach(c -> csvWriter.writeNext(new String[] {
+                    c.clientName(),
+                    c.clientPhone() != null ? c.clientPhone() : "N/A",
+                    "$" + c.totalSpent(),
+                    String.valueOf(c.totalOrders())
+            }));
 
             return sw.toString().getBytes();
 
@@ -291,8 +291,7 @@ public class ReportExportServiceImpl implements ReportExportService {
         document.add(titlePara);
 
         Paragraph subtitle = new Paragraph(
-                "Período: " + startDate.format(DATE_FORMATTER) + " - " + endDate.format(DATE_FORMATTER)
-        ).setFontSize(12)
+                "Período: " + startDate.format(DATE_FORMATTER) + " - " + endDate.format(DATE_FORMATTER)).setFontSize(12)
                 .setTextAlignment(TextAlignment.CENTER)
                 .setMarginBottom(20);
         document.add(subtitle);
@@ -314,7 +313,7 @@ public class ReportExportServiceImpl implements ReportExportService {
                 .setMarginBottom(10);
         document.add(sectionTitle);
 
-        Table table = new Table(UnitValue.createPercentArray(new float[]{1, 1}))
+        Table table = new Table(UnitValue.createPercentArray(new float[] { 1, 1 }))
                 .useAllAvailableWidth();
 
         addPdfTableCell(table, "Ingresos Totales:", true);
@@ -346,7 +345,7 @@ public class ReportExportServiceImpl implements ReportExportService {
                 .setMarginBottom(10);
         document.add(sectionTitle);
 
-        Table table = new Table(UnitValue.createPercentArray(new float[]{1, 1}))
+        Table table = new Table(UnitValue.createPercentArray(new float[] { 1, 1 }))
                 .useAllAvailableWidth();
 
         addPdfTableCell(table, "Total Productos:", true);
@@ -371,7 +370,7 @@ public class ReportExportServiceImpl implements ReportExportService {
                     .setMarginTop(10);
             document.add(topTitle);
 
-            Table topTable = new Table(UnitValue.createPercentArray(new float[]{3, 1, 2}))
+            Table topTable = new Table(UnitValue.createPercentArray(new float[] { 3, 1, 2 }))
                     .useAllAvailableWidth();
 
             addPdfTableCell(topTable, "Producto", true);
@@ -401,7 +400,7 @@ public class ReportExportServiceImpl implements ReportExportService {
             return;
         }
 
-        Table table = new Table(UnitValue.createPercentArray(new float[]{2, 1, 2, 2}))
+        Table table = new Table(UnitValue.createPercentArray(new float[] { 2, 1, 2, 2 }))
                 .useAllAvailableWidth();
 
         addPdfTableCell(table, "Vendedor", true);
@@ -427,7 +426,7 @@ public class ReportExportServiceImpl implements ReportExportService {
                 .setMarginBottom(10);
         document.add(sectionTitle);
 
-        Table summary = new Table(UnitValue.createPercentArray(new float[]{1, 1}))
+        Table summary = new Table(UnitValue.createPercentArray(new float[] { 1, 1 }))
                 .useAllAvailableWidth();
 
         addPdfTableCell(summary, "Total Clientes:", true);
@@ -439,7 +438,7 @@ public class ReportExportServiceImpl implements ReportExportService {
         document.add(summary);
 
         if (!clients.topClients().isEmpty()) {
-            Table topTable = new Table(UnitValue.createPercentArray(new float[]{3, 2, 2, 1}))
+            Table topTable = new Table(UnitValue.createPercentArray(new float[] { 3, 2, 2, 1 }))
                     .useAllAvailableWidth()
                     .setMarginTop(10);
 
@@ -508,9 +507,9 @@ public class ReportExportServiceImpl implements ReportExportService {
     }
 
     private void createSummarySheet(Workbook workbook, ReportDTO report,
-                                    LocalDate startDate, LocalDate endDate,
-                                    CellStyle headerStyle, CellStyle dataStyle,
-                                    CellStyle currencyStyle) {
+            LocalDate startDate, LocalDate endDate,
+            CellStyle headerStyle, CellStyle dataStyle,
+            CellStyle currencyStyle) {
         Sheet sheet = workbook.createSheet("Resumen General");
 
         int rowNum = 0;
@@ -529,10 +528,12 @@ public class ReportExportServiceImpl implements ReportExportService {
         salesHeader.createCell(0).setCellValue("VENTAS");
         salesHeader.getCell(0).setCellStyle(headerStyle);
 
-        addExcelSummaryRow(sheet, rowNum++, "Ingresos Totales", report.salesReport().totalRevenue(), dataStyle, currencyStyle);
+        addExcelSummaryRow(sheet, rowNum++, "Ingresos Totales", report.salesReport().totalRevenue(), dataStyle,
+                currencyStyle);
         addExcelSummaryRow(sheet, rowNum++, "Total Órdenes", report.salesReport().totalOrders(), dataStyle);
         addExcelSummaryRow(sheet, rowNum++, "Órdenes Completadas", report.salesReport().completedOrders(), dataStyle);
-        addExcelSummaryRow(sheet, rowNum++, "Valor Promedio", report.salesReport().averageOrderValue(), dataStyle, currencyStyle);
+        addExcelSummaryRow(sheet, rowNum++, "Valor Promedio", report.salesReport().averageOrderValue(), dataStyle,
+                currencyStyle);
         rowNum++;
 
         Row productHeader = sheet.createRow(rowNum++);
@@ -541,7 +542,8 @@ public class ReportExportServiceImpl implements ReportExportService {
 
         addExcelSummaryRow(sheet, rowNum++, "Total Productos", report.productReport().totalProducts(), dataStyle);
         addExcelSummaryRow(sheet, rowNum++, "Productos Activos", report.productReport().activeProducts(), dataStyle);
-        addExcelSummaryRow(sheet, rowNum++, "Valor Inventario", report.productReport().totalInventoryValue(), dataStyle, currencyStyle);
+        addExcelSummaryRow(sheet, rowNum++, "Valor Inventario", report.productReport().totalInventoryValue(), dataStyle,
+                currencyStyle);
 
         for (int i = 0; i < 2; i++) {
             sheet.autoSizeColumn(i);
@@ -549,7 +551,7 @@ public class ReportExportServiceImpl implements ReportExportService {
     }
 
     private void addExcelSummaryRow(Sheet sheet, int rowNum, String label, Object value,
-                                    CellStyle dataStyle, CellStyle... valueStyle) {
+            CellStyle dataStyle, CellStyle... valueStyle) {
         Row row = sheet.createRow(rowNum);
         org.apache.poi.ss.usermodel.Cell labelCell = row.createCell(0);
         labelCell.setCellValue(label);
@@ -568,12 +570,12 @@ public class ReportExportServiceImpl implements ReportExportService {
     }
 
     private void createDailySalesSheet(Workbook workbook, SalesReportDTO salesReport,
-                                       CellStyle headerStyle, CellStyle dataStyle,
-                                       CellStyle currencyStyle) {
+            CellStyle headerStyle, CellStyle dataStyle,
+            CellStyle currencyStyle) {
         Sheet sheet = workbook.createSheet("Ventas Diarias");
 
         Row headerRow = sheet.createRow(0);
-        String[] headers = {"Fecha", "Ingresos", "Órdenes"};
+        String[] headers = { "Fecha", "Ingresos", "Órdenes" };
         for (int i = 0; i < headers.length; i++) {
             org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
             cell.setCellValue(headers[i]);
@@ -596,12 +598,12 @@ public class ReportExportServiceImpl implements ReportExportService {
     }
 
     private void createTopProductsSheet(Workbook workbook, ProductReportDTO productReport,
-                                        CellStyle headerStyle, CellStyle dataStyle,
-                                        CellStyle currencyStyle) {
+            CellStyle headerStyle, CellStyle dataStyle,
+            CellStyle currencyStyle) {
         Sheet sheet = workbook.createSheet("Top Productos");
 
         Row headerRow = sheet.createRow(0);
-        String[] headers = {"Producto", "Cantidad Vendida", "Ingresos"};
+        String[] headers = { "Producto", "Cantidad Vendida", "Ingresos" };
         for (int i = 0; i < headers.length; i++) {
             org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
             cell.setCellValue(headers[i]);
@@ -624,11 +626,11 @@ public class ReportExportServiceImpl implements ReportExportService {
     }
 
     private void createLowStockSheet(Workbook workbook, ProductReportDTO productReport,
-                                     CellStyle headerStyle, CellStyle dataStyle) {
+            CellStyle headerStyle, CellStyle dataStyle) {
         Sheet sheet = workbook.createSheet("Stock Bajo");
 
         Row headerRow = sheet.createRow(0);
-        String[] headers = {"Producto", "Stock Actual", "Estado"};
+        String[] headers = { "Producto", "Stock Actual", "Estado" };
         for (int i = 0; i < headers.length; i++) {
             org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
             cell.setCellValue(headers[i]);
@@ -649,12 +651,12 @@ public class ReportExportServiceImpl implements ReportExportService {
     }
 
     private void createVendorsSheet(Workbook workbook, VendorReportDTO vendorReport,
-                                    CellStyle headerStyle, CellStyle dataStyle,
-                                    CellStyle currencyStyle) {
+            CellStyle headerStyle, CellStyle dataStyle,
+            CellStyle currencyStyle) {
         Sheet sheet = workbook.createSheet("Vendedores");
 
         Row headerRow = sheet.createRow(0);
-        String[] headers = {"Vendedor", "Órdenes", "Ingresos", "Promedio"};
+        String[] headers = { "Vendedor", "Órdenes", "Ingresos", "Promedio" };
         for (int i = 0; i < headers.length; i++) {
             org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
             cell.setCellValue(headers[i]);
@@ -680,12 +682,12 @@ public class ReportExportServiceImpl implements ReportExportService {
     }
 
     private void createTopClientsSheet(Workbook workbook, ClientReportDTO clientReport,
-                                       CellStyle headerStyle, CellStyle dataStyle,
-                                       CellStyle currencyStyle) {
+            CellStyle headerStyle, CellStyle dataStyle,
+            CellStyle currencyStyle) {
         Sheet sheet = workbook.createSheet("Top Clientes");
 
         Row headerRow = sheet.createRow(0);
-        String[] headers = {"Cliente", "Teléfono", "Total Compras", "Órdenes"};
+        String[] headers = { "Cliente", "Teléfono", "Total Compras", "Órdenes" };
         for (int i = 0; i < headers.length; i++) {
             org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
             cell.setCellValue(headers[i]);
@@ -710,11 +712,35 @@ public class ReportExportServiceImpl implements ReportExportService {
 
     /**
      * Crea una hoja separada para cada vendedora mostrando sus ventas diarias
-     * Columnas: Fecha | # Factura | # Cliente | Valor | Total Día
+     * Agrupado por: Día -> Cliente -> Facturas
+     * Columnas: Fecha | # Factura | # Cliente | Valor | Subtotal Cliente | Total
+     * Día
+     * Colores: Verde = PAID, Gris = PARTIAL, Sin color = PENDING
      */
     public void createVendorDailySalesSheets(Workbook workbook,
-                                             List<VendorDailySalesDTO> vendorSalesReports,
-                                             CellStyle headerStyle, CellStyle dataStyle, CellStyle currencyStyle) {
+            List<VendorDailySalesDTO> vendorSalesReports,
+            CellStyle headerStyle, CellStyle dataStyle, CellStyle currencyStyle) {
+
+        // Crear estilos para estados de pago
+        CellStyle paidStyle = workbook.createCellStyle();
+        paidStyle.cloneStyleFrom(currencyStyle);
+        paidStyle.setFillForegroundColor(org.apache.poi.ss.usermodel.IndexedColors.LIGHT_GREEN.getIndex());
+        paidStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
+
+        CellStyle partialStyle = workbook.createCellStyle();
+        partialStyle.cloneStyleFrom(currencyStyle);
+        partialStyle.setFillForegroundColor(org.apache.poi.ss.usermodel.IndexedColors.GREY_25_PERCENT.getIndex());
+        partialStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
+
+        CellStyle paidDataStyle = workbook.createCellStyle();
+        paidDataStyle.cloneStyleFrom(dataStyle);
+        paidDataStyle.setFillForegroundColor(org.apache.poi.ss.usermodel.IndexedColors.LIGHT_GREEN.getIndex());
+        paidDataStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
+
+        CellStyle partialDataStyle = workbook.createCellStyle();
+        partialDataStyle.cloneStyleFrom(dataStyle);
+        partialDataStyle.setFillForegroundColor(org.apache.poi.ss.usermodel.IndexedColors.GREY_25_PERCENT.getIndex());
+        partialDataStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
 
         for (VendorDailySalesDTO vendor : vendorSalesReports) {
             // Usar WorkbookUtil para sanitizar el nombre de la hoja (máx 31 caracteres)
@@ -729,21 +755,20 @@ public class ReportExportServiceImpl implements ReportExportService {
             titleCell.setCellValue("VENTAS DIARIAS - " + vendor.vendedorName().toUpperCase());
             titleCell.setCellStyle(headerStyle);
             sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(
-                    titleRow.getRowNum(), titleRow.getRowNum(), 0, 4
-            ));
+                    titleRow.getRowNum(), titleRow.getRowNum(), 0, 5));
 
             // Período
             Row periodRow = sheet.createRow(rowNum++);
             periodRow.createCell(0).setCellValue("Período:");
             periodRow.createCell(1).setCellValue(
                     vendor.startDate().format(DATE_FORMATTER) + " a " +
-                            vendor.endDate().format(DATE_FORMATTER)
-            );
+                            vendor.endDate().format(DATE_FORMATTER));
             rowNum++;
 
-            // Encabezados
+            // Encabezados - con columnas de descuento y saldo pendiente
             Row headerRow = sheet.createRow(rowNum++);
-            String[] headers = {"Fecha", "# Factura", "# Cliente", "Valor", "Total Día"};
+            String[] headers = { "Fecha", "# Factura", "# Cliente", "Valor Original", "Dto%", "Valor Final",
+                    "Pagado", "Pendiente", "Subtotal Cliente", "Total Día" };
             for (int i = 0; i < headers.length; i++) {
                 Cell cell = headerRow.createCell(i);
                 cell.setCellValue(headers[i]);
@@ -752,48 +777,103 @@ public class ReportExportServiceImpl implements ReportExportService {
 
             // Datos: iterar por cada día
             for (VendorDailyGroupDTO dailyGroup : vendor.dailyGroups()) {
-                int facturaIndex = 0;
+                int clientIndex = 0;
 
-                // Por cada factura del día
-                for (VendorInvoiceRowDTO invoice : dailyGroup.facturas()) {
-                    Row row = sheet.createRow(rowNum++);
+                // Por cada cliente del día
+                for (ClientDailyGroupDTO clientGroup : dailyGroup.clientGroups()) {
+                    int facturaIndex = 0;
 
-                    // Fecha
-                    row.createCell(0).setCellValue(invoice.fecha().format(DATE_FORMATTER));
+                    // Por cada factura del cliente
+                    for (VendorInvoiceRowDTO invoice : clientGroup.facturas()) {
+                        Row row = sheet.createRow(rowNum++);
 
-                    // # Factura
-                    row.createCell(1).setCellValue(invoice.numeroFactura());
+                        // Determinar estilo según estado de pago
+                        CellStyle rowDataStyle = dataStyle;
+                        CellStyle rowCurrencyStyle = currencyStyle;
+                        if ("PAID".equals(invoice.paymentStatus())) {
+                            rowDataStyle = paidDataStyle;
+                            rowCurrencyStyle = paidStyle;
+                        } else if ("PARTIAL".equals(invoice.paymentStatus())) {
+                            rowDataStyle = partialDataStyle;
+                            rowCurrencyStyle = partialStyle;
+                        }
 
-                    // # Cliente
-                    row.createCell(2).setCellValue(invoice.numeroCliente());
+                        int colNum = 0;
 
-                    // Valor individual
-                    Cell valorCell = row.createCell(3);
-                    valorCell.setCellValue(invoice.valor().doubleValue());
-                    valorCell.setCellStyle(currencyStyle);
+                        // Fecha
+                        Cell fechaCell = row.createCell(colNum++);
+                        fechaCell.setCellValue(invoice.fecha().format(DATE_FORMATTER));
+                        fechaCell.setCellStyle(rowDataStyle);
 
-                    // Total del día (solo en la ÚLTIMA factura del día)
-                    Cell totalDiaCell = row.createCell(4);
-                    if (facturaIndex == dailyGroup.facturas().size() - 1) {
-                        // Última factura del día: mostrar total
-                        totalDiaCell.setCellValue(dailyGroup.totalDia().doubleValue());
-                        totalDiaCell.setCellStyle(currencyStyle);
-                    } else {
-                        // Facturas anteriores: dejar vacío
-                        totalDiaCell.setCellValue("");
+                        // # Factura
+                        Cell facturaCell = row.createCell(colNum++);
+                        facturaCell.setCellValue(invoice.numeroFactura());
+                        facturaCell.setCellStyle(rowDataStyle);
+
+                        // # Cliente
+                        Cell clienteCell = row.createCell(colNum++);
+                        clienteCell.setCellValue(invoice.numeroCliente());
+                        clienteCell.setCellStyle(rowDataStyle);
+
+                        // Valor Original
+                        Cell valorOrigCell = row.createCell(colNum++);
+                        valorOrigCell.setCellValue(invoice.valorOriginal().doubleValue());
+                        valorOrigCell.setCellStyle(rowCurrencyStyle);
+
+                        // Descuento %
+                        Cell discountCell = row.createCell(colNum++);
+                        if (invoice.discountPercent() != null
+                                && invoice.discountPercent().compareTo(java.math.BigDecimal.ZERO) > 0) {
+                            discountCell.setCellValue(invoice.discountPercent().doubleValue() + "%");
+                        } else {
+                            discountCell.setCellValue("-");
+                        }
+                        discountCell.setCellStyle(rowDataStyle);
+
+                        // Valor Final
+                        Cell valorFinalCell = row.createCell(colNum++);
+                        valorFinalCell.setCellValue(invoice.valorFinal().doubleValue());
+                        valorFinalCell.setCellStyle(rowCurrencyStyle);
+
+                        // Pagado
+                        Cell paidCell = row.createCell(colNum++);
+                        paidCell.setCellValue(invoice.paidAmount().doubleValue());
+                        paidCell.setCellStyle(rowCurrencyStyle);
+
+                        // Pendiente
+                        Cell pendingCell = row.createCell(colNum++);
+                        pendingCell.setCellValue(invoice.pendingAmount().doubleValue());
+                        pendingCell.setCellStyle(rowCurrencyStyle);
+
+                        // Subtotal cliente (solo en la ÚLTIMA factura del cliente)
+                        Cell subtotalCell = row.createCell(colNum++);
+                        if (facturaIndex == clientGroup.facturas().size() - 1) {
+                            subtotalCell.setCellValue(clientGroup.subtotalCliente().doubleValue());
+                            subtotalCell.setCellStyle(rowCurrencyStyle);
+                        }
+
+                        // Total del día (solo en la ÚLTIMA factura del ÚLTIMO cliente del día)
+                        Cell totalDiaCell = row.createCell(colNum++);
+                        if (clientIndex == dailyGroup.clientGroups().size() - 1
+                                && facturaIndex == clientGroup.facturas().size() - 1) {
+                            totalDiaCell.setCellValue(dailyGroup.totalDia().doubleValue());
+                            totalDiaCell.setCellStyle(rowCurrencyStyle);
+                        }
+
+                        facturaIndex++;
                     }
-
-                    facturaIndex++;
+                    clientIndex++;
                 }
             }
 
             // Fila final: Total período
-            Row totalRow = sheet.createRow(rowNum + 1);
-            Cell totalLabelCell = totalRow.createCell(3);
+            rowNum++;
+            Row totalRow = sheet.createRow(rowNum);
+            Cell totalLabelCell = totalRow.createCell(8);
             totalLabelCell.setCellValue("TOTAL VENDEDORA:");
             totalLabelCell.setCellStyle(headerStyle);
 
-            Cell totalValueCell = totalRow.createCell(4);
+            Cell totalValueCell = totalRow.createCell(9);
             totalValueCell.setCellValue(vendor.totalPeriod().doubleValue());
             totalValueCell.setCellStyle(currencyStyle);
 
@@ -801,6 +881,123 @@ public class ReportExportServiceImpl implements ReportExportService {
             for (int i = 0; i < headers.length; i++) {
                 sheet.autoSizeColumn(i);
             }
+        }
+    }
+
+    // =============================================
+    // HOJA DE SALDO POR CLIENTE
+    // =============================================
+    private void createClientBalanceSheet(Workbook workbook, CellStyle headerStyle,
+            CellStyle dataStyle, CellStyle currencyStyle) {
+        Sheet sheet = workbook.createSheet("Saldo por Cliente");
+        int rowNum = 0;
+
+        // Título
+        Row titleRow = sheet.createRow(rowNum++);
+        Cell titleCell = titleRow.createCell(0);
+        titleCell.setCellValue("SALDO POR CLIENTE");
+        titleCell.setCellStyle(headerStyle);
+        rowNum++;
+
+        // Encabezados
+        Row headerRow = sheet.createRow(rowNum++);
+        String[] headers = {
+                "Cliente", "Vendedora", "Tope Crédito", "Saldo Inicial",
+                "Total Órdenes", "Total Pagado", "Saldo Pendiente", "# Órdenes Pend."
+        };
+        for (int i = 0; i < headers.length; i++) {
+            Cell cell = headerRow.createCell(i);
+            cell.setCellValue(headers[i]);
+            cell.setCellStyle(headerStyle);
+        }
+
+        // Obtener todos los saldos de clientes
+        List<ClientBalanceDTO> balances = clientBalanceService.getAllClientBalances();
+
+        // Estilos para saldos
+        CellStyle positiveBalanceStyle = workbook.createCellStyle();
+        positiveBalanceStyle.cloneStyleFrom(currencyStyle);
+        positiveBalanceStyle.setFillForegroundColor(IndexedColors.LIGHT_GREEN.getIndex());
+        positiveBalanceStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        CellStyle negativeBalanceStyle = workbook.createCellStyle();
+        negativeBalanceStyle.cloneStyleFrom(currencyStyle);
+        negativeBalanceStyle.setFillForegroundColor(IndexedColors.CORAL.getIndex());
+        negativeBalanceStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        BigDecimal totalPending = BigDecimal.ZERO;
+
+        for (ClientBalanceDTO balance : balances) {
+            Row row = sheet.createRow(rowNum++);
+            int colNum = 0;
+
+            // Cliente
+            Cell clientCell = row.createCell(colNum++);
+            clientCell.setCellValue(balance.clientName());
+            clientCell.setCellStyle(dataStyle);
+
+            // Vendedora
+            Cell vendorCell = row.createCell(colNum++);
+            vendorCell.setCellValue(balance.vendedorAsignadoName() != null ? balance.vendedorAsignadoName() : "-");
+            vendorCell.setCellStyle(dataStyle);
+
+            // Tope Crédito
+            Cell creditLimitCell = row.createCell(colNum++);
+            if (balance.creditLimit() != null && balance.creditLimit().compareTo(BigDecimal.ZERO) > 0) {
+                creditLimitCell.setCellValue(balance.creditLimit().doubleValue());
+                creditLimitCell.setCellStyle(currencyStyle);
+            } else {
+                creditLimitCell.setCellValue("Sin límite");
+                creditLimitCell.setCellStyle(dataStyle);
+            }
+
+            // Saldo Inicial
+            Cell initialCell = row.createCell(colNum++);
+            initialCell.setCellValue(balance.initialBalance() != null ? balance.initialBalance().doubleValue() : 0);
+            initialCell.setCellStyle(currencyStyle);
+
+            // Total Órdenes
+            Cell totalOrdersCell = row.createCell(colNum++);
+            totalOrdersCell.setCellValue(balance.totalOrders().doubleValue());
+            totalOrdersCell.setCellStyle(currencyStyle);
+
+            // Total Pagado
+            Cell paidCell = row.createCell(colNum++);
+            paidCell.setCellValue(balance.totalPaid().doubleValue());
+            paidCell.setCellStyle(currencyStyle);
+
+            // Saldo Pendiente (con color según valor)
+            Cell pendingCell = row.createCell(colNum++);
+            pendingCell.setCellValue(balance.pendingBalance().doubleValue());
+            if (balance.pendingBalance().compareTo(BigDecimal.ZERO) <= 0) {
+                pendingCell.setCellStyle(positiveBalanceStyle);
+            } else if (balance.pendingBalance().compareTo(new BigDecimal("1000")) > 0) {
+                pendingCell.setCellStyle(negativeBalanceStyle);
+            } else {
+                pendingCell.setCellStyle(currencyStyle);
+            }
+            totalPending = totalPending.add(balance.pendingBalance());
+
+            // # Órdenes Pendientes
+            Cell ordersCountCell = row.createCell(colNum++);
+            ordersCountCell.setCellValue(balance.pendingOrdersCount());
+            ordersCountCell.setCellStyle(dataStyle);
+        }
+
+        // Fila de totales
+        rowNum++;
+        Row totalRow = sheet.createRow(rowNum);
+        Cell totalLabelCell = totalRow.createCell(5);
+        totalLabelCell.setCellValue("TOTAL PENDIENTE:");
+        totalLabelCell.setCellStyle(headerStyle);
+
+        Cell totalValueCell = totalRow.createCell(6);
+        totalValueCell.setCellValue(totalPending.doubleValue());
+        totalValueCell.setCellStyle(currencyStyle);
+
+        // Ajustar ancho de columnas
+        for (int i = 0; i < headers.length; i++) {
+            sheet.autoSizeColumn(i);
         }
     }
 

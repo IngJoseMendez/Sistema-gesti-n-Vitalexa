@@ -33,6 +33,12 @@
 
     <dependencies>
 
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+
         <!-- COMMONS IO -->
         <dependency>
             <groupId>commons-io</groupId>

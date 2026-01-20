@@ -8,5 +8,6 @@ public record ClientMeResponse(
         String email,
         String telefono,
         String direccion,
+        String nit,
         boolean active
 ) {}

@@ -10,6 +10,8 @@ public record ClientResponse(
         String email,
         String telefono,
         String direccion,
-        BigDecimal totalCompras
+        BigDecimal totalCompras,
+        String nit
+
 ) {
 }

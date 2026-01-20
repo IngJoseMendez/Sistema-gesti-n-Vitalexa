@@ -36,6 +36,8 @@ public class Client {
 
     private boolean active = true;
 
+    private String nit;
+
     // NUEVO: User que se autentica como CLIENTE
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", unique = true)
@@ -46,10 +48,24 @@ public class Client {
     @JoinColumn(name = "vendedor_asignado_id")
     private User vendedorAsignado;
 
+    // Tope máximo de ventas (control de crédito)
+    @Column(name = "credit_limit", precision = 12, scale = 2)
+    private BigDecimal creditLimit;
+
+    // Saldo inicial (deudas previas al sistema)
+    @Column(name = "initial_balance", precision = 12, scale = 2)
+    @Builder.Default
+    private BigDecimal initialBalance = BigDecimal.ZERO;
+
+    // Flag para asegurar que el saldo inicial solo se establece una vez
+    @Column(name = "initial_balance_set")
+    @Builder.Default
+    private Boolean initialBalanceSet = false;
+
     public void registerPurchase(BigDecimal monto) {
-        if (this.totalCompras == null) this.totalCompras = BigDecimal.ZERO;
+        if (this.totalCompras == null)
+            this.totalCompras = BigDecimal.ZERO;
         this.totalCompras = this.totalCompras.add(monto);
         this.ultimaCompra = LocalDateTime.now();
     }
 }
-

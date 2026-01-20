@@ -29,7 +29,7 @@ public class UserDataInitializer implements CommandLineRunner {
         createOrUpdate("luisE", "JKMaoqi213", Role.EMPACADOR);
         createOrUpdateClienteConCuenta(
                 "cliente1", "cliente123",
-                "Carlos Perez", "carlos@gmail.com","555-1234","Calle Falsa 123","nina");
+                "Carlos Perez", "carlos@gmail.com", "555-1234", "Calle Falsa 123", "nina", "1234567-8");
     }
 
     private void create(String username, String password, Role role) {
@@ -53,13 +53,12 @@ public class UserDataInitializer implements CommandLineRunner {
         return userRepository.save(u);
     }
 
-
     private void createOrUpdateClienteConCuenta(
             String username, String password,
             String clientNombre, String email,
             String telefono, String direccion,
-            String vendedorUsername
-    ) {
+            String vendedorUsername,
+            String nit) {
         User clienteUser = createOrUpdate(username, password, Role.CLIENTE);
 
         User vendedor = userRepository.findByUsername(vendedorUsername)
@@ -76,6 +75,7 @@ public class UserDataInitializer implements CommandLineRunner {
         client.setActive(true);
         client.setVendedorAsignado(vendedor);
         client.setTotalCompras(BigDecimal.ZERO);
+        client.setNit(nit);
 
         clientRepository.save(client);
     }

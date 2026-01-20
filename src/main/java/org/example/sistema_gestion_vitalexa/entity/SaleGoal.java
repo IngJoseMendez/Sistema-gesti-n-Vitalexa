@@ -12,7 +12,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "sale_goals", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"vendedor_id", "month", "year"})
+        @UniqueConstraint(columnNames = { "vendedor_id", "month", "year" })
 })
 @Getter
 @Setter
@@ -50,12 +50,14 @@ public class SaleGoal {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
-
     /**
      * Calcula el porcentaje de cumplimiento de la meta
      */
     public BigDecimal getPercentage() {
-        if (targetAmount.compareTo(BigDecimal.ZERO) == 0) {
+        if (targetAmount == null || targetAmount.compareTo(BigDecimal.ZERO) == 0) {
+            return BigDecimal.ZERO;
+        }
+        if (currentAmount == null) {
             return BigDecimal.ZERO;
         }
         return currentAmount

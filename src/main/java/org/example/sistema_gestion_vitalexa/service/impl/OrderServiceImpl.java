@@ -52,6 +52,22 @@ public class OrderServiceImpl implements OrdenService {
             client = clientService.findEntityById(request.clientId());
         }
 
+        // Validar tope de crédito del cliente
+        if (client != null && client.getCreditLimit() != null) {
+            // Calcular el total de la venta antes de crearla
+            BigDecimal saleTotal = request.items().stream()
+                    .map(item -> {
+                        Product p = productService.findEntityById(item.productId());
+                        return p.getPrecio().multiply(BigDecimal.valueOf(item.cantidad()));
+                    })
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            if (saleTotal.compareTo(client.getCreditLimit()) > 0) {
+                throw new BusinessExeption("El valor de la venta ($" + saleTotal +
+                        ") excede el tope de crédito del cliente ($" + client.getCreditLimit() + ")");
+            }
+        }
+
         // Obtener etiqueta del sistema "S/R" (puede no existir aún)
         ProductTag srTag = null;
         try {
@@ -67,7 +83,8 @@ public class OrderServiceImpl implements OrdenService {
         ProductTag finalSrTag = srTag;
         request.items().forEach(itemReq -> {
             Product product = productService.findEntityById(itemReq.productId());
-            boolean isSRProduct = finalSrTag != null && product.getTag() != null && product.getTag().getId().equals(finalSrTag.getId());
+            boolean isSRProduct = finalSrTag != null && product.getTag() != null
+                    && product.getTag().getId().equals(finalSrTag.getId());
 
             if (isSRProduct) {
                 srItems.add(itemReq);
@@ -87,8 +104,7 @@ public class OrderServiceImpl implements OrdenService {
             OrderRequestDto srOnlyRequest = new OrderRequestDto(
                     request.clientId(),
                     srItems,
-                    request.notas()
-            );
+                    request.notas());
             return createSingleOrder(vendedor, client, srOnlyRequest, username);
         } else {
             // Caso split: crear dos órdenes con números de factura consecutivos
@@ -114,8 +130,7 @@ public class OrderServiceImpl implements OrdenService {
         notificationService.sendNewOrderNotification(
                 savedOrder.getId().toString(),
                 vendedor.getUsername(),
-                client != null ? client.getNombre() : "Sin cliente"
-        );
+                client != null ? client.getNombre() : "Sin cliente");
 
         if (client != null) {
             client.registerPurchase(savedOrder.getTotal());
@@ -133,8 +148,7 @@ public class OrderServiceImpl implements OrdenService {
             List<OrderItemRequestDTO> normalItems,
             List<OrderItemRequestDTO> srItems,
             String notas,
-            String username
-    ) {
+            String username) {
         // Crear orden normal
         Order normalOrder = new Order(vendedor, client);
         if (notas != null && !notas.isBlank()) {
@@ -159,14 +173,12 @@ public class OrderServiceImpl implements OrdenService {
         notificationService.sendNewOrderNotification(
                 savedNormalOrder.getId().toString(),
                 vendedor.getUsername(),
-                client != null ? client.getNombre() : "Sin cliente"
-        );
+                client != null ? client.getNombre() : "Sin cliente");
 
         notificationService.sendNewOrderNotification(
                 savedSROrder.getId().toString(),
                 vendedor.getUsername(),
-                client != null ? client.getNombre() : "Sin cliente"
-        );
+                client != null ? client.getNombre() : "Sin cliente");
 
         if (client != null) {
             client.registerPurchase(savedNormalOrder.getTotal().add(savedSROrder.getTotal()));
@@ -201,7 +213,6 @@ public class OrderServiceImpl implements OrdenService {
             order.addItem(item);
         });
     }
-
 
     // =========================
     // ADMIN / OWNER
@@ -249,8 +260,7 @@ public class OrderServiceImpl implements OrdenService {
                     order.getVendedor().getId(),
                     order.getTotal(),
                     fecha.getMonthValue(),
-                    fecha.getYear()
-            );
+                    fecha.getYear());
 
             // Notificación de orden completada (una sola vez)
             notificationService.sendOrderCompletedNotification(order.getId().toString());
@@ -353,7 +363,6 @@ public class OrderServiceImpl implements OrdenService {
         return orderMapper.toResponse(updatedOrder);
     }
 
-
     @Override
     public List<OrderResponse> findByEstado(OrdenStatus estado) {
         return ordenRepository.findByEstado(estado)
@@ -361,7 +370,5 @@ public class OrderServiceImpl implements OrdenService {
                 .map(orderMapper::toResponse)
                 .toList();
     }
-
-
 
 }

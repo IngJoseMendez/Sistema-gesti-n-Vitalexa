@@ -32,16 +32,17 @@ public class ClientVendedorController {
     }
 
     @PostMapping
-    public ResponseEntity<ClientResponse> create(@Valid @RequestBody CreateClientRequest request) {
-        ClientResponse response = clientService.create(request);
+    public ResponseEntity<ClientResponse> create(
+            @Valid @RequestBody CreateClientRequest request,
+            org.springframework.security.core.Authentication auth) {
+        ClientResponse response = clientService.create(request, auth.getName());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PutMapping("/{id}")
     public ClientResponse update(
             @PathVariable UUID id,
-            @Valid @RequestBody CreateClientRequest request
-    ) {
+            @Valid @RequestBody CreateClientRequest request) {
         return clientService.update(id, request);
     }
 }

@@ -18,6 +18,10 @@ public record CreateClientRequest(
         @NotBlank(message = "El teléfono es obligatorio")
         String telefono,
 
-        String direccion
+        String direccion,
+        @NotBlank(message = "El NIT es obligatorio")
+        String nit
+
 ) {
+
 }

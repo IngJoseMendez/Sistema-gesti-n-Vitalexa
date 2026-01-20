@@ -9,10 +9,15 @@ import java.util.UUID;
 
 public interface ClientService {
     ClientResponse findById(UUID id);
+
     Client findEntityById(UUID id);
-    ClientResponse create(CreateClientRequest request);
+
+    ClientResponse create(CreateClientRequest request, String creatorUsername);
+
     ClientResponse update(UUID id, CreateClientRequest request);
+
     List<ClientResponse> findAll();
+
     void delete(UUID id);
 
 }

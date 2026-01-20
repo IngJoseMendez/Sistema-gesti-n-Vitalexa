@@ -27,7 +27,7 @@ public class ClientMeController {
                 .orElseThrow(() -> new BusinessExeption("Client no asociado"));
         return new ClientMeResponse(
                 client.getId(), client.getNombre(), client.getEmail(),
-                client.getTelefono(), client.getDireccion(), client.isActive()
+                client.getTelefono(), client.getDireccion(), client.getNit(), client.isActive()
         );
     }
 
@@ -45,7 +45,7 @@ public class ClientMeController {
 
         return new ClientMeResponse(
                 client.getId(), client.getNombre(), client.getEmail(),
-                client.getTelefono(), client.getDireccion(), client.isActive()
+                client.getTelefono(), client.getDireccion(), client.getNit(),  client.isActive()
         );
     }
 }
