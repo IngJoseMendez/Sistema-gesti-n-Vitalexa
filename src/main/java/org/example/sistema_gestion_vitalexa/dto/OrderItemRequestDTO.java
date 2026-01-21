@@ -7,8 +7,8 @@ import java.util.UUID;
 
 public record OrderItemRequestDTO(
 
-        @NotNull
-        UUID productId,
-        @Min(1)
-        Integer cantidad
-){}
+                @NotNull UUID productId,
+                @Min(1) Integer cantidad,
+                Boolean allowOutOfStock // Permite agregar sin stock (solo vendedor)
+) {
+}

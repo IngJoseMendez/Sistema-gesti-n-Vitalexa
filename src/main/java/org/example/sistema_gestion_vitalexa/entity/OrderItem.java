@@ -1,10 +1,10 @@
 package org.example.sistema_gestion_vitalexa.entity;
 
-
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
@@ -37,6 +37,33 @@ public class OrderItem {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
+    // ==========================================
+    // CAMPOS PARA PRODUCTOS SIN STOCK
+    // ==========================================
+    @Column(name = "out_of_stock")
+    @Builder.Default
+    private Boolean outOfStock = false;
+
+    @Column(name = "estimated_arrival_date")
+    private LocalDate estimatedArrivalDate;
+
+    @Column(name = "estimated_arrival_note", length = 500)
+    private String estimatedArrivalNote;
+
+    // ==========================================
+    // CAMPOS PARA PROMOCIONES
+    // ==========================================
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "promotion_id")
+    private Promotion promotion;
+
+    @Column(name = "is_promotion_item")
+    @Builder.Default
+    private Boolean isPromotionItem = false;
+
+    @Column(name = "is_free_item")
+    @Builder.Default
+    private Boolean isFreeItem = false;
 
     @PrePersist
     @PreUpdate
@@ -46,12 +73,16 @@ public class OrderItem {
         }
     }
 
-
     public OrderItem(Product product, Integer cantidad) {
         this.product = product;
         this.cantidad = cantidad;
         this.precioUnitario = product.getPrecio();
         this.subTotal = precioUnitario.multiply(BigDecimal.valueOf(cantidad));
+
+        // Inicializar valores por defecto para evitar nulls
+        this.outOfStock = false;
+        this.isPromotionItem = false;
+        this.isFreeItem = false;
     }
 
 }

@@ -8,19 +8,16 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 public record CreateClientRequest(
-        @NotBlank(message = "El nombre es obligatorio")
-        String nombre,
+                String nombre, // Opcional - si no se proporciona, se usará el NIT
 
-        @NotBlank(message = "El email es obligatorio")
-        @Email(message = "Email inválido")
-        String email,
+                @Email(message = "Email inválido") String email, // Opcional
 
-        @NotBlank(message = "El teléfono es obligatorio")
-        String telefono,
+                String telefono, // Opcional
 
-        String direccion,
-        @NotBlank(message = "El NIT es obligatorio")
-        String nit
+                String direccion, // Opcional
+
+                @NotBlank(message = "El NIT es obligatorio") String nit // ÚNICO CAMPO REQUERIDO - También se usará como
+                                                                        // usuario y contraseña
 
 ) {
 

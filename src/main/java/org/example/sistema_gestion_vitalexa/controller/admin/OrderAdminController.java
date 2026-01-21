@@ -1,6 +1,7 @@
 package org.example.sistema_gestion_vitalexa.controller.admin;
 
 import lombok.RequiredArgsConstructor;
+import org.example.sistema_gestion_vitalexa.dto.AddAssortmentItemRequest;
 import org.example.sistema_gestion_vitalexa.dto.OrderRequestDto;
 import org.example.sistema_gestion_vitalexa.dto.OrderResponse;
 import org.example.sistema_gestion_vitalexa.enums.OrdenStatus;
@@ -39,21 +40,17 @@ public class OrderAdminController {
     @PatchMapping("/{id}/status")
     public OrderResponse changeStatus(
             @PathVariable UUID id,
-            @RequestParam OrdenStatus status
-    ) {
+            @RequestParam OrdenStatus status) {
         return ordenService.cambiarEstadoOrden(id, status);
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<OrderResponse> updateOrder(
             @PathVariable UUID id,
-            @RequestBody OrderRequestDto request
-    ) {
+            @RequestBody OrderRequestDto request) {
         OrderResponse response = ordenService.updateOrder(id, request);
         return ResponseEntity.ok(response);
     }
-
-
 
     /**
      * Generar PDF de la orden (para vendedor/empacador)
@@ -85,6 +82,19 @@ public class OrderAdminController {
                 "orden_" + id.toString().substring(0, 8) + ".pdf");
 
         return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
+    }
+
+    /**
+     * POST /api/admin/orders/{orderId}/promotions/{promotionId}/assortment
+     * Agregar productos surtidos para completar una promoción
+     */
+    @PostMapping("/{orderId}/promotions/{promotionId}/assortment")
+    public ResponseEntity<Void> addPromotionAssortment(
+            @PathVariable UUID orderId,
+            @PathVariable UUID promotionId,
+            @RequestBody List<AddAssortmentItemRequest> items) {
+        ordenService.addPromotionAssortment(orderId, promotionId, items);
+        return ResponseEntity.noContent().build();
     }
 
 }

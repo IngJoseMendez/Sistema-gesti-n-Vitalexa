@@ -24,7 +24,11 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -208,6 +212,8 @@ public class InvoiceServiceImpl implements InvoiceService {
                 table.addCell(valueCell);
         }
 
+        // ... (imports existentes)
+
         private void addProductsTable(Document document, Order order, boolean isSROrder) {
                 Paragraph productsTitle = new Paragraph("DETALLE DE PRODUCTOS")
                                 .setFontSize(14)
@@ -220,22 +226,102 @@ public class InvoiceServiceImpl implements InvoiceService {
                 Table table = new Table(UnitValue.createPercentArray(new float[] { 3, 1, 2, 2 }))
                                 .useAllAvailableWidth();
 
-                // Header con color según tipo de factura
+                // Header
                 DeviceRgb headerColor = isSROrder ? new DeviceRgb(220, 53, 69) : BRAND_COLOR;
                 addTableHeaderCell(table, "Producto", headerColor);
                 addTableHeaderCell(table, "Cant.", headerColor);
                 addTableHeaderCell(table, "P. Unitario", headerColor);
                 addTableHeaderCell(table, "Subtotal", headerColor);
 
-                // Items
+                // 1. Separar items: Sin promoción vs Con promoción
+                List<OrderItem> regularItems = new ArrayList<>();
+                Map<String, List<OrderItem>> itemsByPromotion = new java.util.HashMap<>();
+
                 for (OrderItem item : order.getItems()) {
-                        addTableDataCell(table, item.getProduct().getNombre());
-                        addTableDataCell(table, String.valueOf(item.getCantidad()));
-                        addTableDataCell(table, formatCurrency(item.getPrecioUnitario()));
-                        addTableDataCell(table, formatCurrency(item.getSubTotal()));
+                        if (item.getPromotion() == null) {
+                                regularItems.add(item);
+                        } else {
+                                String promoId = item.getPromotion().getId().toString();
+                                itemsByPromotion.computeIfAbsent(promoId, k -> new ArrayList<>()).add(item);
+                        }
+                }
+
+                // 2. Agregar items regulares primero
+                for (OrderItem item : regularItems) {
+                        addItemRow(table, item);
+                }
+
+                // 3. Agregar bloques de promociones
+                if (!itemsByPromotion.isEmpty()) {
+                        // Recorremos las promociones agrupadas
+                        for (Map.Entry<String, List<OrderItem>> entry : itemsByPromotion.entrySet()) {
+                                List<OrderItem> promoItems = entry.getValue();
+                                // Tomamos la información de la promoción del primer item (todos comparten la
+                                // misma promoción)
+                                var promo = promoItems.get(0).getPromotion();
+
+                                // Separador de promoción
+                                com.itextpdf.layout.element.Cell promoHeader = new com.itextpdf.layout.element.Cell(1,
+                                                4)
+                                                .add(new Paragraph("PROMOCIÓN: " + promo.getNombre())
+                                                                .setBold()
+                                                                .setFontColor(ColorConstants.WHITE)
+                                                                .setBackgroundColor(new DeviceRgb(100, 149, 237)) // Cornflower
+                                                                                                                  // Blue
+                                                                .setPadding(5)
+                                                                .setTextAlignment(TextAlignment.LEFT));
+                                table.addCell(promoHeader);
+
+                                // Listar items de la promoción
+                                // Primero los pagados/principales
+                                promoItems.stream()
+                                                .filter(i -> !Boolean.TRUE.equals(i.getIsFreeItem()))
+                                                .forEach(item -> addItemRow(table, item));
+
+                                // Luego los gratis/bonificados
+                                promoItems.stream()
+                                                .filter(i -> Boolean.TRUE.equals(i.getIsFreeItem()))
+                                                .forEach(item -> addFreeItemRow(table, item));
+                        }
                 }
 
                 document.add(table);
+        }
+
+        private void addItemRow(Table table, OrderItem item) {
+                String productName = item.getProduct().getNombre();
+                // Marcar Productos Sin Stock
+                if (Boolean.TRUE.equals(item.getOutOfStock())) {
+                        productName += " [SIN STOCK]";
+                }
+
+                addTableDataCell(table, productName);
+                addTableDataCell(table, String.valueOf(item.getCantidad()));
+                addTableDataCell(table, formatCurrency(item.getPrecioUnitario()));
+                addTableDataCell(table, formatCurrency(item.getSubTotal()));
+        }
+
+        private void addFreeItemRow(Table table, OrderItem item) {
+                String productName = item.getProduct().getNombre() + " (BONIFICADO)";
+                // Marcar Productos Sin Stock
+                if (Boolean.TRUE.equals(item.getOutOfStock())) {
+                        productName += " [SIN STOCK]";
+                }
+
+                com.itextpdf.layout.element.Cell nameCell = new com.itextpdf.layout.element.Cell()
+                                .add(new Paragraph(productName)
+                                                .setFontSize(10)
+                                                .setItalic()
+                                                .setFontColor(new DeviceRgb(40, 167, 69))) // Verde
+                                .setPadding(6)
+                                .setTextAlignment(TextAlignment.CENTER);
+                table.addCell(nameCell);
+
+                addTableDataCell(table, String.valueOf(item.getCantidad()));
+
+                // Precio y Subtotal $0.00
+                addTableDataCell(table, "$0.00");
+                addTableDataCell(table, "$0.00");
         }
 
         private void addTotals(Document document, Order order, boolean isSROrder) {

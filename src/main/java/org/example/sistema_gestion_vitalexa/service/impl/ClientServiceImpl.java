@@ -41,15 +41,24 @@ public class ClientServiceImpl implements ClientService {
 
     @Override
     public ClientResponse create(CreateClientRequest request, String creatorUsername) {
-        // Verificar si ya existe un cliente con ese email
-        if (repository.existsByEmail(request.email())) {
-            throw new BusinessExeption("Ya existe un cliente con ese email");
-        }
+        // Verificar si ya existe un cliente con ese NIT (único campo obligatorio)
         if (repository.existsByNit(request.nit())) {
             throw new BusinessExeption("Ya existe un cliente con ese NIT");
         }
 
+        // Verificar email solo si se proporciona
+        if (request.email() != null && !request.email().isBlank()
+                && repository.existsByEmail(request.email())) {
+            throw new BusinessExeption("Ya existe un cliente con ese email");
+        }
+
         Client client = clientMapper.toEntity(request);
+
+        // Si no se proporciona nombre, usar el NIT
+        if (client.getNombre() == null || client.getNombre().isBlank()) {
+            client.setNombre("Cliente " + request.nit());
+        }
+
         client.setTotalCompras(BigDecimal.ZERO);
 
         // Asignar Vendedor si el creador es VENDEDOR
@@ -60,7 +69,7 @@ public class ClientServiceImpl implements ClientService {
             client.setVendedorAsignado(creator);
         }
 
-        // AUTO-CREAR USUARIO para el cliente
+        // AUTO-CREAR USUARIO para el cliente (NIT como usuario y contraseña)
         User user = userService.registerClientUser(client);
         client.setUser(user);
 

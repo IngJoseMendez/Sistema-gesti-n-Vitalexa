@@ -113,4 +113,9 @@ public class Order {
         items.clear();
         this.total = BigDecimal.ZERO;
     }
+
+    // Verificar si la orden tiene productos sin stock
+    public boolean hasOutOfStockItems() {
+        return items.stream().anyMatch(item -> Boolean.TRUE.equals(item.getOutOfStock()));
+    }
 }

@@ -54,9 +54,7 @@ public class ProductServiceImpl implements ProductService {
         Product product = repository.findById(id)
                 .orElseThrow(() -> new BusinessExeption("Producto no encontrado"));
 
-        if (!product.isActive()) {
-            throw new BusinessExeption("No se puede editar un producto eliminado");
-        }
+        // Admin puede editar productos aunque estén desactivados
 
         // Actualizar solo los campos que no son null
         if (request.nombre() != null) {
@@ -170,22 +168,19 @@ public class ProductServiceImpl implements ProductService {
                 .toList();
     }
 
-
     // Método auxiliar para verificar stock
     private void checkStockLevels(Product product) {
         if (product.getReorderPoint() != null && product.getReorderPoint() > 0) {
             if (product.getStock() == 0) {
                 notificationService.sendOutOfStockAlert(
                         product.getId().toString(),
-                        product.getNombre()
-                );
+                        product.getNombre());
             } else if (product.getStock() <= product.getReorderPoint()) {
                 notificationService.sendLowStockAlert(
                         product.getId().toString(),
                         product.getNombre(),
                         product.getStock(),
-                        product.getReorderPoint()
-                );
+                        product.getReorderPoint());
             }
         }
     }

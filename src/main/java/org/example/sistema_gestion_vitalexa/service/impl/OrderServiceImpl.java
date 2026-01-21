@@ -3,6 +3,7 @@ package org.example.sistema_gestion_vitalexa.service.impl;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.sistema_gestion_vitalexa.dto.AddAssortmentItemRequest;
 import org.example.sistema_gestion_vitalexa.dto.OrderRequestDto;
 import org.example.sistema_gestion_vitalexa.dto.OrderResponse;
 import org.example.sistema_gestion_vitalexa.dto.OrderItemRequestDTO;
@@ -34,6 +35,7 @@ public class OrderServiceImpl implements OrdenService {
     private final NotificationService notificationService;
     private final SaleGoalService saleGoalService;
     private final ProductTagService productTagService;
+    private final PromotionService promotionService;
 
     // =========================
     // CREATE ORDER (VENDEDOR)
@@ -104,7 +106,8 @@ public class OrderServiceImpl implements OrdenService {
             OrderRequestDto srOnlyRequest = new OrderRequestDto(
                     request.clientId(),
                     srItems,
-                    request.notas());
+                    request.notas(),
+                    request.promotionIds());
             return createSingleOrder(vendedor, client, srOnlyRequest, username);
         } else {
             // Caso split: crear dos órdenes con números de factura consecutivos
@@ -200,16 +203,28 @@ public class OrderServiceImpl implements OrdenService {
         items.forEach(itemReq -> {
             Product product = productService.findEntityById(itemReq.productId());
 
-            if (product.getStock() < itemReq.cantidad() &&
-                    (order.getNotas() == null || order.getNotas().isBlank())) {
+            boolean allowOutOfStock = Boolean.TRUE.equals(itemReq.allowOutOfStock());
+            boolean hasStock = product.getStock() >= itemReq.cantidad();
+
+            // Validar stock solo si NO se permite venta sin stock
+            if (!allowOutOfStock && !hasStock) {
                 throw new BusinessExeption("Stock insuficiente para: " + product.getNombre());
             }
 
-            if (product.getStock() >= itemReq.cantidad()) {
+            // Crear OrderItem
+            OrderItem item = new OrderItem(product, itemReq.cantidad());
+
+            // Marcar como sin stock si corresponde
+            if (!hasStock) {
+                item.setOutOfStock(true);
+                log.warn("Producto agregado sin stock: {}", product.getNombre());
+            }
+
+            // Decrementar stock solo si hay disponible
+            if (hasStock) {
                 product.decreaseStock(itemReq.cantidad());
             }
 
-            OrderItem item = new OrderItem(product, itemReq.cantidad());
             order.addItem(item);
         });
     }
@@ -369,6 +384,71 @@ public class OrderServiceImpl implements OrdenService {
                 .stream()
                 .map(orderMapper::toResponse)
                 .toList();
+    }
+
+    // =========================
+    // PROMOCIONES - SURTIDOS
+    // =========================
+    @Override
+    @Transactional
+    public void addPromotionAssortment(UUID orderId, UUID promotionId, List<AddAssortmentItemRequest> items) {
+        log.info("Admin agregando surtidos a orden {} para promoción {}", orderId, promotionId);
+
+        Order order = ordenRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessExeption("Orden no encontrada"));
+
+        Promotion promotion = promotionService.findEntityById(promotionId);
+
+        // Validar que la orden esté en estado PENDING_PROMOTION_COMPLETION
+        if (order.getEstado() != OrdenStatus.PENDING_PROMOTION_COMPLETION) {
+            throw new BusinessExeption("La orden no está esperando selección de surtidos");
+        }
+
+        // Validar cantidad total de surtidos
+        int totalAssortment = items.stream().mapToInt(AddAssortmentItemRequest::cantidad).sum();
+        if (totalAssortment != promotion.getFreeQuantity()) {
+            throw new BusinessExeption("Debe seleccionar exactamente " +
+                    promotion.getFreeQuantity() + " productos surtidos");
+        }
+
+        // Agregar cada producto surtido como OrderItem
+        items.forEach(itemReq -> {
+            Product product = productService.findEntityById(itemReq.productId());
+
+            // VALIDAR STOCK (advertencia pero no bloquear)
+            if (product.getStock() < itemReq.cantidad()) {
+                log.warn("Producto surtido {} no tiene stock suficiente. Stock: {}, Requerido: {}",
+                        product.getNombre(), product.getStock(), itemReq.cantidad());
+            }
+
+            // Crear OrderItem con precio 0 (gratis/bonificado)
+            OrderItem assortmentItem = OrderItem.builder()
+                    .product(product)
+                    .cantidad(itemReq.cantidad())
+                    .precioUnitario(BigDecimal.ZERO) // GRATIS
+                    .subTotal(BigDecimal.ZERO)
+                    .promotion(promotion)
+                    .isPromotionItem(true)
+                    .isFreeItem(true)
+                    .outOfStock(product.getStock() < itemReq.cantidad()) // Marcar si no hay stock
+                    .build();
+
+            order.addItem(assortmentItem);
+
+            // Decrementar stock si hay disponible
+            if (product.getStock() >= itemReq.cantidad()) {
+                product.decreaseStock(itemReq.cantidad());
+            } else {
+                log.warn("Stock insuficiente para producto surtido {}, se marcó como sin stock", product.getNombre());
+            }
+        });
+
+        // Cambiar estado de orden a CONFIRMADO
+        order.setEstado(OrdenStatus.CONFIRMADO);
+
+        ordenRepository.save(order);
+
+        log.info("Productos surtidos agregados exitosamente a orden {}", orderId);
     }
 
 }
