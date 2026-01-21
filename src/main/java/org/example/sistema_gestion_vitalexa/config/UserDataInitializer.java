@@ -30,6 +30,8 @@ public class UserDataInitializer implements CommandLineRunner {
         createOrUpdateClienteConCuenta(
                 "cliente1", "cliente123",
                 "Carlos Perez", "carlos@gmail.com", "555-1234", "Calle Falsa 123", "nina", "1234567-8");
+        createOrUpdate("mercy", "mercyV123R", Role.VENDEDOR);
+        createOrUpdate("gisela", "giselaVR321", Role.VENDEDOR);
     }
 
     private void create(String username, String password, Role role) {
