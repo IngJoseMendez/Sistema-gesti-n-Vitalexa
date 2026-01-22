@@ -8,6 +8,7 @@ import org.example.sistema_gestion_vitalexa.service.ClientService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,8 +23,8 @@ public class ClientVendedorController {
     private final ClientService clientService;
 
     @GetMapping
-    public List<ClientResponse> findAll() {
-        return clientService.findAll();
+    public List<ClientResponse> findAll(Authentication auth) {
+        return clientService.findByVendedor(auth.getName());
     }
 
     @GetMapping("/{id}")

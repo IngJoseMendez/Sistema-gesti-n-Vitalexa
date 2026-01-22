@@ -56,6 +56,11 @@ public class OrderServiceImpl implements OrdenService {
         Client client = null;
         if (request.clientId() != null) {
             client = clientService.findEntityById(request.clientId());
+
+            // Validate vendedor can access this client
+            if (!clientService.canVendedorAccessClient(vendedor.getId(), request.clientId())) {
+                throw new BusinessExeption("No tiene permiso para vender a este cliente");
+            }
         }
 
         // Validar tope de crédito del cliente

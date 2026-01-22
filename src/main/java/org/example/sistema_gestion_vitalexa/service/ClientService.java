@@ -20,4 +20,9 @@ public interface ClientService {
 
     void delete(UUID id);
 
+    // Filter clients by vendedor (with Nina/Gisela exception)
+    List<ClientResponse> findByVendedor(String username);
+
+    // Validate if vendedor can access a specific client
+    boolean canVendedorAccessClient(UUID vendedorId, UUID clientId);
 }

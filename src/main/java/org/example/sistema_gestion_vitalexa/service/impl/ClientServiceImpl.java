@@ -16,12 +16,15 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class ClientServiceImpl implements ClientService {
+
+    // IDs for Nina and Gisela (they share clients with each other)
+    private static final UUID NINA_ID = UUID.fromString("f3258d03-4419-42a5-b658-003330221c74");
+    private static final UUID GISELA_ID = UUID.fromString("180df991-d7d1-4935-81b2-70ad35b4647a");
 
     private final ClientRepository repository;
     private final ClientMapper clientMapper;
@@ -110,5 +113,52 @@ public class ClientServiceImpl implements ClientService {
 
         Client updatedClient = repository.save(client);
         return clientMapper.toResponse(updatedClient);
+    }
+
+    @Override
+    public List<ClientResponse> findByVendedor(String username) {
+        User vendedor = userRepository.findByUsername(username)
+                .orElseThrow(() -> new BusinessExeption("Vendedor no encontrado"));
+
+        List<Client> clients;
+
+        // If vendedor is Nina or Gisela, return shared clients from both
+        if (vendedor.getId().equals(NINA_ID) || vendedor.getId().equals(GISELA_ID)) {
+            clients = repository.findByVendedorAsignadoIdIn(List.of(NINA_ID, GISELA_ID));
+        } else {
+            clients = repository.findByVendedorAsignado(vendedor);
+        }
+
+        return clients.stream()
+                .map(clientMapper::toResponse)
+                .toList();
+    }
+
+    @Override
+    public boolean canVendedorAccessClient(UUID vendedorId, UUID clientId) {
+        Client client = findEntityById(clientId);
+        UUID clientVendedorId = client.getVendedorAsignado() != null
+                ? client.getVendedorAsignado().getId()
+                : null;
+
+        // Client without assigned vendedor - allow access
+        if (clientVendedorId == null) {
+            return true;
+        }
+
+        // Direct ownership - vendedor owns this client
+        if (clientVendedorId.equals(vendedorId)) {
+            return true;
+        }
+
+        // Nina/Gisela exception - they share all their clients
+        boolean vendedorIsShared = vendedorId.equals(NINA_ID) || vendedorId.equals(GISELA_ID);
+        boolean clientBelongsToShared = clientVendedorId.equals(NINA_ID) || clientVendedorId.equals(GISELA_ID);
+
+        if (vendedorIsShared && clientBelongsToShared) {
+            return true;
+        }
+
+        return false;
     }
 }

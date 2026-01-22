@@ -28,4 +28,7 @@ public interface ClientRepository extends JpaRepository<Client, UUID> {
     List<Client> findByVendedorAsignado(User vendedor);
 
     List<Client> findByVendedorAsignadoId(UUID vendedorId);
+
+    // For Nina/Gisela shared clients - find by multiple vendedor IDs
+    List<Client> findByVendedorAsignadoIdIn(List<UUID> vendedorIds);
 }
