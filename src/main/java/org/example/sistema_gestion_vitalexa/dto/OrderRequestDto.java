@@ -7,12 +7,12 @@ import java.util.List;
 import java.util.UUID;
 
 public record OrderRequestDto(
-                @NotNull UUID clientId,
+        @NotNull UUID clientId,
 
-                @NotEmpty List<OrderItemRequestDTO> items,
+        List<OrderItemRequestDTO> items, // Ahora opcional si hay promotionIds
 
-                String notas,
+        String notas,
 
-                List<UUID> promotionIds // IDs de promociones a aplicar
+        List<UUID> promotionIds // IDs de promociones a aplicar
 ) {
 }

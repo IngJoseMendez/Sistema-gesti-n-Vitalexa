@@ -45,8 +45,8 @@ public class InvoiceServiceImpl implements InvoiceService {
         public byte[] generateOrderInvoicePdf(UUID orderId) {
                 try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
 
-                        // Obtener orden completa
-                        Order order = ordenRepository.findById(orderId)
+                        // Obtener orden completa CON promociones (EAGER loading)
+                        Order order = ordenRepository.findByIdWithPromotions(orderId)
                                         .orElseThrow(() -> new BusinessExeption("Orden no encontrada"));
 
                         // Detectar si es orden S/R

@@ -68,7 +68,9 @@ public class OrderItem {
     @PrePersist
     @PreUpdate
     public void calcularSubTotal() {
-        if (precioUnitario != null && cantidad != null) {
+        // Solo calcular si subTotal no está establecido
+        // Esto permite que las promociones establezcan su propio subTotal
+        if (subTotal == null && precioUnitario != null && cantidad != null) {
             this.subTotal = precioUnitario.multiply(BigDecimal.valueOf(cantidad));
         }
     }

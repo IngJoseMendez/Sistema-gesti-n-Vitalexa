@@ -42,8 +42,12 @@ public class OrderServiceImpl implements OrdenService {
     // =========================
     @Override
     public OrderResponse createOrder(OrderRequestDto request, String username) {
-        if (request.items() == null || request.items().isEmpty()) {
-            throw new BusinessExeption("La venta debe tener al menos un producto");
+        // Validar que haya al menos items O promociones
+        boolean hasItems = request.items() != null && !request.items().isEmpty();
+        boolean hasPromotions = request.promotionIds() != null && !request.promotionIds().isEmpty();
+
+        if (!hasItems && !hasPromotions) {
+            throw new BusinessExeption("La venta debe tener al menos un producto o una promoción");
         }
 
         User vendedor = userRepository.findByUsername(username)
@@ -126,7 +130,15 @@ public class OrderServiceImpl implements OrdenService {
             order.setNotas(request.notas());
         }
 
-        processOrderItems(order, request.items());
+        // Procesar items regulares si existen
+        if (request.items() != null && !request.items().isEmpty()) {
+            processOrderItems(order, request.items());
+        }
+
+        // Procesar promociones si existen
+        if (request.promotionIds() != null && !request.promotionIds().isEmpty()) {
+            processPromotions(order, request.promotionIds());
+        }
 
         Order savedOrder = ordenRepository.save(order);
 
@@ -226,6 +238,91 @@ public class OrderServiceImpl implements OrdenService {
             }
 
             order.addItem(item);
+        });
+    }
+
+    /**
+     * Procesar promociones de una orden
+     */
+    private void processPromotions(Order order, List<UUID> promotionIds) {
+        promotionIds.forEach(promotionId -> {
+            // Obtener y validar promoción
+            Promotion promotion = promotionService.findEntityById(promotionId);
+
+            // Validar vigencia
+            if (!promotion.isValid()) {
+                throw new BusinessExeption("La promoción '" + promotion.getNombre() + "' no está vigente");
+            }
+
+            if (!Boolean.TRUE.equals(promotion.getActive())) {
+                throw new BusinessExeption("La promoción '" + promotion.getNombre() + "' no está activa");
+            }
+
+            // Obtener producto principal
+            Product mainProduct = promotion.getMainProduct();
+
+            // Crear OrderItem para los productos comprados (buyQuantity)
+            OrderItem buyItem = OrderItem.builder()
+                    .product(mainProduct)
+                    .cantidad(promotion.getBuyQuantity())
+                    .precioUnitario(mainProduct.getPrecio()) // Precio unitario del producto (informativo)
+                    .subTotal(promotion.getPackPrice() != null
+                            ? promotion.getPackPrice() // Usar packPrice directamente como subtotal
+                            : mainProduct.getPrecio().multiply(BigDecimal.valueOf(promotion.getBuyQuantity())))
+                    .promotion(promotion)
+                    .isPromotionItem(true)
+                    .isFreeItem(false)
+                    .build();
+
+            // Validar y decrementar stock para productos comprados
+            if (mainProduct.getStock() < promotion.getBuyQuantity()) {
+                log.warn("Stock insuficiente para promoción '{}'. Disponible: {}, Requerido: {}",
+                        promotion.getNombre(), mainProduct.getStock(), promotion.getBuyQuantity());
+                buyItem.setOutOfStock(true);
+            } else {
+                mainProduct.decreaseStock(promotion.getBuyQuantity());
+            }
+
+            order.addItem(buyItem);
+
+            // Manejar productos gratis/surtidos
+            if (promotion.getFreeQuantity() != null && promotion.getFreeQuantity() > 0) {
+                // Si requiresAssortmentSelection es true, cambiar estado a
+                // PENDING_PROMOTION_COMPLETION
+                if (Boolean.TRUE.equals(promotion.getRequiresAssortmentSelection())) {
+                    // El admin debe seleccionar después los productos surtidos
+                    order.setEstado(OrdenStatus.PENDING_PROMOTION_COMPLETION);
+                    log.info("Orden {} marcada como PENDING_PROMOTION_COMPLETION para selección de surtidos",
+                            order.getId());
+                } else if (promotion.getFreeProduct() != null) {
+                    // Producto gratis está predefinido
+                    Product freeProduct = promotion.getFreeProduct();
+
+                    OrderItem freeItem = OrderItem.builder()
+                            .product(freeProduct)
+                            .cantidad(promotion.getFreeQuantity())
+                            .precioUnitario(BigDecimal.ZERO)
+                            .subTotal(BigDecimal.ZERO)
+                            .promotion(promotion)
+                            .isPromotionItem(true)
+                            .isFreeItem(true)
+                            .build();
+
+                    // Validar y decrementar stock para productos gratis
+                    if (freeProduct.getStock() < promotion.getFreeQuantity()) {
+                        log.warn(
+                                "Stock insuficiente para producto gratis de promoción '{}'. Disponible: {}, Requerido: {}",
+                                promotion.getNombre(), freeProduct.getStock(), promotion.getFreeQuantity());
+                        freeItem.setOutOfStock(true);
+                    } else {
+                        freeProduct.decreaseStock(promotion.getFreeQuantity());
+                    }
+
+                    order.addItem(freeItem);
+                }
+            }
+
+            log.info("Promoción '{}' aplicada a orden", promotion.getNombre());
         });
     }
 

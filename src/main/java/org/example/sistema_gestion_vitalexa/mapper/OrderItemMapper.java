@@ -11,5 +11,7 @@ public interface OrderItemMapper {
     @Mapping(source = "product.id", target = "productId")
     @Mapping(source = "product.nombre", target = "productName")
     @Mapping(target = "subtotal", expression = "java(item.getSubTotal())")
+    @Mapping(source = "promotion.id", target = "promotionId")
+    @Mapping(source = "promotion.nombre", target = "promotionName")
     OrderItemResponse toResponse(OrderItem item);
 }

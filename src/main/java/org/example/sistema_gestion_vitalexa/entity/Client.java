@@ -38,6 +38,12 @@ public class Client {
 
     private String nit;
 
+    // Persona que administra el establecimiento
+    private String administrador;
+
+    // Representante legal del cliente
+    private String representanteLegal;
+
     // NUEVO: User que se autentica como CLIENTE
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", unique = true)

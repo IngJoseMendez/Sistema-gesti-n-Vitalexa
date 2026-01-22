@@ -5,13 +5,15 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 public record ClientResponse(
-        UUID id,
-        String nombre,
-        String email,
-        String telefono,
-        String direccion,
-        BigDecimal totalCompras,
-        String nit
+                UUID id,
+                String nombre,
+                String email,
+                String telefono,
+                String direccion,
+                BigDecimal totalCompras,
+                String nit,
+                String administrador,
+                String representanteLegal
 
 ) {
 }
