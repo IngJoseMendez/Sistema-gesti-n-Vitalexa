@@ -31,4 +31,12 @@ public interface ClientRepository extends JpaRepository<Client, UUID> {
 
     // For Nina/Gisela shared clients - find by multiple vendedor IDs
     List<Client> findByVendedorAsignadoIdIn(List<UUID> vendedorIds);
+
+    // For shared client access by usernames
+    List<Client> findByVendedorAsignadoUsernameIn(List<String> usernames);
+
+    // Uniqueness validation for nombre and direccion
+    boolean existsByNombre(String nombre);
+
+    boolean existsByDireccion(String direccion);
 }

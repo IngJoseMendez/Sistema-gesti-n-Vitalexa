@@ -22,9 +22,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ClientServiceImpl implements ClientService {
 
-    // IDs for Nina and Gisela (they share clients with each other)
-    private static final UUID NINA_ID = UUID.fromString("f3258d03-4419-42a5-b658-003330221c74");
-    private static final UUID GISELA_ID = UUID.fromString("180df991-d7d1-4935-81b2-70ad35b4647a");
+    // Usernames for Nina and Gisela (they share clients with each other)
+    private static final String NINA_USERNAME = "nina";
+    private static final String GISELA_USERNAME = "gisela";
+    private static final List<String> SHARED_USERNAMES = List.of(NINA_USERNAME, GISELA_USERNAME);
 
     private final ClientRepository repository;
     private final ClientMapper clientMapper;
@@ -44,15 +45,16 @@ public class ClientServiceImpl implements ClientService {
 
     @Override
     public ClientResponse create(CreateClientRequest request, String creatorUsername) {
-        // Verificar si ya existe un cliente con ese NIT (único campo obligatorio)
-        if (repository.existsByNit(request.nit())) {
-            throw new BusinessExeption("Ya existe un cliente con ese NIT");
+        // Verificar si ya existe un cliente con ese nombre (establecimiento)
+        if (request.nombre() != null && !request.nombre().isBlank()
+                && repository.existsByNombre(request.nombre())) {
+            throw new BusinessExeption("Ya existe un cliente con ese nombre de establecimiento");
         }
 
-        // Verificar email solo si se proporciona
-        if (request.email() != null && !request.email().isBlank()
-                && repository.existsByEmail(request.email())) {
-            throw new BusinessExeption("Ya existe un cliente con ese email");
+        // Verificar si ya existe un cliente con esa dirección
+        if (request.direccion() != null && !request.direccion().isBlank()
+                && repository.existsByDireccion(request.direccion())) {
+            throw new BusinessExeption("Ya existe un cliente con esa dirección");
         }
 
         Client client = clientMapper.toEntity(request);
@@ -123,8 +125,8 @@ public class ClientServiceImpl implements ClientService {
         List<Client> clients;
 
         // If vendedor is Nina or Gisela, return shared clients from both
-        if (vendedor.getId().equals(NINA_ID) || vendedor.getId().equals(GISELA_ID)) {
-            clients = repository.findByVendedorAsignadoIdIn(List.of(NINA_ID, GISELA_ID));
+        if (SHARED_USERNAMES.contains(username.toLowerCase())) {
+            clients = repository.findByVendedorAsignadoUsernameIn(SHARED_USERNAMES);
         } else {
             clients = repository.findByVendedorAsignado(vendedor);
         }
@@ -137,28 +139,28 @@ public class ClientServiceImpl implements ClientService {
     @Override
     public boolean canVendedorAccessClient(UUID vendedorId, UUID clientId) {
         Client client = findEntityById(clientId);
-        UUID clientVendedorId = client.getVendedorAsignado() != null
-                ? client.getVendedorAsignado().getId()
-                : null;
+        User clientVendedor = client.getVendedorAsignado();
 
         // Client without assigned vendedor - allow access
-        if (clientVendedorId == null) {
+        if (clientVendedor == null) {
             return true;
         }
 
         // Direct ownership - vendedor owns this client
-        if (clientVendedorId.equals(vendedorId)) {
+        if (clientVendedor.getId().equals(vendedorId)) {
             return true;
+        }
+
+        // Get the vendedor making the request
+        User requestingVendedor = userRepository.findById(vendedorId).orElse(null);
+        if (requestingVendedor == null) {
+            return false;
         }
 
         // Nina/Gisela exception - they share all their clients
-        boolean vendedorIsShared = vendedorId.equals(NINA_ID) || vendedorId.equals(GISELA_ID);
-        boolean clientBelongsToShared = clientVendedorId.equals(NINA_ID) || clientVendedorId.equals(GISELA_ID);
+        boolean vendedorIsShared = SHARED_USERNAMES.contains(requestingVendedor.getUsername().toLowerCase());
+        boolean clientBelongsToShared = SHARED_USERNAMES.contains(clientVendedor.getUsername().toLowerCase());
 
-        if (vendedorIsShared && clientBelongsToShared) {
-            return true;
-        }
-
-        return false;
+        return vendedorIsShared && clientBelongsToShared;
     }
 }
