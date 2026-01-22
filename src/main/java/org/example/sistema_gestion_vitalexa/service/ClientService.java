@@ -1,7 +1,9 @@
 package org.example.sistema_gestion_vitalexa.service;
 
+import org.example.sistema_gestion_vitalexa.dto.AdminCreateClientRequest;
 import org.example.sistema_gestion_vitalexa.dto.ClientResponse;
 import org.example.sistema_gestion_vitalexa.dto.CreateClientRequest;
+import org.example.sistema_gestion_vitalexa.dto.VendedorSimpleDTO;
 import org.example.sistema_gestion_vitalexa.entity.Client;
 
 import java.util.List;
@@ -25,4 +27,10 @@ public interface ClientService {
 
     // Validate if vendedor can access a specific client
     boolean canVendedorAccessClient(UUID vendedorId, UUID clientId);
+
+    // Admin/Owner: Create client for a specific vendedor
+    ClientResponse createForVendedor(AdminCreateClientRequest request, String adminUsername);
+
+    // Get list of vendedores for dropdown
+    List<VendedorSimpleDTO> getVendedores();
 }

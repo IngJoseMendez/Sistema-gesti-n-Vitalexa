@@ -1,8 +1,10 @@
 package org.example.sistema_gestion_vitalexa.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.example.sistema_gestion_vitalexa.dto.AdminCreateClientRequest;
 import org.example.sistema_gestion_vitalexa.dto.ClientResponse;
 import org.example.sistema_gestion_vitalexa.dto.CreateClientRequest;
+import org.example.sistema_gestion_vitalexa.dto.VendedorSimpleDTO;
 import org.example.sistema_gestion_vitalexa.entity.Client;
 import org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption;
 import org.example.sistema_gestion_vitalexa.mapper.ClientMapper;
@@ -162,5 +164,65 @@ public class ClientServiceImpl implements ClientService {
         boolean clientBelongsToShared = SHARED_USERNAMES.contains(clientVendedor.getUsername().toLowerCase());
 
         return vendedorIsShared && clientBelongsToShared;
+    }
+
+    @Override
+    public ClientResponse createForVendedor(AdminCreateClientRequest request, String adminUsername) {
+        // Get admin/owner who is creating the client
+        User creator = userRepository.findByUsername(adminUsername)
+                .orElseThrow(() -> new BusinessExeption("Usuario creador no encontrado"));
+
+        // Get target vendedor
+        User vendedor = userRepository.findById(request.vendedorId())
+                .orElseThrow(() -> new BusinessExeption("Vendedor no encontrado"));
+
+        // Validate vendedor role
+        if (vendedor.getRole() != Role.VENDEDOR) {
+            throw new BusinessExeption("El usuario seleccionado no es un vendedor");
+        }
+
+        // Validate unique nombre
+        if (request.nombre() != null && !request.nombre().isBlank()
+                && repository.existsByNombre(request.nombre())) {
+            throw new BusinessExeption("Ya existe un cliente con ese nombre de establecimiento");
+        }
+
+        // Validate unique direccion
+        if (request.direccion() != null && !request.direccion().isBlank()
+                && repository.existsByDireccion(request.direccion())) {
+            throw new BusinessExeption("Ya existe un cliente con esa dirección");
+        }
+
+        // Build client
+        Client client = Client.builder()
+                .nombre(request.nombre() != null && !request.nombre().isBlank()
+                        ? request.nombre()
+                        : "Cliente " + request.nit())
+                .email(request.email())
+                .telefono(request.telefono())
+                .direccion(request.direccion())
+                .nit(request.nit())
+                .administrador(request.administrador())
+                .representanteLegal(request.representanteLegal())
+                .vendedorAsignado(vendedor)
+                .creadoPor(creator)
+                .totalCompras(BigDecimal.ZERO)
+                .active(true)
+                .build();
+
+        // AUTO-CREATE user for the client (NIT as username and password)
+        User user = userService.registerClientUser(client);
+        client.setUser(user);
+
+        Client savedClient = repository.save(client);
+        return clientMapper.toResponse(savedClient);
+    }
+
+    @Override
+    public List<VendedorSimpleDTO> getVendedores() {
+        return userRepository.findByRole(Role.VENDEDOR)
+                .stream()
+                .map(u -> new VendedorSimpleDTO(u.getId(), u.getUsername()))
+                .toList();
     }
 }

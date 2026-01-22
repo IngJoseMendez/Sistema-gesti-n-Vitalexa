@@ -1,13 +1,16 @@
 package org.example.sistema_gestion_vitalexa.controller.admin;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.example.sistema_gestion_vitalexa.dto.AdminCreateClientRequest;
 import org.example.sistema_gestion_vitalexa.dto.ClientResponse;
+import org.example.sistema_gestion_vitalexa.dto.VendedorSimpleDTO;
 import org.example.sistema_gestion_vitalexa.service.ClientService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -23,5 +26,20 @@ public class ClientAdminController {
     public ResponseEntity<List<ClientResponse>> getAllClients() {
         List<ClientResponse> clients = clientService.findAll();
         return ResponseEntity.ok(clients);
+    }
+
+    // List all vendedores for dropdown
+    @GetMapping("/vendedores")
+    public ResponseEntity<List<VendedorSimpleDTO>> getVendedores() {
+        return ResponseEntity.ok(clientService.getVendedores());
+    }
+
+    // Create client for a specific vendedor
+    @PostMapping
+    public ResponseEntity<ClientResponse> createForVendedor(
+            @Valid @RequestBody AdminCreateClientRequest request,
+            Authentication auth) {
+        ClientResponse response = clientService.createForVendedor(request, auth.getName());
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }

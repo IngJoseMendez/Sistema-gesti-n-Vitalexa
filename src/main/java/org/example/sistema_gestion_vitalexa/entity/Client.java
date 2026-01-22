@@ -24,6 +24,7 @@ public class Client {
 
     private String nombre;
 
+    @Builder.Default
     private BigDecimal totalCompras = BigDecimal.ZERO;
 
     private String email;
@@ -34,6 +35,7 @@ public class Client {
 
     private String telefono;
 
+    @Builder.Default
     private boolean active = true;
 
     private String nit;
@@ -67,6 +69,16 @@ public class Client {
     @Column(name = "initial_balance_set")
     @Builder.Default
     private Boolean initialBalanceSet = false;
+
+    // Audit: User who created this client
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "creado_por_id")
+    private User creadoPor;
+
+    // Audit: When this client was created
+    @Column(name = "fecha_creacion")
+    @Builder.Default
+    private LocalDateTime fechaCreacion = LocalDateTime.now();
 
     public void registerPurchase(BigDecimal monto) {
         if (this.totalCompras == null)
