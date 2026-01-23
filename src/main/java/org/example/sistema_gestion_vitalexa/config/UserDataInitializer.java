@@ -24,14 +24,11 @@ public class UserDataInitializer implements CommandLineRunner {
     public void run(String... args) {
         createOrUpdate("DueñoArnold", "Azb:iasNZ", Role.OWNER);
         createOrUpdate("AdminHilary", "OL98Jaika", Role.ADMIN);
-        createOrUpdate("nina", "ninori123jam", Role.VENDEDOR);
         createOrUpdate("rosario", "1234", Role.VENDEDOR);
         createOrUpdate("luisE", "JKMaoqi213", Role.EMPACADOR);
         createOrUpdateClienteConCuenta(
                 "cliente1", "cliente123",
-                "Carlos Perez", "carlos@gmail.com", "555-1234", "Calle Falsa 123", "nina", "1234567-8");
-        createOrUpdate("mercy", "mercyV123R", Role.VENDEDOR);
-        createOrUpdate("gisela", "giselaVR321", Role.VENDEDOR);
+                "Carlos Perez", "carlos@gmail.com", "555-1234", "Calle Falsa 123", "NinaTorres", "1234567-8");
         createOrUpdate("arnoldVentas", "ArnoldV123", Role.VENDEDOR);
     }
 

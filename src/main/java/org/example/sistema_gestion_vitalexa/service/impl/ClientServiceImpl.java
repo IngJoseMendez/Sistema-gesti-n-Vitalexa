@@ -24,15 +24,16 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ClientServiceImpl implements ClientService {
 
-    // Usernames for Nina and Gisela (they share clients with each other)
-    private static final String NINA_USERNAME = "nina";
-    private static final String GISELA_USERNAME = "gisela";
+    private static final String NINA_USERNAME = "NinaTorres";
+    private static final String GISELA_USERNAME = "YicelaSandoval";
     private static final List<String> SHARED_USERNAMES = List.of(NINA_USERNAME, GISELA_USERNAME);
+    private static final List<String> SHARED_USERNAMES_LOWER = List.of(
+            NINA_USERNAME.toLowerCase(), GISELA_USERNAME.toLowerCase());
 
     private final ClientRepository repository;
     private final ClientMapper clientMapper;
-    private final UserService userService; // Inject UserService
-    private final UserRepository userRepository; // Inject UserRepository
+    private final UserService userService;
+    private final UserRepository userRepository;
 
     @Override
     public Client findEntityById(UUID id) {
@@ -127,7 +128,7 @@ public class ClientServiceImpl implements ClientService {
         List<Client> clients;
 
         // If vendedor is Nina or Gisela, return shared clients from both
-        if (SHARED_USERNAMES.contains(username.toLowerCase())) {
+        if (SHARED_USERNAMES_LOWER.contains(username.toLowerCase())) {
             clients = repository.findByVendedorAsignadoUsernameIn(SHARED_USERNAMES);
         } else {
             clients = repository.findByVendedorAsignado(vendedor);
@@ -160,8 +161,8 @@ public class ClientServiceImpl implements ClientService {
         }
 
         // Nina/Gisela exception - they share all their clients
-        boolean vendedorIsShared = SHARED_USERNAMES.contains(requestingVendedor.getUsername().toLowerCase());
-        boolean clientBelongsToShared = SHARED_USERNAMES.contains(clientVendedor.getUsername().toLowerCase());
+        boolean vendedorIsShared = SHARED_USERNAMES_LOWER.contains(requestingVendedor.getUsername().toLowerCase());
+        boolean clientBelongsToShared = SHARED_USERNAMES_LOWER.contains(clientVendedor.getUsername().toLowerCase());
 
         return vendedorIsShared && clientBelongsToShared;
     }
