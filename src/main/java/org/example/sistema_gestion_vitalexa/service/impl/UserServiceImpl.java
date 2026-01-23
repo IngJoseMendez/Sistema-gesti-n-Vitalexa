@@ -45,17 +45,21 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public User registerClientUser(org.example.sistema_gestion_vitalexa.entity.Client client) {
-        // El NIT es tanto el username como el password
-        String username = client.getNit();
+        // El NIT es tanto el username como el password por defecto
+        String baseUsername = client.getNit();
+        String uniqueUsername = baseUsername;
+        int counter = 1;
 
-        // Verificar que no exista un usuario con ese NIT
-        if (repository.findByUsername(username).isPresent()) {
-            throw new BusinessExeption("Ya existe un usuario con el NIT '" + username + "'.");
+        // Verificar si ya existe un usuario con ese username y generar uno único si es
+        // necesario
+        while (repository.findByUsername(uniqueUsername).isPresent()) {
+            uniqueUsername = baseUsername + "-" + counter;
+            counter++;
         }
 
         User user = User.builder()
-                .username(username) // Username = NIT
-                .password(passwordEncoder.encode(username)) // Password = NIT (encriptado)
+                .username(uniqueUsername) // Username único (e.g., 12345, 12345-1)
+                .password(passwordEncoder.encode(baseUsername)) // Password = NIT original (encriptado)
                 .role(org.example.sistema_gestion_vitalexa.enums.Role.CLIENTE)
                 .active(true)
                 .build();
