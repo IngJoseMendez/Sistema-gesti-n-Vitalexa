@@ -38,6 +38,17 @@ public class OrderItem {
     private Product product;
 
     // ==========================================
+    // CAMPOS PARA GESTIÓN DE INVENTARIO
+    // ==========================================
+    @Column(name = "cantidad_descontada")
+    @Builder.Default
+    private Integer cantidadDescontada = 0;
+
+    @Column(name = "cantidad_pendiente")
+    @Builder.Default
+    private Integer cantidadPendiente = 0;
+
+    // ==========================================
     // CAMPOS PARA PRODUCTOS SIN STOCK
     // ==========================================
     @Column(name = "out_of_stock")
@@ -85,6 +96,8 @@ public class OrderItem {
         this.outOfStock = false;
         this.isPromotionItem = false;
         this.isFreeItem = false;
+        this.cantidadDescontada = 0;
+        this.cantidadPendiente = 0;
     }
 
 }

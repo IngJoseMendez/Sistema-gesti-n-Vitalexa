@@ -69,7 +69,7 @@ public class InvoiceServiceImpl implements InvoiceService {
                         addTotals(document, order, isSROrder);
 
                         // ===== FOOTER =====
-                        addFooter(document, isSROrder);
+                        addFooter(document, order, isSROrder);
 
                         document.close();
                         return baos.toByteArray();
@@ -290,10 +290,13 @@ public class InvoiceServiceImpl implements InvoiceService {
 
         private void addItemRow(Table table, OrderItem item) {
                 String productName = item.getProduct().getNombre();
-                // Marcar Productos Sin Stock
-                if (Boolean.TRUE.equals(item.getOutOfStock())) {
-                        productName += " [SIN STOCK]";
-                }
+                // Marcar Productos Sin Stock -> REMOVIDO POR SOLICITUD DEL USUARIO
+                // ya que la factura es de empaquetado y si se pidió es porque se va a enviar
+                /*
+                 * if (Boolean.TRUE.equals(item.getOutOfStock())) {
+                 * productName += " [SIN STOCK]";
+                 * }
+                 */
 
                 addTableDataCell(table, productName);
                 addTableDataCell(table, String.valueOf(item.getCantidad()));
@@ -303,10 +306,12 @@ public class InvoiceServiceImpl implements InvoiceService {
 
         private void addFreeItemRow(Table table, OrderItem item) {
                 String productName = item.getProduct().getNombre() + " (BONIFICADO)";
-                // Marcar Productos Sin Stock
-                if (Boolean.TRUE.equals(item.getOutOfStock())) {
-                        productName += " [SIN STOCK]";
-                }
+                // Marcar Productos Sin Stock -> REMOVIDO
+                /*
+                 * if (Boolean.TRUE.equals(item.getOutOfStock())) {
+                 * productName += " [SIN STOCK]";
+                 * }
+                 */
 
                 com.itextpdf.layout.element.Cell nameCell = new com.itextpdf.layout.element.Cell()
                                 .add(new Paragraph(productName)
@@ -417,7 +422,7 @@ public class InvoiceServiceImpl implements InvoiceService {
                 document.add(notesContent);
         }
 
-        private void addFooter(Document document, boolean isSROrder) {
+        private void addFooter(Document document, Order order, boolean isSROrder) {
                 document.add(new Paragraph("\n"));
 
                 SolidLine lineDrawer = new SolidLine();
@@ -438,6 +443,26 @@ public class InvoiceServiceImpl implements InvoiceService {
                                 .setTextAlignment(TextAlignment.CENTER)
                                 .setFontColor(ColorConstants.GRAY);
                 document.add(contact);
+
+                // MENSAJES DE CONSIGNACIÓN
+                // Detectar si es orden de promoción
+                boolean isPromoOrder = (order.getNotas() != null && order.getNotas().contains("[Promoción]")) ||
+                                (order.getItems() != null
+                                                && order.getItems().stream().anyMatch(i -> i.getPromotion() != null));
+
+                Paragraph consignment = new Paragraph()
+                                .setFontSize(9)
+                                .setBold()
+                                .setTextAlignment(TextAlignment.CENTER)
+                                .setMarginTop(10);
+
+                if (isPromoOrder) {
+                        consignment.add("FAVOR CONSIGNAR A: BANCOLOMBIA cuenta de Ahorros No 779-424-507-13");
+                } else {
+                        consignment.add("FAVOR CONSIGNAR A: BANCOLOMBIA cuenta de Ahorros No 916-907-985-10 - NEQUI / DAVIPLATA 310 489 1636");
+                }
+
+                document.add(consignment);
         }
 
         // ===== UTILIDADES =====

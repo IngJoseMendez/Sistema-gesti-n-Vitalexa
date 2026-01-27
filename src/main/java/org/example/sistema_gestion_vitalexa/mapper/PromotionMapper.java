@@ -14,8 +14,15 @@ public interface PromotionMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "mainProduct", ignore = true)
-    @Mapping(target = "freeProduct", ignore = true)
+    // GiftItems se manejan manualmente en el servicio
+    @Mapping(target = "giftItems", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "active", constant = "true")
     Promotion toEntity(CreatePromotionRequest request);
+
+    @Mapping(target = "id", source = "gift.id")
+    @Mapping(target = "product", source = "gift.product")
+    @Mapping(target = "quantity", source = "gift.quantity")
+    org.example.sistema_gestion_vitalexa.dto.GiftItemResponse toGiftItemResponse(
+            org.example.sistema_gestion_vitalexa.entity.PromotionGiftItem gift);
 }

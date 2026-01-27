@@ -38,10 +38,18 @@ public class PromotionServiceImpl implements PromotionService {
         Product mainProduct = productService.findEntityById(request.mainProductId());
         promotion.setMainProduct(mainProduct);
 
-        // Asignar producto gratis si se especifica
-        if (request.freeProductId() != null) {
-            Product freeProduct = productService.findEntityById(request.freeProductId());
-            promotion.setFreeProduct(freeProduct);
+        // Asignar items de regalo
+        if (request.giftItems() != null && !request.giftItems().isEmpty()) {
+            List<org.example.sistema_gestion_vitalexa.entity.PromotionGiftItem> giftItems = new java.util.ArrayList<>();
+            for (org.example.sistema_gestion_vitalexa.dto.GiftItemDTO itemDto : request.giftItems()) {
+                Product giftProduct = productService.findEntityById(itemDto.productId());
+                giftItems.add(org.example.sistema_gestion_vitalexa.entity.PromotionGiftItem.builder()
+                        .promotion(promotion)
+                        .product(giftProduct)
+                        .quantity(itemDto.quantity())
+                        .build());
+            }
+            promotion.setGiftItems(giftItems);
         }
 
         // Configurar flags opcionales con defaults
@@ -49,8 +57,11 @@ public class PromotionServiceImpl implements PromotionService {
             promotion.setAllowStackWithDiscounts(request.allowStackWithDiscounts());
         }
 
-        if (request.requiresAssortmentSelection() != null) {
-            promotion.setRequiresAssortmentSelection(request.requiresAssortmentSelection());
+        // Configurar requiresAssortmentSelection basado en el TIPO
+        if (request.type() == org.example.sistema_gestion_vitalexa.enums.PromotionType.BUY_GET_FREE) {
+            promotion.setRequiresAssortmentSelection(true);
+        } else {
+            promotion.setRequiresAssortmentSelection(false);
         }
 
         Promotion saved = repository.save(promotion);
@@ -71,7 +82,6 @@ public class PromotionServiceImpl implements PromotionService {
         promotion.setDescripcion(request.descripcion());
         promotion.setType(request.type());
         promotion.setBuyQuantity(request.buyQuantity());
-        promotion.setFreeQuantity(request.freeQuantity());
         promotion.setPackPrice(request.packPrice());
         promotion.setValidFrom(request.validFrom());
         promotion.setValidUntil(request.validUntil());
@@ -82,12 +92,22 @@ public class PromotionServiceImpl implements PromotionService {
             promotion.setMainProduct(mainProduct);
         }
 
-        // Actualizar producto gratis
-        if (request.freeProductId() != null) {
-            Product freeProduct = productService.findEntityById(request.freeProductId());
-            promotion.setFreeProduct(freeProduct);
+        // Actualizar items de regalo
+        if (promotion.getGiftItems() != null) {
+            promotion.getGiftItems().clear(); // Limpiar existentes (orphanRemoval se encargará)
         } else {
-            promotion.setFreeProduct(null);
+            promotion.setGiftItems(new java.util.ArrayList<>());
+        }
+
+        if (request.giftItems() != null && !request.giftItems().isEmpty()) {
+            for (org.example.sistema_gestion_vitalexa.dto.GiftItemDTO itemDto : request.giftItems()) {
+                Product giftProduct = productService.findEntityById(itemDto.productId());
+                promotion.getGiftItems().add(org.example.sistema_gestion_vitalexa.entity.PromotionGiftItem.builder()
+                        .promotion(promotion)
+                        .product(giftProduct)
+                        .quantity(itemDto.quantity())
+                        .build());
+            }
         }
 
         // Actualizar flags opcionales
@@ -95,8 +115,11 @@ public class PromotionServiceImpl implements PromotionService {
             promotion.setAllowStackWithDiscounts(request.allowStackWithDiscounts());
         }
 
-        if (request.requiresAssortmentSelection() != null) {
-            promotion.setRequiresAssortmentSelection(request.requiresAssortmentSelection());
+        // Sincronizar requiresAssortmentSelection con el tipo
+        if (promotion.getType() == org.example.sistema_gestion_vitalexa.enums.PromotionType.BUY_GET_FREE) {
+            promotion.setRequiresAssortmentSelection(true);
+        } else {
+            promotion.setRequiresAssortmentSelection(false);
         }
 
         Promotion updated = repository.save(promotion);

@@ -8,6 +8,7 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface OrderItemMapper {
 
+    @Mapping(source = "id", target = "id")
     @Mapping(source = "product.id", target = "productId")
     @Mapping(source = "product.nombre", target = "productName")
     @Mapping(target = "subtotal", expression = "java(item.getSubTotal())")

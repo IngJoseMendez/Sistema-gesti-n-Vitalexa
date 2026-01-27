@@ -6,6 +6,6 @@ package org.example.sistema_gestion_vitalexa.enums;
  * - BUY_GET_FREE: Compra X y recibe Y gratis (ej: 13+1 gratis)
  */
 public enum PromotionType {
-    PACK, // Compra cantidad X + Y surtidos por precio fijo
-    BUY_GET_FREE // Compra X unidades y recibe Y gratis
+    PACK, // Mapped to logic: "FIXED_PROMOTION" (Concreta)
+    BUY_GET_FREE // Mapped to logic: "ASSORTMENT_PROMOTION" (Surtido)
 }

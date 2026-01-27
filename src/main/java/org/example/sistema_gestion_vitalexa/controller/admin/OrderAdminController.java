@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.example.sistema_gestion_vitalexa.dto.AddAssortmentItemRequest;
 import org.example.sistema_gestion_vitalexa.dto.OrderRequestDto;
 import org.example.sistema_gestion_vitalexa.dto.OrderResponse;
+import org.example.sistema_gestion_vitalexa.dto.UpdateEtaRequest;
 import org.example.sistema_gestion_vitalexa.enums.OrdenStatus;
 import org.example.sistema_gestion_vitalexa.service.InvoiceService;
 import org.example.sistema_gestion_vitalexa.service.OrdenService;
@@ -94,6 +95,20 @@ public class OrderAdminController {
             @PathVariable UUID promotionId,
             @RequestBody List<AddAssortmentItemRequest> items) {
         ordenService.addPromotionAssortment(orderId, promotionId, items);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * PATCH /api/admin/orders/{orderId}/items/{itemId}/eta
+     * Actualizar ETA de un item
+     */
+    @PatchMapping("/{orderId}/items/{itemId}/eta")
+    public ResponseEntity<Void> updateItemEta(
+            @PathVariable UUID orderId,
+            @PathVariable UUID itemId,
+            @RequestBody UpdateEtaRequest request) {
+
+        ordenService.updateItemEta(orderId, itemId, request.eta(), request.note());
         return ResponseEntity.noContent().build();
     }
 

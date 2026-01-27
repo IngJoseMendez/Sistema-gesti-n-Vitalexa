@@ -7,21 +7,20 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 public record PromotionResponse(
-        UUID id,
-        String nombre,
-        String descripcion,
-        PromotionType type,
-        Integer buyQuantity,
-        Integer freeQuantity,
-        BigDecimal packPrice,
-        ProductResponse mainProduct,
-        ProductResponse freeProduct,
-        Boolean allowStackWithDiscounts,
-        Boolean requiresAssortmentSelection,
-        Boolean active,
-        LocalDateTime validFrom,
-        LocalDateTime validUntil,
-        LocalDateTime createdAt,
-        Boolean isValid // Calculado: si está dentro del período de validez
+                UUID id,
+                String nombre,
+                String descripcion,
+                PromotionType type,
+                Integer buyQuantity,
+                BigDecimal packPrice,
+                ProductResponse mainProduct,
+                java.util.List<GiftItemResponse> giftItems,
+                Boolean allowStackWithDiscounts,
+                Boolean requiresAssortmentSelection,
+                Boolean active,
+                LocalDateTime validFrom,
+                LocalDateTime validUntil,
+                LocalDateTime createdAt,
+                Boolean isValid // Calculado: si está dentro del período de validez
 ) {
 }

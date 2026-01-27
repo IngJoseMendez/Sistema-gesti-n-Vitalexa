@@ -36,4 +36,9 @@ public interface OrdenService {
      */
     void addPromotionAssortment(UUID orderId, UUID promotionId, List<AddAssortmentItemRequest> items);
 
+    /**
+     * Actualizar ETA de un item sin stock
+     */
+    void updateItemEta(UUID orderId, UUID itemId, java.time.LocalDate eta, String note);
+
 }
