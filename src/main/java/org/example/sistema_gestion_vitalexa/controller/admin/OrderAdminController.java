@@ -112,4 +112,27 @@ public class OrderAdminController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * POST /api/admin/orders
+     * Crear orden (Admin/Owner puede especificar sellerId en el body)
+     */
+    @PostMapping
+    public ResponseEntity<OrderResponse> createOrder(
+            @RequestBody OrderRequestDto request,
+            org.springframework.security.core.Authentication authentication) {
+        OrderResponse response = ordenService.createOrder(request, authentication.getName());
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    /**
+     * POST /api/admin/orders/{id}/annul
+     * Anular orden con motivo
+     */
+    @PostMapping("/{id}/annul")
+    public ResponseEntity<Void> annulOrder(
+            @PathVariable UUID id,
+            @RequestParam String reason) {
+        ordenService.annulOrder(id, reason);
+        return ResponseEntity.noContent().build();
+    }
 }

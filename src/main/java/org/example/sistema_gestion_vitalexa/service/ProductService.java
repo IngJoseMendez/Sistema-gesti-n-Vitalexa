@@ -12,8 +12,11 @@ import java.util.UUID;
 
 public interface ProductService {
     ProductResponse create(CreateProductRequest request);
+
     ProductResponse update(UUID id, UpdateProductRequest request);
+
     void softDelete(UUID id);
+
     void hardDelete(UUID id);
 
     List<ProductResponse> findAllAdmin();
@@ -23,15 +26,23 @@ public interface ProductService {
 
     // paginación pro
     Page<ProductResponse> findAllActive(Pageable pageable);
+
     Page<ProductResponse> findAllActiveInStock(Pageable pageable);
+
     Page<ProductResponse> searchActive(String q, Pageable pageable);
 
     Product findEntityById(UUID id);
+
     ProductResponse findById(UUID id);
+
     void changeStatus(UUID id, boolean status);
+
     List<ProductResponse> findLowStock(int threshold);
 
     // Tag filtering
     Page<ProductResponse> findByTag(UUID tagId, Pageable pageable);
+
     Page<ProductResponse> searchByTag(String q, UUID tagId, Pageable pageable);
+
+    Product getSystemProductSurtido();
 }

@@ -9,26 +9,25 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 public record CreatePromotionRequest(
-                @NotBlank(message = "El nombre de la promoción es obligatorio") String nombre,
+        @NotBlank(message = "El nombre de la promoción es obligatorio") String nombre,
 
-                String descripcion,
+        String descripcion,
 
-                @NotNull(message = "El tipo de promoción es obligatorio") PromotionType type,
+        @NotNull(message = "El tipo de promoción es obligatorio") PromotionType type,
 
-                @NotNull(message = "La cantidad a comprar es obligatoria") Integer buyQuantity,
+        @NotNull(message = "La cantidad a comprar es obligatoria") Integer buyQuantity,
 
+        BigDecimal packPrice, // Para tipo PACK
 
-                BigDecimal packPrice, // Para tipo PACK
+        UUID mainProductId,
 
-                @NotNull(message = "El producto principal es obligatorio") UUID mainProductId,
+        java.util.List<GiftItemDTO> giftItems, // Lista de regalos
 
-                java.util.List<GiftItemDTO> giftItems, // Lista de regalos
+        Boolean allowStackWithDiscounts, // Default: false
 
-                Boolean allowStackWithDiscounts, // Default: false
+        Boolean requiresAssortmentSelection, // Default: true para PACK
 
-                Boolean requiresAssortmentSelection, // Default: true para PACK
+        LocalDateTime validFrom,
 
-                LocalDateTime validFrom,
-
-                LocalDateTime validUntil) {
+        LocalDateTime validUntil) {
 }

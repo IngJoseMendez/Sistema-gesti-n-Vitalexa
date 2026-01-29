@@ -44,9 +44,10 @@ public class Promotion {
     @Column(name = "pack_price", precision = 12, scale = 2)
     private BigDecimal packPrice;
 
-    // Producto principal de la promoción
+    // Producto principal de la promoción (Puede ser NULL para promociones
+    // genéricas/globales de surtido)
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "main_product_id", nullable = false)
+    @JoinColumn(name = "main_product_id", nullable = true)
     private Product mainProduct;
 
     // Items de regalo (Lista de productos surtidos/gratis)

@@ -34,9 +34,11 @@ public class PromotionServiceImpl implements PromotionService {
 
         Promotion promotion = mapper.toEntity(request);
 
-        // Asignar producto principal
-        Product mainProduct = productService.findEntityById(request.mainProductId());
-        promotion.setMainProduct(mainProduct);
+        // Asignar producto principal (Opcional para promociones genéricas)
+        if (request.mainProductId() != null) {
+            Product mainProduct = productService.findEntityById(request.mainProductId());
+            promotion.setMainProduct(mainProduct);
+        }
 
         // Asignar items de regalo
         if (request.giftItems() != null && !request.giftItems().isEmpty()) {

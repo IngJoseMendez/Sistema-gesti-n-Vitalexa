@@ -40,6 +40,13 @@ public class Order {
     @Column(name = "invoice_number", unique = true)
     private Long invoiceNumber;
 
+    @Column(name = "include_freight")
+    @Builder.Default
+    private Boolean includeFreight = false;
+
+    @Column(name = "cancellation_reason", columnDefinition = "TEXT")
+    private String cancellationReason;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "vendedor_id", nullable = false)
     private User vendedor;

@@ -55,8 +55,29 @@ public class OrderServiceImpl implements OrdenService {
             throw new BusinessExeption("La venta debe tener al menos un producto o una promoción");
         }
 
-        User vendedor = userRepository.findByUsername(username)
-                .orElseThrow(() -> new BusinessExeption("Vendedor no encontrado"));
+        User currentUser = userRepository.findByUsername(username)
+                .orElseThrow(() -> new BusinessExeption("Usuario actual no encontrado"));
+
+        User vendedor = currentUser;
+
+        // Lógica "Admin vendediendo como otro usuario"
+        if (request.sellerId() != null) {
+            // Solo Admin u Owner pueden hacer esto
+            if (currentUser.getRole() == org.example.sistema_gestion_vitalexa.enums.Role.ADMIN ||
+                    currentUser.getRole() == org.example.sistema_gestion_vitalexa.enums.Role.OWNER) {
+
+                vendedor = userRepository.findById(request.sellerId())
+                        .orElseThrow(() -> new BusinessExeption("Vendedor especificado no encontrado"));
+
+                log.info("Admin {} creando orden a nombre de vendedor {}", username, vendedor.getUsername());
+            } else {
+                log.warn("Usuario {} intentó vender como otro sin permisos", username);
+                // No lanzamos excepción, simplemente ignoramos y usamos el usuario actual (o
+                // lanzamos error segun prefieras)
+                // Para ser estrictos:
+                throw new BusinessExeption("No tiene permisos para crear órdenes a nombre de otro vendedor");
+            }
+        }
 
         Client client = null;
         if (request.clientId() != null) {
@@ -102,15 +123,23 @@ public class OrderServiceImpl implements OrdenService {
             log.warn("Etiqueta del sistema S/R no encontrada, continuando sin split");
         }
 
-        // Separar items en listas: Normales y S/R
+        // Separar items en listas: Normales, S/R y Relacionados a Promo
         List<OrderItemRequestDTO> normalItems = new java.util.ArrayList<>();
         List<OrderItemRequestDTO> srItems = new java.util.ArrayList<>();
+        List<OrderItemRequestDTO> promoItems = new java.util.ArrayList<>(); // Items que pertenecen a una promo surtida
 
         ProductTag finalSrTag = srTag;
         if (request.items() != null) {
             request.items().forEach(itemReq -> {
                 Product product = productService.findEntityById(itemReq.productId());
-                // Validamos si es SR
+
+                // Prioridad 1: Pertenece a una promoción
+                if (itemReq.relatedPromotionId() != null) {
+                    promoItems.add(itemReq);
+                    return;
+                }
+
+                // Prioridad 2: Es SR
                 boolean isSRProduct = finalSrTag != null && product.getTag() != null
                         && product.getTag().getId().equals(finalSrTag.getId());
 
@@ -127,17 +156,23 @@ public class OrderServiceImpl implements OrdenService {
         // Identificar qué tipos de órdenes necesitamos crear
         boolean hasNormal = !normalItems.isEmpty();
         boolean hasSR = !srItems.isEmpty();
-        boolean hasPromo = !promotionIds.isEmpty();
+        boolean hasPromo = !promotionIds.isEmpty() || !promoItems.isEmpty(); // Promo activa si hay IDs o items
+                                                                             // relacionados
 
         int typesCount = (hasNormal ? 1 : 0) + (hasSR ? 1 : 0) + (hasPromo ? 1 : 0);
 
         if (typesCount <= 1) {
             // Caso simple: Crear una sola orden con lo que haya
-            return createSingleOrder(vendedor, client, request, username);
+            String noteSuffix = "";
+            if (hasSR && !hasNormal && !hasPromo) {
+                noteSuffix = " [S/R]";
+            }
+            return createSingleOrder(vendedor, client, request, username, noteSuffix);
         } else {
             // Caso múltiple: Crear órdenes separadas
-            return createMultipleOrders(vendedor, client, normalItems, srItems, promotionIds, request.notas(),
-                    username);
+            return createMultipleOrders(vendedor, client, normalItems, srItems, promoItems, promotionIds,
+                    request.notas(),
+                    Boolean.TRUE.equals(request.includeFreight()), username);
         }
     }
 
@@ -149,29 +184,53 @@ public class OrderServiceImpl implements OrdenService {
             Client client,
             List<OrderItemRequestDTO> normalItems,
             List<OrderItemRequestDTO> srItems,
+            List<OrderItemRequestDTO> promoItems,
             List<UUID> promotionIds,
             String notas,
+            boolean includeFreight,
             String username) {
 
         OrderResponse response = null;
         BigDecimal totalPurchase = BigDecimal.ZERO;
         StringBuilder logMsg = new StringBuilder("Orden dividida en: ");
 
-        // 1. ORDEN NORMAL
-        if (!normalItems.isEmpty()) {
-            Order normalOrder = new Order(vendedor, client);
+        // 1. ORDEN STANDARD (Normal + Promociones)
+        if (!normalItems.isEmpty() || !promotionIds.isEmpty()) {
+            Order standardOrder = new Order(vendedor, client);
             if (notas != null && !notas.isBlank()) {
-                normalOrder.setNotas(notas + " [Normal]");
+                standardOrder.setNotas(notas + " [Standard]");
             }
-            processOrderItems(normalOrder, normalItems);
-            Order saved = ordenRepository.save(normalOrder);
+            // Aplicar flete a la orden normal si corresponde y tiene permisos
+            if (includeFreight) {
+                if (vendedor.getRole() == org.example.sistema_gestion_vitalexa.enums.Role.ADMIN ||
+                        vendedor.getRole() == org.example.sistema_gestion_vitalexa.enums.Role.OWNER) {
+                    standardOrder.setIncludeFreight(true);
+                    includeFreight = false; // Ya se aplicó, no aplicar en las siguientes
+                } else {
+                    throw new BusinessExeption("Solo administradores pueden incluir flete.");
+                }
+            }
+
+            if (!normalItems.isEmpty()) {
+                processOrderItems(standardOrder, normalItems);
+            }
+
+            if (!promotionIds.isEmpty()) {
+                // Calcular items totales para validación de promociones surtidas (contexto
+                // global)
+                int totalNormalItemsCount = normalItems.stream().mapToInt(OrderItemRequestDTO::cantidad).sum() +
+                        srItems.stream().mapToInt(OrderItemRequestDTO::cantidad).sum();
+                processPromotions(standardOrder, promotionIds, totalNormalItemsCount);
+            }
+
+            Order saved = ordenRepository.save(standardOrder);
 
             notificationService.sendNewOrderNotification(saved.getId().toString(), vendedor.getUsername(),
                     client != null ? client.getNombre() : "Sin cliente");
 
             totalPurchase = totalPurchase.add(saved.getTotal());
             response = orderMapper.toResponse(saved); // Prioridad 1 para response
-            logMsg.append("Normal (").append(saved.getId()).append(") ");
+            logMsg.append("Standard (").append(saved.getId()).append(") ");
         }
 
         // 2. ORDEN S/R
@@ -195,12 +254,24 @@ public class OrderServiceImpl implements OrdenService {
         }
 
         // 3. ORDEN PROMOCIONES
-        if (!promotionIds.isEmpty()) {
+        if (!promotionIds.isEmpty() || !promoItems.isEmpty()) {
             Order promoOrder = new Order(vendedor, client);
             String suffix = " [Promoción]";
             promoOrder.setNotas((notas != null ? notas : "") + suffix);
 
-            processPromotions(promoOrder, promotionIds);
+            // Agregar items que pertenecen específicamente a la promo
+            if (!promoItems.isEmpty()) {
+                processOrderItems(promoOrder, promoItems);
+            }
+
+            // Validar que la cantidad de items en ESTA orden cumpla con la promo
+            // En este flujo, los items de la promo deben estar DENTRO de la promoOrder
+            int promoItemsCount = promoItems.stream().mapToInt(OrderItemRequestDTO::cantidad).sum();
+
+            if (!promotionIds.isEmpty()) {
+                processPromotions(promoOrder, promotionIds, promoItemsCount);
+            }
+
             Order saved = ordenRepository.save(promoOrder);
 
             notificationService.sendNewOrderNotification(saved.getId().toString(), vendedor.getUsername(),
@@ -225,11 +296,27 @@ public class OrderServiceImpl implements OrdenService {
     /**
      * Crear una sola orden (sin split o solo S/R)
      */
-    private OrderResponse createSingleOrder(User vendedor, Client client, OrderRequestDto request, String username) {
+    private OrderResponse createSingleOrder(User vendedor, Client client, OrderRequestDto request, String username,
+            String noteSuffix) {
         Order order = new Order(vendedor, client);
 
-        if (request.notas() != null && !request.notas().isBlank()) {
-            order.setNotas(request.notas());
+        String finalNotes = request.notas() != null ? request.notas() : "";
+        if (noteSuffix != null && !noteSuffix.isEmpty()) {
+            finalNotes += noteSuffix;
+        }
+
+        if (!finalNotes.isBlank()) {
+            order.setNotas(finalNotes);
+        }
+
+        if (Boolean.TRUE.equals(request.includeFreight())) {
+            // Validar que solo ADMIN u OWNER puedan incluir flete
+            if (vendedor.getRole() == org.example.sistema_gestion_vitalexa.enums.Role.ADMIN ||
+                    vendedor.getRole() == org.example.sistema_gestion_vitalexa.enums.Role.OWNER) {
+                order.setIncludeFreight(true);
+            } else {
+                throw new BusinessExeption("Solo administradores pueden incluir flete.");
+            }
         }
 
         // Procesar items regulares si existen
@@ -239,7 +326,12 @@ public class OrderServiceImpl implements OrdenService {
 
         // Procesar promociones si existen
         if (request.promotionIds() != null && !request.promotionIds().isEmpty()) {
-            processPromotions(order, request.promotionIds());
+            // En una orden simple, los items ya están en la orden
+            int totalNormalItemsCount = order.getItems().stream()
+                    .filter(i -> !Boolean.TRUE.equals(i.getIsPromotionItem()))
+                    .mapToInt(OrderItem::getCantidad)
+                    .sum();
+            processPromotions(order, request.promotionIds(), totalNormalItemsCount);
         }
 
         Order savedOrder = ordenRepository.save(order);
@@ -325,9 +417,14 @@ public class OrderServiceImpl implements OrdenService {
 
     /**
      * Procesar promociones de una orden
+     * 
+     * @param contextTotalNormalItems Cantidad total de items normales en la
+     *                                transacción (para validar surtidos globales)
      */
-    private void processPromotions(Order order, List<UUID> promotionIds) {
+    private void processPromotions(Order order, List<UUID> promotionIds, int contextTotalNormalItems) {
+        log.info("Procesando promociones. IDs recibidos del request: {}", promotionIds);
         promotionIds.forEach(promotionId -> {
+            log.info("Buscando promoción con ID: {}", promotionId);
             // Obtener y validar promoción
             Promotion promotion = promotionService.findEntityById(promotionId);
 
@@ -340,43 +437,90 @@ public class OrderServiceImpl implements OrdenService {
                 throw new BusinessExeption("La promoción '" + promotion.getNombre() + "' no está activa");
             }
 
-            // Obtener producto principal
-            Product mainProduct = promotion.getMainProduct();
+            // ==========================================
+            // Lógica Diferenciada: SURTIDA vs PREDEFINIDA
+            // ==========================================
 
-            // Crear OrderItem para los productos comprados (buyQuantity)
-            OrderItem buyItem = OrderItem.builder()
-                    .product(mainProduct)
-                    .cantidad(promotion.getBuyQuantity())
-                    .precioUnitario(mainProduct.getPrecio()) // Precio unitario del producto (informativo)
-                    .subTotal(promotion.getPackPrice() != null
-                            ? promotion.getPackPrice() // Usar packPrice directamente como subtotal
-                            : mainProduct.getPrecio().multiply(BigDecimal.valueOf(promotion.getBuyQuantity())))
-                    .promotion(promotion)
-                    .isPromotionItem(true)
-                    .isFreeItem(false)
-                    .build();
-
-            // Validar y decrementar stock para productos comprados
-            if (mainProduct.getStock() < promotion.getBuyQuantity()) {
-                log.warn("Stock insuficiente para promoción '{}'. Disponible: {}, Requerido: {}",
-                        promotion.getNombre(), mainProduct.getStock(), promotion.getBuyQuantity());
-                buyItem.setOutOfStock(true);
-            } else {
-                mainProduct.decreaseStock(promotion.getBuyQuantity());
-            }
-
-            order.addItem(buyItem);
-
-            // Manejar productos gratis/surtidos
             if (promotion.isAssortment()) {
-                // Tipo ASSORTMENT: El admin debe seleccionar los productos surtidos
-                // La orden queda pendiente de completar la promoción
-                order.setEstado(OrdenStatus.PENDING_PROMOTION_COMPLETION);
-                log.info(
-                        "Orden {} marcada como PENDING_PROMOTION_COMPLETION para selección de surtidos (Tipo ASSORTMENT)",
-                        order.getId());
-            } else if (promotion.isFixed()) {
-                // Tipo FIXED: Agregar items de regalo predefinidos
+                // =========================
+                // CASO 1: PROMOCIÓN SURTIDA (Mix & Match)
+                // =========================
+                // ITEMS COMPRADOS:
+                // No agregamos una línea "Padre". Confiamos en que los items individuales
+                // ya fueron agregados a la orden (en la lista promoItems) y suman la cantidad
+                // requerida.
+
+                // Validamos que la cantidad total cumpla el requisito
+                if (contextTotalNormalItems < promotion.getBuyQuantity()) {
+                    throw new BusinessExeption("Para aplicar la promoción '" + promotion.getNombre() +
+                            "' debe agregar al menos " + promotion.getBuyQuantity() + " productos a la orden.");
+                }
+
+                // ITEMS DE REGALO (Bonificados):
+                // Agregamos los items de regalo definidos (ej: "15 Surtidos Genericos") como
+                // placeholders
+                if (promotion.getGiftItems() != null) {
+                    for (org.example.sistema_gestion_vitalexa.entity.PromotionGiftItem gift : promotion
+                            .getGiftItems()) {
+                        Product freeProduct = gift.getProduct();
+                        Integer qty = gift.getQuantity();
+
+                        // Crear item con precio 0 explicitamente
+                        OrderItem placeholderItem = OrderItem.builder()
+                                .product(freeProduct)
+                                .cantidad(qty)
+                                .precioUnitario(BigDecimal.ZERO) // GRATIS
+                                .subTotal(BigDecimal.ZERO)
+                                .promotion(promotion)
+                                .isPromotionItem(true)
+                                .isFreeItem(true)
+                                .build();
+
+                        // Validar stock del regalo (si aplica)
+                        if (freeProduct.getStock() < qty) {
+                            log.warn("Stock insuficiente para regalo '{}'. Disponible: {}, Requerido: {}",
+                                    freeProduct.getNombre(), freeProduct.getStock(), qty);
+                            placeholderItem.setOutOfStock(true);
+                        } else {
+                            freeProduct.decreaseStock(qty);
+                        }
+
+                        order.addItem(placeholderItem);
+                    }
+                }
+
+            } else {
+                // =========================
+                // CASO 2: PROMOCIÓN PREDEFINIDA / FIJA
+                // =========================
+                Product mainProduct = promotion.getMainProduct();
+
+                if (mainProduct != null) {
+                    // Agregar el producto principal (Pack)
+                    OrderItem buyItem = OrderItem.builder()
+                            .product(mainProduct)
+                            .cantidad(promotion.getBuyQuantity())
+                            .precioUnitario(mainProduct.getPrecio())
+                            .subTotal(promotion.getPackPrice() != null
+                                    ? promotion.getPackPrice()
+                                    : mainProduct.getPrecio().multiply(BigDecimal.valueOf(promotion.getBuyQuantity())))
+                            .promotion(promotion)
+                            .isPromotionItem(true)
+                            .isFreeItem(false)
+                            .build();
+
+                    if (mainProduct.getStock() < promotion.getBuyQuantity()) {
+                        log.warn("Stock insuficiente para promoción '{}'. Disponible: {}, Requerido: {}",
+                                promotion.getNombre(), mainProduct.getStock(), promotion.getBuyQuantity());
+                        buyItem.setOutOfStock(true);
+                    } else {
+                        mainProduct.decreaseStock(promotion.getBuyQuantity());
+                    }
+
+                    order.addItem(buyItem);
+                }
+
+                // Agregar items de regalo fijos
                 if (promotion.getGiftItems() != null) {
                     for (org.example.sistema_gestion_vitalexa.entity.PromotionGiftItem gift : promotion
                             .getGiftItems()) {
@@ -393,11 +537,9 @@ public class OrderServiceImpl implements OrdenService {
                                 .isFreeItem(true)
                                 .build();
 
-                        // Validar y decrementar stock para productos gratis
                         if (freeProduct.getStock() < qty) {
-                            log.warn(
-                                    "Stock insuficiente para producto gratis de promoción '{}'. Disponible: {}, Requerido: {}",
-                                    promotion.getNombre(), freeProduct.getStock(), qty);
+                            log.warn("Stock insuficiente para regalo fijo '{}'. Disponible: {}, Requerido: {}",
+                                    freeProduct.getNombre(), freeProduct.getStock(), qty);
                             freeItem.setOutOfStock(true);
                         } else {
                             freeProduct.decreaseStock(qty);
@@ -406,11 +548,9 @@ public class OrderServiceImpl implements OrdenService {
                         order.addItem(freeItem);
                     }
                 }
-            } else {
-                log.warn("Tipo de promoción desconocido o no manejado: {}", promotion.getType());
             }
 
-            log.info("Promoción '{}' aplicada a orden", promotion.getNombre());
+            log.info("Promoción '{}' aplicada correctamente.", promotion.getNombre());
         });
     }
 
@@ -726,5 +866,33 @@ public class OrderServiceImpl implements OrdenService {
         ordenItemRepository.save(item);
 
         log.info("ETA actualizado para item {} en orden {}: {} ({})", itemId, orderId, eta, note);
+    }
+
+    @Override
+    @Transactional
+    public void annulOrder(UUID orderId, String reason) {
+        log.info("Anulando orden: {} por motivo: {}", orderId, reason);
+        Order order = ordenRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessExeption("Orden no encontrada"));
+
+        if (order.getEstado() == OrdenStatus.ANULADA) {
+            throw new BusinessExeption("La orden ya está anulada");
+        }
+
+        // Restaurar Stock
+        for (OrderItem item : order.getItems()) {
+            if (item.getProduct() != null) {
+                Product product = item.getProduct();
+                // Ignorar sistema product y ocultos
+                if (!"SURTIDO PROMOCIONAL".equals(product.getNombre()) && !product.isHidden()) {
+                    product.increaseStock(item.getCantidad());
+                    log.info("Stock restaurado para '{}': +{}", product.getNombre(), item.getCantidad());
+                }
+            }
+        }
+
+        order.setEstado(OrdenStatus.ANULADA);
+        order.setCancellationReason(reason);
+        ordenRepository.save(order);
     }
 }

@@ -34,6 +34,12 @@ public class ClientAdminController {
         return ResponseEntity.ok(clientService.getVendedores());
     }
 
+    // Get clients for a specific vendedor
+    @GetMapping("/seller/{id}")
+    public ResponseEntity<List<ClientResponse>> getClientsByVendedor(@PathVariable java.util.UUID id) {
+        return ResponseEntity.ok(clientService.findByVendedorId(id));
+    }
+
     // Create client for a specific vendedor
     @PostMapping
     public ResponseEntity<ClientResponse> createForVendedor(

@@ -12,35 +12,38 @@ import java.util.UUID;
 
 public interface ProductRepository extends JpaRepository<Product, UUID> {
 
-    // Listas (para endpoints existentes)
-    List<Product> findByActiveTrue();
+  // Listas (para endpoints existentes)
+  List<Product> findByActiveTrue();
 
-    List<Product> findByStockLessThanAndActiveTrue(int threshold);
+  List<Product> findByStockLessThanAndActiveTrue(int threshold);
 
-    // Paginación (nuevo)
-    Page<Product> findByActiveTrue(Pageable pageable);
+  // Paginación (nuevo)
+  Page<Product> findByActiveTrue(Pageable pageable);
 
-    Page<Product> findByActiveTrueAndStockGreaterThan(int stock, Pageable pageable);
+  Page<Product> findByActiveTrueAndStockGreaterThan(int stock, Pageable pageable);
 
-    @Query("""
-        SELECT p FROM Product p
-        WHERE p.active = true
-          AND (:q IS NULL OR :q = '' OR lower(p.nombre) LIKE lower(concat('%', :q, '%')))
-        """)
-    Page<Product> searchActive(@Param("q") String q, Pageable pageable);
+  @Query("""
+      SELECT p FROM Product p
+      WHERE p.active = true
+        AND (:q IS NULL OR :q = '' OR lower(p.nombre) LIKE lower(concat('%', :q, '%')))
+      """)
+  Page<Product> searchActive(@Param("q") String q, Pageable pageable);
 
-    // Tag filtering
-    @Query("""
-        SELECT p FROM Product p
-        WHERE p.active = true AND p.tag.id = :tagId
-        """)
-    Page<Product> findByTagId(@Param("tagId") UUID tagId, Pageable pageable);
+  // Tag filtering
+  @Query("""
+      SELECT p FROM Product p
+      WHERE p.active = true AND p.tag.id = :tagId
+      """)
+  Page<Product> findByTagId(@Param("tagId") UUID tagId, Pageable pageable);
 
-    @Query("""
-        SELECT p FROM Product p
-        WHERE p.active = true 
-          AND p.tag.id = :tagId
-          AND (:q IS NULL OR :q = '' OR lower(p.nombre) LIKE lower(concat('%', :q, '%')))
-        """)
-    Page<Product> searchByTagId(@Param("q") String q, @Param("tagId") UUID tagId, Pageable pageable);
+  @Query("""
+      SELECT p FROM Product p
+      WHERE p.active = true
+        AND p.tag.id = :tagId
+        AND (:q IS NULL OR :q = '' OR lower(p.nombre) LIKE lower(concat('%', :q, '%')))
+      """)
+  Page<Product> searchByTagId(@Param("q") String q, @Param("tagId") UUID tagId, Pageable pageable);
+
+  // System Product Lookup
+  java.util.Optional<Product> findByNombreAndIsHiddenTrue(String nombre);
 }

@@ -12,7 +12,7 @@ public record OrderRequestDto(
         List<OrderItemRequestDTO> items, // Ahora opcional si hay promotionIds
 
         String notas,
-
-        List<UUID> promotionIds // IDs de promociones a aplicar
-) {
+        List<UUID> promotionIds,
+        Boolean includeFreight,
+        UUID sellerId) { // ID del vendedor (Solo para Admin/Owner)
 }

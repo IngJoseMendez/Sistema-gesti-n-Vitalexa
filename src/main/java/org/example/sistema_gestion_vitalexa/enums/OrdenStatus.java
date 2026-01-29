@@ -5,5 +5,6 @@ public enum OrdenStatus {
     PENDING_PROMOTION_COMPLETION, // Esperando que admin seleccione surtidos
     CONFIRMADO,
     COMPLETADO,
-    CANCELADO
+    CANCELADO,
+    ANULADA
 }

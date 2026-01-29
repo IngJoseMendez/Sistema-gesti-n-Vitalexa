@@ -58,8 +58,7 @@ public class ProductAdminController {
                     stock,
                     reorderPoint,
                     imageUrl,
-                    tagId
-            );
+                    tagId);
 
             ProductResponse response = productService.create(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -84,7 +83,8 @@ public class ProductAdminController {
             @RequestParam(required = false) MultipartFile image,
             @RequestParam(required = false) Boolean active) {
         try {
-            log.debug("Update request id={} nombre={}", id, nombre);
+            log.debug("Update request id={} nombre={} precio={} stock={} active={}",
+                    id, nombre, precio, stock, active);
 
             BigDecimal precioVal = null;
             Integer stockVal = null;
@@ -131,8 +131,7 @@ public class ProductAdminController {
                     reorderPointVal,
                     imageUrl,
                     active,
-                    tagId
-            );
+                    tagId);
 
             ProductResponse response = productService.update(id, request);
             return ResponseEntity.ok(response);
@@ -248,7 +247,8 @@ public class ProductAdminController {
     }
 
     /**
-     * GET /api/admin/products/tag/{tagId}/search - Buscar productos por etiqueta y término
+     * GET /api/admin/products/tag/{tagId}/search - Buscar productos por etiqueta y
+     * término
      */
     @GetMapping("/tag/{tagId}/search")
     public ResponseEntity<Page<ProductResponse>> searchByTag(

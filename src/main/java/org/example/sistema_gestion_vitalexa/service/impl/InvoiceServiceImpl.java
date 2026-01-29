@@ -111,43 +111,25 @@ public class InvoiceServiceImpl implements InvoiceService {
                                 .setMarginBottom(20);
                 document.add(slogan);
 
-                // Watermark para facturas S/R
-                if (isSROrder) {
-                        Paragraph watermark = new Paragraph("SIN REGISTRO - S/N")
-                                        .setFontSize(16)
-                                        .setBold()
-                                        .setFontColor(new DeviceRgb(220, 53, 69)) // Rojo
-                                        .setTextAlignment(TextAlignment.CENTER)
-                                        .setMarginBottom(10);
-                        document.add(watermark);
-                }
+                // Watermark para facturas S/R -> REMOVIDO: Se usa estilo estándar
 
                 SolidLine lineDrawer = new SolidLine();
-                lineDrawer.setColor(isSROrder ? new DeviceRgb(220, 53, 69) : BRAND_COLOR);
-                lineDrawer.setLineWidth(isSROrder ? 3f : 2f);
+                lineDrawer.setColor(BRAND_COLOR);
+                lineDrawer.setLineWidth(2f);
                 LineSeparator separator = new LineSeparator(lineDrawer);
                 document.add(separator);
                 document.add(new Paragraph("\n"));
         }
 
         private void addOrderInfo(Document document, Order order, boolean isSROrder) {
-                // Indicador S/N si es una orden S/R
-                if (isSROrder) {
-                        Paragraph srIndicator = new Paragraph("S/N")
-                                        .setFontSize(14)
-                                        .setBold()
-                                        .setTextAlignment(TextAlignment.LEFT)
-                                        .setFontColor(new DeviceRgb(220, 53, 69)) // Rojo
-                                        .setMarginBottom(5);
-                        document.add(srIndicator);
-                }
+                // Indicador S/N -> REMOVIDO: Se usa estilo estándar
 
-                // Título con color diferente si es S/N
+                // Título con color estándar
                 Paragraph title = new Paragraph("FACTURA DE PEDIDO")
                                 .setFontSize(18)
                                 .setBold()
                                 .setTextAlignment(TextAlignment.CENTER)
-                                .setFontColor(isSROrder ? new DeviceRgb(220, 53, 69) : BRAND_COLOR)
+                                .setFontColor(BRAND_COLOR)
                                 .setMarginBottom(15);
                 document.add(title);
 
@@ -156,8 +138,8 @@ public class InvoiceServiceImpl implements InvoiceService {
                                 .useAllAvailableWidth()
                                 .setMarginBottom(10);
 
-                // Color de fondo diferente si es S/N
-                DeviceRgb backgroundColor = isSROrder ? new DeviceRgb(255, 229, 229) : (DeviceRgb) ColorConstants.WHITE;
+                // Color de fondo estándar
+                DeviceRgb backgroundColor = (DeviceRgb) ColorConstants.WHITE;
 
                 // Primera línea: N° Factura, Fecha, Estado, Vendedor
                 addInfoCell(infoTable, "N° Factura:",
@@ -218,7 +200,7 @@ public class InvoiceServiceImpl implements InvoiceService {
                 Paragraph productsTitle = new Paragraph("DETALLE DE PRODUCTOS")
                                 .setFontSize(14)
                                 .setBold()
-                                .setFontColor(isSROrder ? new DeviceRgb(220, 53, 69) : BRAND_COLOR)
+                                .setFontColor(BRAND_COLOR)
                                 .setMarginTop(10)
                                 .setMarginBottom(5);
                 document.add(productsTitle);
@@ -227,7 +209,7 @@ public class InvoiceServiceImpl implements InvoiceService {
                                 .useAllAvailableWidth();
 
                 // Header
-                DeviceRgb headerColor = isSROrder ? new DeviceRgb(220, 53, 69) : BRAND_COLOR;
+                DeviceRgb headerColor = BRAND_COLOR;
                 addTableHeaderCell(table, "Producto", headerColor);
                 addTableHeaderCell(table, "Cant.", headerColor);
                 addTableHeaderCell(table, "P. Unitario", headerColor);
@@ -334,9 +316,9 @@ public class InvoiceServiceImpl implements InvoiceService {
                                 .useAllAvailableWidth()
                                 .setMarginTop(15);
 
-                // Colores según tipo de factura
-                DeviceRgb totalColor = isSROrder ? new DeviceRgb(220, 53, 69) : BRAND_COLOR;
-                DeviceRgb lightBg = isSROrder ? new DeviceRgb(255, 229, 229) : LIGHT_GRAY;
+                // Colores estándar
+                DeviceRgb totalColor = BRAND_COLOR;
+                DeviceRgb lightBg = LIGHT_GRAY;
 
                 // Subtotal (siempre mostrar el total original)
                 com.itextpdf.layout.element.Cell subtotalLabelCell = new com.itextpdf.layout.element.Cell()
@@ -355,9 +337,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 
                 // Mostrar descuento si fue aplicado
                 BigDecimal discountPercentage = order.getDiscountPercentage();
+                BigDecimal discountAmount = BigDecimal.ZERO;
                 if (discountPercentage != null && discountPercentage.compareTo(BigDecimal.ZERO) > 0) {
                         // Calcular monto del descuento
-                        BigDecimal discountAmount = order.getTotal()
+                        discountAmount = order.getTotal()
                                         .multiply(discountPercentage)
                                         .divide(new BigDecimal("100"), 2, java.math.RoundingMode.HALF_UP);
 
@@ -378,10 +361,37 @@ public class InvoiceServiceImpl implements InvoiceService {
                         totalsTable.addCell(discountValueCell);
                 }
 
-                // Total final (usar discountedTotal si existe, sino total)
-                BigDecimal finalTotal = order.getDiscountedTotal() != null
+                // Mostrar Flete si aplica
+                BigDecimal freightAmount = BigDecimal.ZERO;
+                if (Boolean.TRUE.equals(order.getIncludeFreight())) {
+                        freightAmount = new BigDecimal("15000"); // Valor fijo del flete
+
+                        com.itextpdf.layout.element.Cell freightLabelCell = new com.itextpdf.layout.element.Cell()
+                                        .add(new Paragraph("FLETE:").setBold())
+                                        .setTextAlignment(TextAlignment.RIGHT)
+                                        .setBorder(null)
+                                        .setPadding(5);
+                        totalsTable.addCell(freightLabelCell);
+
+                        com.itextpdf.layout.element.Cell freightValueCell = new com.itextpdf.layout.element.Cell()
+                                        .add(new Paragraph(formatCurrency(freightAmount)))
+                                        .setTextAlignment(TextAlignment.RIGHT)
+                                        .setBorder(null)
+                                        .setPadding(5);
+                        totalsTable.addCell(freightValueCell);
+                }
+
+                // Total final = (Subtotal - Descuento) + Flete
+                // El order.getDiscountedTotal() ya tiene el descuento aplicado al subtotal.
+                // Si existe discountedTotal, lo usamos como base, si no, usamos
+                // order.getTotal().
+                // Luego sumamos el flete.
+
+                BigDecimal baseTotal = order.getDiscountedTotal() != null
                                 ? order.getDiscountedTotal()
                                 : order.getTotal();
+
+                BigDecimal finalTotal = baseTotal.add(freightAmount);
 
                 com.itextpdf.layout.element.Cell totalLabelCell = new com.itextpdf.layout.element.Cell()
                                 .add(new Paragraph("TOTAL:").setFontSize(14).setBold()
@@ -408,12 +418,12 @@ public class InvoiceServiceImpl implements InvoiceService {
                 Paragraph notesTitle = new Paragraph("NOTAS")
                                 .setFontSize(12)
                                 .setBold()
-                                .setFontColor(isSROrder ? new DeviceRgb(220, 53, 69) : BRAND_COLOR)
+                                .setFontColor(BRAND_COLOR)
                                 .setMarginTop(15)
                                 .setMarginBottom(5);
                 document.add(notesTitle);
 
-                DeviceRgb noteBg = isSROrder ? new DeviceRgb(255, 229, 229) : LIGHT_GRAY;
+                DeviceRgb noteBg = LIGHT_GRAY;
                 Paragraph notesContent = new Paragraph(order.getNotas())
                                 .setFontSize(10)
                                 .setItalic()
@@ -426,23 +436,26 @@ public class InvoiceServiceImpl implements InvoiceService {
                 document.add(new Paragraph("\n"));
 
                 SolidLine lineDrawer = new SolidLine();
-                lineDrawer.setColor(isSROrder ? new DeviceRgb(220, 53, 69) : ColorConstants.LIGHT_GRAY);
-                lineDrawer.setLineWidth(isSROrder ? 2f : 1f);
+                lineDrawer.setColor(ColorConstants.LIGHT_GRAY);
+                lineDrawer.setLineWidth(1f);
                 LineSeparator separator = new LineSeparator(lineDrawer);
                 document.add(separator);
 
-                Paragraph footer = new Paragraph("Gracias por su compra - VITALEXA")
-                                .setFontSize(10)
-                                .setTextAlignment(TextAlignment.CENTER)
-                                .setMarginTop(10)
-                                .setFontColor(isSROrder ? new DeviceRgb(220, 53, 69) : ColorConstants.BLACK);
-                document.add(footer);
+                // Solo mostrar agradecimiento y contacto si NO es S/R
+                if (!isSROrder) {
+                        Paragraph footer = new Paragraph("Gracias por su compra - VITALEXA")
+                                        .setFontSize(10)
+                                        .setTextAlignment(TextAlignment.CENTER)
+                                        .setMarginTop(10)
+                                        .setFontColor(ColorConstants.BLACK);
+                        document.add(footer);
 
-                Paragraph contact = new Paragraph("Contacto: info@vitalexa.com | Tel: +57 300 123 4567")
-                                .setFontSize(8)
-                                .setTextAlignment(TextAlignment.CENTER)
-                                .setFontColor(ColorConstants.GRAY);
-                document.add(contact);
+                        Paragraph contact = new Paragraph("Contacto: info@vitalexa.com | Tel: +57 300 123 4567")
+                                        .setFontSize(8)
+                                        .setTextAlignment(TextAlignment.CENTER)
+                                        .setFontColor(ColorConstants.GRAY);
+                        document.add(contact);
+                }
 
                 // MENSAJES DE CONSIGNACIÓN
                 // Detectar si es orden de promoción

@@ -6,16 +6,17 @@ import java.util.List;
 import java.util.UUID;
 
 public record OrderResponse(
-        UUID id,
-        String vendedor,
-        String cliente,
-        BigDecimal total,
-        String estado,
-        LocalDateTime fecha,
-        List<OrderItemResponse> items,
-        String notas,
-        Long invoiceNumber,
-        Boolean isSROrder
+                UUID id,
+                String vendedor,
+                String cliente,
+                BigDecimal total,
+                String estado,
+                LocalDateTime fecha,
+                List<OrderItemResponse> items,
+                String notas,
+                Long invoiceNumber,
+                Boolean isSROrder,
+                Boolean includeFreight
 
 ) {
 }

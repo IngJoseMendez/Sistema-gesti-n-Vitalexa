@@ -1,7 +1,7 @@
 -- Add missing inventory tracking columns to order_items
 ALTER TABLE order_items 
-ADD COLUMN cantidad_descontada INTEGER DEFAULT 0,
-ADD COLUMN cantidad_pendiente INTEGER DEFAULT 0;
+ADD COLUMN IF NOT EXISTS cantidad_descontada INTEGER DEFAULT 0,
+ADD COLUMN IF NOT EXISTS cantidad_pendiente INTEGER DEFAULT 0;
 
 -- Comments
 COMMENT ON COLUMN order_items.cantidad_descontada IS 'Cantidad que ya ha sido descontada del inventario';

@@ -7,8 +7,9 @@ import java.util.UUID;
 
 public record OrderItemRequestDTO(
 
-                @NotNull UUID productId,
-                @Min(1) Integer cantidad,
-                Boolean allowOutOfStock // Permite agregar sin stock (solo vendedor)
+        @NotNull UUID productId,
+        @Min(1) Integer cantidad,
+        Boolean allowOutOfStock, // Permite agregar sin stock (solo vendedor)
+        UUID relatedPromotionId // ID de la promoción a la que pertenece este item (para surtidas)
 ) {
 }

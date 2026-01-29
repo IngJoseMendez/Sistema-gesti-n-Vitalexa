@@ -210,4 +210,10 @@ public class ProductServiceImpl implements ProductService {
         return repository.searchByTagId(q, tagId, pageable).map(mapper::toResponse);
     }
 
+    @Override
+    public Product getSystemProductSurtido() {
+        return repository.findByNombreAndIsHiddenTrue("SURTIDO PROMOCIONAL")
+                .orElseThrow(() -> new BusinessExeption(
+                        "Error del sistema: Producto 'SURTIDO PROMOCIONAL' no configurado."));
+    }
 }

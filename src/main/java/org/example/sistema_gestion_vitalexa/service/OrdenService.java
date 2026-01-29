@@ -28,6 +28,9 @@ public interface OrdenService {
 
     OrderResponse updateOrder(UUID orderId, OrderRequestDto request);
 
+    // 🔹 Anular Orden (ADMIN)
+    void annulOrder(UUID orderId, String reason);
+
     List<OrderResponse> findByEstado(OrdenStatus estado);
 
     /**

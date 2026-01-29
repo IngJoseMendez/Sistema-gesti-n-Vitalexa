@@ -25,6 +25,9 @@ public interface ClientService {
     // Filter clients by vendedor (with Nina/Gisela exception)
     List<ClientResponse> findByVendedor(String username);
 
+    // Admin: Find by specific vendedor ID
+    List<ClientResponse> findByVendedorId(UUID vendedorId);
+
     // Validate if vendedor can access a specific client
     boolean canVendedorAccessClient(UUID vendedorId, UUID clientId);
 

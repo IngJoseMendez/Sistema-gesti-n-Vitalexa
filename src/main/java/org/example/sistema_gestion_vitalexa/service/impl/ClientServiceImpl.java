@@ -125,7 +125,20 @@ public class ClientServiceImpl implements ClientService {
         User vendedor = userRepository.findByUsername(username)
                 .orElseThrow(() -> new BusinessExeption("Vendedor no encontrado"));
 
+        return findClientsForVendedorUser(vendedor);
+    }
+
+    @Override
+    public List<ClientResponse> findByVendedorId(UUID vendedorId) {
+        User vendedor = userRepository.findById(vendedorId)
+                .orElseThrow(() -> new BusinessExeption("Vendedor no encontrado"));
+
+        return findClientsForVendedorUser(vendedor);
+    }
+
+    private List<ClientResponse> findClientsForVendedorUser(User vendedor) {
         List<Client> clients;
+        String username = vendedor.getUsername();
 
         // If vendedor is Nina or Gisela, return shared clients from both
         if (SHARED_USERNAMES_LOWER.contains(username.toLowerCase())) {

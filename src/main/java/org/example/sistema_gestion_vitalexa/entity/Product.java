@@ -34,6 +34,10 @@ public class Product {
 
     private boolean active = true;
 
+    @Column(name = "is_hidden")
+    @Builder.Default
+    private boolean isHidden = false;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -51,7 +55,7 @@ public class Product {
         updatedAt = LocalDateTime.now();
     }
 
-    //reducir stock metodo
+    // reducir stock metodo
     public void decreaseStock(int cantidad) {
         if (cantidad <= 0) {
             throw new IllegalArgumentException("Cantidad inválida");
@@ -62,7 +66,7 @@ public class Product {
         this.stock -= cantidad;
     }
 
-    //aumentar stock metodo
+    // aumentar stock metodo
     public void increaseStock(int cantidad) {
         if (cantidad <= 0) {
             throw new IllegalArgumentException("Cantidad inválida");
