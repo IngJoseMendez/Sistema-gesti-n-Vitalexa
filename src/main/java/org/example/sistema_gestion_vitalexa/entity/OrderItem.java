@@ -76,6 +76,17 @@ public class OrderItem {
     @Builder.Default
     private Boolean isFreeItem = false;
 
+    // ==========================================
+    // CAMPOS PARA BONIFICADOS Y FLETE
+    // ==========================================
+    @Column(name = "is_bonified")
+    @Builder.Default
+    private Boolean isBonified = false;
+
+    @Column(name = "is_freight_item")
+    @Builder.Default
+    private Boolean isFreightItem = false;
+
     @PrePersist
     @PreUpdate
     public void calcularSubTotal() {

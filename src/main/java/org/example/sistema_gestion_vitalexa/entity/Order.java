@@ -47,6 +47,17 @@ public class Order {
     @Column(name = "cancellation_reason", columnDefinition = "TEXT")
     private String cancellationReason;
 
+    @Column(name = "is_freight_bonified")
+    @Builder.Default
+    private Boolean isFreightBonified = false;
+
+    @Column(name = "freight_custom_text")
+    private String freightCustomText;
+
+    @Column(name = "freight_quantity")
+    @Builder.Default
+    private Integer freightQuantity = 1;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "vendedor_id", nullable = false)
     private User vendedor;

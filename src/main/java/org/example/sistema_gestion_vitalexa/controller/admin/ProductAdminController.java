@@ -258,4 +258,15 @@ public class ProductAdminController {
         Page<ProductResponse> productos = productService.searchByTag(q, tagId, pageable);
         return ResponseEntity.ok(productos);
     }
+
+    /**
+     * GET /api/admin/products/search - Buscar productos globalmente
+     */
+    @GetMapping("/search")
+    public ResponseEntity<Page<ProductResponse>> search(
+            @RequestParam(required = false) String q,
+            Pageable pageable) {
+        Page<ProductResponse> productos = productService.searchActive(q, pageable);
+        return ResponseEntity.ok(productos);
+    }
 }

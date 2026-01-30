@@ -103,11 +103,7 @@ public class ClientServiceImpl implements ClientService {
     public ClientResponse update(UUID id, CreateClientRequest request) {
         Client client = findEntityById(id);
 
-        // Verificar si el email ya está en uso por otro cliente
-        if (!client.getEmail().equals(request.email()) &&
-                repository.existsByEmail(request.email())) {
-            throw new BusinessExeption("El email ya está en uso por otro cliente");
-        }
+        // (Validación de email único eliminada a petición)
 
         // Actualizar campos
         client.setNombre(request.nombre());

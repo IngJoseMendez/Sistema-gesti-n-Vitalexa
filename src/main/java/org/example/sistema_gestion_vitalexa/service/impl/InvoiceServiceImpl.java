@@ -220,6 +220,11 @@ public class InvoiceServiceImpl implements InvoiceService {
                 Map<String, List<OrderItem>> itemsByPromotion = new java.util.HashMap<>();
 
                 for (OrderItem item : order.getItems()) {
+                        // Ignorar items de flete (se muestran en totales)
+                        if (Boolean.TRUE.equals(item.getIsFreightItem())) {
+                                continue;
+                        }
+
                         if (item.getPromotion() == null) {
                                 regularItems.add(item);
                         } else {
@@ -230,7 +235,11 @@ public class InvoiceServiceImpl implements InvoiceService {
 
                 // 2. Agregar items regulares primero
                 for (OrderItem item : regularItems) {
-                        addItemRow(table, item);
+                        if (Boolean.TRUE.equals(item.getIsBonified())) {
+                                addFreeItemRow(table, item);
+                        } else {
+                                addItemRow(table, item);
+                        }
                 }
 
                 // 3. Agregar bloques de promociones
@@ -364,10 +373,21 @@ public class InvoiceServiceImpl implements InvoiceService {
                 // Mostrar Flete si aplica
                 BigDecimal freightAmount = BigDecimal.ZERO;
                 if (Boolean.TRUE.equals(order.getIncludeFreight())) {
-                        freightAmount = new BigDecimal("15000"); // Valor fijo del flete
+                        boolean isBonified = Boolean.TRUE.equals(order.getIsFreightBonified());
+                        freightAmount = isBonified ? BigDecimal.ZERO : new BigDecimal("15000"); // Valor fijo del flete
+
+                        String freightLabel = "FLETE:";
+                        if (order.getFreightCustomText() != null && !order.getFreightCustomText().isBlank()) {
+                                freightLabel = order.getFreightCustomText();
+                        }
+
+                        // Añadir cantidad si es mayor a 1
+                        if (order.getFreightQuantity() != null && order.getFreightQuantity() > 1) {
+                                freightLabel += " (x" + order.getFreightQuantity() + ")";
+                        }
 
                         com.itextpdf.layout.element.Cell freightLabelCell = new com.itextpdf.layout.element.Cell()
-                                        .add(new Paragraph("FLETE:").setBold())
+                                        .add(new Paragraph(freightLabel).setBold())
                                         .setTextAlignment(TextAlignment.RIGHT)
                                         .setBorder(null)
                                         .setPadding(5);
@@ -379,6 +399,32 @@ public class InvoiceServiceImpl implements InvoiceService {
                                         .setBorder(null)
                                         .setPadding(5);
                         totalsTable.addCell(freightValueCell);
+
+                        // LISTAR FREIGHT ITEMS (Items incluidos en el flete)
+                        List<OrderItem> freightItems = order.getItems().stream()
+                                        .filter(i -> Boolean.TRUE.equals(i.getIsFreightItem()))
+                                        .collect(Collectors.toList());
+
+                        if (!freightItems.isEmpty()) {
+                                for (OrderItem fi : freightItems) {
+                                        String itemDesc = " - Incluye: " + fi.getProduct().getNombre() + " x"
+                                                        + fi.getCantidad();
+
+                                        com.itextpdf.layout.element.Cell itemLabelCell = new com.itextpdf.layout.element.Cell()
+                                                        .add(new Paragraph(itemDesc).setFontSize(8).setItalic()
+                                                                        .setFontColor(ColorConstants.GRAY))
+                                                        .setTextAlignment(TextAlignment.RIGHT)
+                                                        .setBorder(null)
+                                                        .setPadding(0)
+                                                        .setPaddingRight(5);
+                                        totalsTable.addCell(itemLabelCell);
+
+                                        com.itextpdf.layout.element.Cell itemValueCell = new com.itextpdf.layout.element.Cell()
+                                                        .add(new Paragraph(""))
+                                                        .setBorder(null);
+                                        totalsTable.addCell(itemValueCell);
+                                }
+                        }
                 }
 
                 // Total final = (Subtotal - Descuento) + Flete

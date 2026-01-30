@@ -14,5 +14,8 @@ public record OrderRequestDto(
         String notas,
         List<UUID> promotionIds,
         Boolean includeFreight,
-        UUID sellerId) { // ID del vendedor (Solo para Admin/Owner)
+        UUID sellerId, // ID del vendedor (Solo para Admin/Owner)
+        Boolean isFreightBonified,
+        String freightCustomText,
+        Integer freightQuantity) {
 }

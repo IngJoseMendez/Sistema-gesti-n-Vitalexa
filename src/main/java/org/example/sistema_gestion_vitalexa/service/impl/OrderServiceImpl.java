@@ -97,6 +97,9 @@ public class OrderServiceImpl implements OrdenService {
             if (request.items() != null) {
                 BigDecimal itemsTotal = request.items().stream()
                         .map(item -> {
+                            if (Boolean.TRUE.equals(item.isBonified()) || Boolean.TRUE.equals(item.isFreightItem())) {
+                                return BigDecimal.ZERO;
+                            }
                             Product p = productService.findEntityById(item.productId());
                             return p.getPrecio().multiply(BigDecimal.valueOf(item.cantidad()));
                         })
@@ -172,7 +175,11 @@ public class OrderServiceImpl implements OrdenService {
             // Caso múltiple: Crear órdenes separadas
             return createMultipleOrders(vendedor, client, normalItems, srItems, promoItems, promotionIds,
                     request.notas(),
-                    Boolean.TRUE.equals(request.includeFreight()), username);
+                    Boolean.TRUE.equals(request.includeFreight()),
+                    Boolean.TRUE.equals(request.isFreightBonified()),
+                    request.freightCustomText(),
+                    request.freightQuantity(),
+                    username);
         }
     }
 
@@ -188,6 +195,9 @@ public class OrderServiceImpl implements OrdenService {
             List<UUID> promotionIds,
             String notas,
             boolean includeFreight,
+            boolean isFreightBonified,
+            String freightCustomText,
+            Integer freightQuantity,
             String username) {
 
         OrderResponse response = null;
@@ -205,6 +215,18 @@ public class OrderServiceImpl implements OrdenService {
                 if (vendedor.getRole() == org.example.sistema_gestion_vitalexa.enums.Role.ADMIN ||
                         vendedor.getRole() == org.example.sistema_gestion_vitalexa.enums.Role.OWNER) {
                     standardOrder.setIncludeFreight(true);
+
+                    // Configuración de flete personalizado/bonificado
+                    if (isFreightBonified) {
+                        standardOrder.setIsFreightBonified(true);
+                    }
+                    if (freightCustomText != null) {
+                        standardOrder.setFreightCustomText(freightCustomText);
+                    }
+                    if (freightQuantity != null) {
+                        standardOrder.setFreightQuantity(freightQuantity);
+                    }
+
                     includeFreight = false; // Ya se aplicó, no aplicar en las siguientes
                 } else {
                     throw new BusinessExeption("Solo administradores pueden incluir flete.");
@@ -314,6 +336,18 @@ public class OrderServiceImpl implements OrdenService {
             if (vendedor.getRole() == org.example.sistema_gestion_vitalexa.enums.Role.ADMIN ||
                     vendedor.getRole() == org.example.sistema_gestion_vitalexa.enums.Role.OWNER) {
                 order.setIncludeFreight(true);
+
+                // Configuración de flete personalizado/bonificado
+                if (Boolean.TRUE.equals(request.isFreightBonified())) {
+                    order.setIsFreightBonified(true);
+                }
+                if (request.freightCustomText() != null) {
+                    order.setFreightCustomText(request.freightCustomText());
+                }
+                if (request.freightQuantity() != null) {
+                    order.setFreightQuantity(request.freightQuantity());
+                }
+
             } else {
                 throw new BusinessExeption("Solo administradores pueden incluir flete.");
             }
@@ -707,6 +741,18 @@ public class OrderServiceImpl implements OrdenService {
             if (!hasStock && currentStock > 0) {
                 // PARTE 1: Stock disponible
                 OrderItem inStockItem = new OrderItem(product, currentStock);
+
+                // Mapear campos nuevos
+                inStockItem.setIsBonified(Boolean.TRUE.equals(itemReq.isBonified()));
+                inStockItem.setIsFreightItem(Boolean.TRUE.equals(itemReq.isFreightItem()));
+
+                // Si es bonificado o flete, forzar precio 0
+                if (Boolean.TRUE.equals(inStockItem.getIsBonified())
+                        || Boolean.TRUE.equals(inStockItem.getIsFreightItem())) {
+                    inStockItem.setPrecioUnitario(BigDecimal.ZERO);
+                    inStockItem.setSubTotal(BigDecimal.ZERO);
+                }
+
                 inStockItem.setOutOfStock(false);
                 inStockItem.setCantidadDescontada(currentStock);
                 inStockItem.setCantidadPendiente(0);
@@ -717,6 +763,18 @@ public class OrderServiceImpl implements OrdenService {
                 // PARTE 2: Pendiente
                 int pendingQuantity = requestedQuantity - currentStock;
                 OrderItem outOfStockItem = new OrderItem(product, pendingQuantity);
+
+                // Mapear campos nuevos
+                outOfStockItem.setIsBonified(Boolean.TRUE.equals(itemReq.isBonified()));
+                outOfStockItem.setIsFreightItem(Boolean.TRUE.equals(itemReq.isFreightItem()));
+
+                // Si es bonificado o flete, forzar precio 0
+                if (Boolean.TRUE.equals(outOfStockItem.getIsBonified())
+                        || Boolean.TRUE.equals(outOfStockItem.getIsFreightItem())) {
+                    outOfStockItem.setPrecioUnitario(BigDecimal.ZERO);
+                    outOfStockItem.setSubTotal(BigDecimal.ZERO);
+                }
+
                 outOfStockItem.setOutOfStock(true);
                 outOfStockItem.setCantidadDescontada(0);
                 outOfStockItem.setCantidadPendiente(pendingQuantity);
@@ -728,6 +786,16 @@ public class OrderServiceImpl implements OrdenService {
             } else {
                 // Todo o nada
                 OrderItem item = new OrderItem(product, requestedQuantity);
+
+                // Mapear campos nuevos
+                item.setIsBonified(Boolean.TRUE.equals(itemReq.isBonified()));
+                item.setIsFreightItem(Boolean.TRUE.equals(itemReq.isFreightItem()));
+
+                // Si es bonificado o flete, forzar precio 0
+                if (Boolean.TRUE.equals(item.getIsBonified()) || Boolean.TRUE.equals(item.getIsFreightItem())) {
+                    item.setPrecioUnitario(BigDecimal.ZERO);
+                    item.setSubTotal(BigDecimal.ZERO);
+                }
 
                 if (hasStock) {
                     item.setOutOfStock(false);
@@ -746,6 +814,21 @@ public class OrderServiceImpl implements OrdenService {
 
         // Actualizar notas
         order.setNotas(request.notas());
+
+        // Actualizar flete
+        if (Boolean.TRUE.equals(request.includeFreight())) {
+            // Solo si es admin (ya validado en frontend, pero aqui tambien podriamos)
+            // Asumimos que si edita, es admin
+            order.setIncludeFreight(true);
+            order.setIsFreightBonified(Boolean.TRUE.equals(request.isFreightBonified()));
+            order.setFreightCustomText(request.freightCustomText());
+            order.setFreightQuantity(request.freightQuantity() != null ? request.freightQuantity() : 1);
+        } else {
+            order.setIncludeFreight(false);
+            order.setIsFreightBonified(false);
+            order.setFreightCustomText(null);
+            order.setFreightQuantity(1);
+        }
 
         // Actualizar cliente
         if (request.clientId() != null) {

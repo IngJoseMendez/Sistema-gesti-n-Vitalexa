@@ -14,6 +14,9 @@ public interface OrderMapper {
     @Mapping(source = "cliente.nombre", target = "cliente")
     @Mapping(source = "estado", target = "estado")
     @Mapping(target = "isSROrder", expression = "java(order.getNotas() != null && order.getNotas().contains(\"[S/R]\"))")
+    @Mapping(source = "isFreightBonified", target = "isFreightBonified")
+    @Mapping(source = "freightCustomText", target = "freightCustomText")
+    @Mapping(source = "freightQuantity", target = "freightQuantity")
     OrderResponse toResponse(Order order);
 
     List<OrderResponse> toResponseList(List<Order> orders);
