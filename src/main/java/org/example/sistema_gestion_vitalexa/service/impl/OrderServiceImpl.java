@@ -473,6 +473,13 @@ public class OrderServiceImpl implements OrdenService {
      */
     private void processOrderItems(Order order, List<OrderItemRequestDTO> items) {
         items.forEach(itemReq -> {
+            // ✅ IMPORTANTE: NO procesar items de flete
+            if (Boolean.TRUE.equals(itemReq.isFreightItem())) {
+                log.debug("Item de flete ignorado en processOrderItems (no se agrega como producto): {} x{}",
+                    itemReq.productId(), itemReq.cantidad());
+                return;
+            }
+
             Product product = productService.findEntityById(itemReq.productId());
 
             boolean allowOutOfStock = Boolean.TRUE.equals(itemReq.allowOutOfStock());
