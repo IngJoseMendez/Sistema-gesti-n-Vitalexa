@@ -34,6 +34,9 @@ public interface ClientService {
     // Admin/Owner: Create client for a specific vendedor
     ClientResponse createForVendedor(AdminCreateClientRequest request, String adminUsername);
 
+    // Admin/Owner: Update client (including assigning to new vendedor)
+    ClientResponse updateForAdmin(UUID id, AdminCreateClientRequest request);
+
     // Get list of vendedores for dropdown
     List<VendedorSimpleDTO> getVendedores();
 }

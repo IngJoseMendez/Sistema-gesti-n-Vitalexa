@@ -48,4 +48,11 @@ public class ClientAdminController {
         ClientResponse response = clientService.createForVendedor(request, auth.getName());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<ClientResponse> updateClient(
+            @PathVariable java.util.UUID id,
+            @RequestBody AdminCreateClientRequest request) {
+        return ResponseEntity.ok(clientService.updateForAdmin(id, request));
+    }
 }

@@ -251,10 +251,16 @@ public class InvoiceServiceImpl implements InvoiceService {
                                 // misma promoción)
                                 var promo = promoItems.get(0).getPromotion();
 
+                                // Construir encabezado con nombre y precio de la promoción
+                                String promoHeaderText = "PROMOCIÓN: " + promo.getNombre();
+                                if (promo.getPackPrice() != null) {
+                                        promoHeaderText += " - Precio: $" + promo.getPackPrice().toPlainString();
+                                }
+
                                 // Separador de promoción
                                 com.itextpdf.layout.element.Cell promoHeader = new com.itextpdf.layout.element.Cell(1,
                                                 4)
-                                                .add(new Paragraph("PROMOCIÓN: " + promo.getNombre())
+                                                .add(new Paragraph(promoHeaderText)
                                                                 .setBold()
                                                                 .setFontColor(ColorConstants.WHITE)
                                                                 .setBackgroundColor(new DeviceRgb(100, 149, 237)) // Cornflower

@@ -235,4 +235,38 @@ public class ClientServiceImpl implements ClientService {
                 .map(u -> new VendedorSimpleDTO(u.getId(), u.getUsername()))
                 .toList();
     }
+
+    @Override
+    public ClientResponse updateForAdmin(UUID id, AdminCreateClientRequest request) {
+        Client client = findEntityById(id);
+
+        // Validate vendor
+        User vendedor = userRepository.findById(request.vendedorId())
+                .orElseThrow(() -> new BusinessExeption("Vendedor no encontrado"));
+
+        if (vendedor.getRole() != Role.VENDEDOR) {
+            throw new BusinessExeption("El usuario seleccionado no es un vendedor");
+        }
+
+        // Update fields
+        client.setNombre(request.nombre());
+        client.setEmail(request.email());
+        client.setTelefono(request.telefono());
+        client.setDireccion(request.direccion());
+        client.setNit(request.nit());
+        client.setAdministrador(request.administrador());
+        client.setRepresentanteLegal(request.representanteLegal());
+        client.setVendedorAsignado(vendedor);
+
+        // NOTE: We do NOT update the linked User credentials (username/password)
+        // automatically on update
+        // as that might disrupt access if they change the NIT.
+        // If that is desired, we would need to update
+        // client.getUser().setUsername(request.nit())
+        // and encode a new password. For now, we keep it as is or handle it in a
+        // separate process.
+
+        Client updatedClient = repository.save(client);
+        return clientMapper.toResponse(updatedClient);
+    }
 }

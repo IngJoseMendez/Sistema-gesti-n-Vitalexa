@@ -8,9 +8,8 @@ import java.util.UUID;
 
 public record OrderRequestDto(
         @NotNull UUID clientId,
-
-        List<OrderItemRequestDTO> items, // Ahora opcional si hay promotionIds
-
+        List<OrderItemRequestDTO> items, // Productos normales (opcional si hay promotionIds)
+        List<BonifiedItemRequestDTO> bonifiedItems, // Productos bonificados (sección separada)
         String notas,
         List<UUID> promotionIds,
         Boolean includeFreight,
