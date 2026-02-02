@@ -105,6 +105,12 @@ public class ReportExportServiceImpl implements ReportExportService {
     // =============================================
     @Override
     public byte[] exportReportToExcel(ReportDTO report, LocalDate startDate, LocalDate endDate) {
+        return exportReportToExcel(report, startDate, endDate, null);
+    }
+
+    @Override
+    public byte[] exportReportToExcel(ReportDTO report, LocalDate startDate, LocalDate endDate,
+            java.util.UUID vendorId) {
         try (Workbook workbook = new XSSFWorkbook();
                 ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
 
@@ -122,17 +128,57 @@ public class ReportExportServiceImpl implements ReportExportService {
             // HOJA 3: PRODUCTOS TOP
             createTopProductsSheet(workbook, report.productReport(), headerStyle, dataStyle, currencyStyle);
 
-            // HOJA 4: VENDEDORES
+            // HOJA 4: VENDEDORES (Si es filtrado, mostrará solo el vendedor o todos según
+            // lo que venga en el DTO)
             createVendorsSheet(workbook, report.vendorReport(), headerStyle, dataStyle, currencyStyle);
 
             // HOJA 5: CLIENTES TOP
             createTopClientsSheet(workbook, report.clientReport(), headerStyle, dataStyle, currencyStyle);
 
-            List<VendorDailySalesDTO> vendorSalesReports = reportService.getVendorDailySalesReport(startDate, endDate);
+            // HOJA 6: VENTAS DIARIAS DESGLOSADAS
+            List<VendorDailySalesDTO> vendorSalesReports;
+            if (vendorId != null) {
+                // Si filtramos por vendedor, obtenemos SOLO el reporte diario de ese vendedor
+                VendorDailySalesDTO vendorDaily = reportService.getVendorDailySalesReport(startDate, endDate).stream()
+                        .filter(v -> v.vendedorId().equals(vendorId.toString()))
+                        .findFirst()
+                        .orElseThrow(() -> new org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption(
+                                "No se encontraron ventas para este vendedor"));
+                vendorSalesReports = List.of(vendorDaily);
+            } else {
+                vendorSalesReports = reportService.getVendorDailySalesReport(startDate, endDate);
+            }
             createVendorDailySalesSheets(workbook, vendorSalesReports, headerStyle, dataStyle, currencyStyle);
 
-            // HOJA: SALDO POR CLIENTE
-            createClientBalanceSheet(workbook, headerStyle, dataStyle, currencyStyle);
+            // HOJA 7: SALDO POR CLIENTE (GENERAL Y POR VENDEDOR)
+            List<ClientBalanceDTO> clientBalances;
+            if (vendorId != null) {
+                clientBalances = clientBalanceService.getClientBalancesByVendedor(vendorId);
+                // Si es reporte de un vendedor específico, solo una hoja
+                createClientBalanceSheetInternal(workbook, "Saldo " + getVendorNameSafe(workbook, clientBalances),
+                        clientBalances, headerStyle, dataStyle, currencyStyle);
+            } else {
+                clientBalances = clientBalanceService.getAllClientBalances();
+                // 1. Hoja General
+                createClientBalanceSheetInternal(workbook, "Saldo General", clientBalances, headerStyle, dataStyle,
+                        currencyStyle);
+
+                // 2. Hojas por Vendedor
+                // Agrupar por vendedor
+                java.util.Map<String, java.util.List<ClientBalanceDTO>> balancesByVendor = clientBalances.stream()
+                        .collect(java.util.stream.Collectors.groupingBy(
+                                b -> b.vendedorAsignadoName() != null ? b.vendedorAsignadoName() : "Sin Asignar"));
+
+                for (java.util.Map.Entry<String, java.util.List<ClientBalanceDTO>> entry : balancesByVendor
+                        .entrySet()) {
+                    String vendorName = entry.getKey();
+                    if (entry.getValue() != null && !entry.getValue().isEmpty()) {
+                        String sheetName = "Saldo " + vendorName;
+                        createClientBalanceSheetInternal(workbook, sheetName, entry.getValue(), headerStyle, dataStyle,
+                                currencyStyle);
+                    }
+                }
+            }
 
             workbook.write(baos);
             return baos.toByteArray();
@@ -729,7 +775,7 @@ public class ReportExportServiceImpl implements ReportExportService {
 
         CellStyle partialStyle = workbook.createCellStyle();
         partialStyle.cloneStyleFrom(currencyStyle);
-        partialStyle.setFillForegroundColor(org.apache.poi.ss.usermodel.IndexedColors.GREY_25_PERCENT.getIndex());
+        partialStyle.setFillForegroundColor(org.apache.poi.ss.usermodel.IndexedColors.YELLOW.getIndex());
         partialStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
 
         CellStyle paidDataStyle = workbook.createCellStyle();
@@ -739,7 +785,7 @@ public class ReportExportServiceImpl implements ReportExportService {
 
         CellStyle partialDataStyle = workbook.createCellStyle();
         partialDataStyle.cloneStyleFrom(dataStyle);
-        partialDataStyle.setFillForegroundColor(org.apache.poi.ss.usermodel.IndexedColors.GREY_25_PERCENT.getIndex());
+        partialDataStyle.setFillForegroundColor(org.apache.poi.ss.usermodel.IndexedColors.YELLOW.getIndex());
         partialDataStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
 
         for (VendorDailySalesDTO vendor : vendorSalesReports) {
@@ -849,16 +895,16 @@ public class ReportExportServiceImpl implements ReportExportService {
                         Cell subtotalCell = row.createCell(colNum++);
                         if (facturaIndex == clientGroup.facturas().size() - 1) {
                             subtotalCell.setCellValue(clientGroup.subtotalCliente().doubleValue());
-                            subtotalCell.setCellStyle(rowCurrencyStyle);
                         }
+                        subtotalCell.setCellStyle(rowCurrencyStyle);
 
                         // Total del día (solo en la ÚLTIMA factura del ÚLTIMO cliente del día)
                         Cell totalDiaCell = row.createCell(colNum++);
                         if (clientIndex == dailyGroup.clientGroups().size() - 1
                                 && facturaIndex == clientGroup.facturas().size() - 1) {
                             totalDiaCell.setCellValue(dailyGroup.totalDia().doubleValue());
-                            totalDiaCell.setCellStyle(rowCurrencyStyle);
                         }
+                        totalDiaCell.setCellStyle(rowCurrencyStyle);
 
                         facturaIndex++;
                     }
@@ -887,15 +933,25 @@ public class ReportExportServiceImpl implements ReportExportService {
     // =============================================
     // HOJA DE SALDO POR CLIENTE
     // =============================================
-    private void createClientBalanceSheet(Workbook workbook, CellStyle headerStyle,
+    private String getVendorNameSafe(Workbook workbook, List<ClientBalanceDTO> balances) {
+        if (balances.isEmpty())
+            return "Vendedor";
+        String vName = balances.get(0).vendedorAsignadoName();
+        return vName != null ? vName : "Sin Asignar";
+    }
+
+    private void createClientBalanceSheetInternal(Workbook workbook, String sheetName, List<ClientBalanceDTO> balances,
+            CellStyle headerStyle,
             CellStyle dataStyle, CellStyle currencyStyle) {
-        Sheet sheet = workbook.createSheet("Saldo por Cliente");
+        // Sanitizar nombre de hoja
+        String safeName = org.apache.poi.ss.util.WorkbookUtil.createSafeSheetName(sheetName);
+        Sheet sheet = workbook.createSheet(safeName);
         int rowNum = 0;
 
         // Título
         Row titleRow = sheet.createRow(rowNum++);
         Cell titleCell = titleRow.createCell(0);
-        titleCell.setCellValue("SALDO POR CLIENTE");
+        titleCell.setCellValue(sheetName.toUpperCase());
         titleCell.setCellStyle(headerStyle);
         rowNum++;
 
@@ -911,19 +967,21 @@ public class ReportExportServiceImpl implements ReportExportService {
             cell.setCellStyle(headerStyle);
         }
 
-        // Obtener todos los saldos de clientes
-        List<ClientBalanceDTO> balances = clientBalanceService.getAllClientBalances();
-
         // Estilos para saldos
-        CellStyle positiveBalanceStyle = workbook.createCellStyle();
-        positiveBalanceStyle.cloneStyleFrom(currencyStyle);
-        positiveBalanceStyle.setFillForegroundColor(IndexedColors.LIGHT_GREEN.getIndex());
-        positiveBalanceStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        CellStyle paidStyle = workbook.createCellStyle();
+        paidStyle.cloneStyleFrom(currencyStyle);
+        paidStyle.setFillForegroundColor(IndexedColors.LIGHT_GREEN.getIndex());
+        paidStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
 
-        CellStyle negativeBalanceStyle = workbook.createCellStyle();
-        negativeBalanceStyle.cloneStyleFrom(currencyStyle);
-        negativeBalanceStyle.setFillForegroundColor(IndexedColors.CORAL.getIndex());
-        negativeBalanceStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        CellStyle partialStyle = workbook.createCellStyle();
+        partialStyle.cloneStyleFrom(currencyStyle);
+        partialStyle.setFillForegroundColor(IndexedColors.YELLOW.getIndex());
+        partialStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        CellStyle partialDataStyle = workbook.createCellStyle();
+        partialDataStyle.cloneStyleFrom(dataStyle);
+        partialDataStyle.setFillForegroundColor(IndexedColors.YELLOW.getIndex());
+        partialDataStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
 
         BigDecimal totalPending = BigDecimal.ZERO;
 
@@ -931,21 +989,39 @@ public class ReportExportServiceImpl implements ReportExportService {
             Row row = sheet.createRow(rowNum++);
             int colNum = 0;
 
+            // Determinar si aplica color condicional (Pagado > 0 y Pendiente > 0) ->
+            // Partial (Yellow)
+            // Si Pendiente <= 0 -> Green (Pagado) - aunque esto ya se manejaba
+            boolean isPartial = balance.totalPaid().compareTo(BigDecimal.ZERO) > 0
+                    && balance.pendingBalance().compareTo(BigDecimal.ZERO) > 0;
+            boolean isPaid = balance.pendingBalance().compareTo(BigDecimal.ZERO) <= 0;
+
+            CellStyle rowDataStyle = dataStyle;
+            CellStyle rowCurrencyStyle = currencyStyle;
+
+            if (isPaid) {
+                // rowDataStyle = paidDataStyle; // Si quisieramos pintar toda la fila
+                rowCurrencyStyle = paidStyle;
+            } else if (isPartial) {
+                rowDataStyle = partialDataStyle;
+                rowCurrencyStyle = partialStyle;
+            }
+
             // Cliente
             Cell clientCell = row.createCell(colNum++);
             clientCell.setCellValue(balance.clientName());
-            clientCell.setCellStyle(dataStyle);
+            clientCell.setCellStyle(rowDataStyle); // Pintamos cliente si es parcial
 
             // Vendedora
             Cell vendorCell = row.createCell(colNum++);
             vendorCell.setCellValue(balance.vendedorAsignadoName() != null ? balance.vendedorAsignadoName() : "-");
-            vendorCell.setCellStyle(dataStyle);
+            vendorCell.setCellStyle(rowDataStyle);
 
             // Tope Crédito
             Cell creditLimitCell = row.createCell(colNum++);
             if (balance.creditLimit() != null && balance.creditLimit().compareTo(BigDecimal.ZERO) > 0) {
                 creditLimitCell.setCellValue(balance.creditLimit().doubleValue());
-                creditLimitCell.setCellStyle(currencyStyle);
+                creditLimitCell.setCellStyle(currencyStyle); // No pintamos este
             } else {
                 creditLimitCell.setCellValue("Sin límite");
                 creditLimitCell.setCellStyle(dataStyle);
@@ -969,19 +1045,14 @@ public class ReportExportServiceImpl implements ReportExportService {
             // Saldo Pendiente (con color según valor)
             Cell pendingCell = row.createCell(colNum++);
             pendingCell.setCellValue(balance.pendingBalance().doubleValue());
-            if (balance.pendingBalance().compareTo(BigDecimal.ZERO) <= 0) {
-                pendingCell.setCellStyle(positiveBalanceStyle);
-            } else if (balance.pendingBalance().compareTo(new BigDecimal("1000")) > 0) {
-                pendingCell.setCellStyle(negativeBalanceStyle);
-            } else {
-                pendingCell.setCellStyle(currencyStyle);
-            }
+            pendingCell.setCellStyle(rowCurrencyStyle); // Color fuerte aquí
+
             totalPending = totalPending.add(balance.pendingBalance());
 
             // # Órdenes Pendientes
             Cell ordersCountCell = row.createCell(colNum++);
             ordersCountCell.setCellValue(balance.pendingOrdersCount());
-            ordersCountCell.setCellStyle(dataStyle);
+            ordersCountCell.setCellStyle(rowDataStyle);
         }
 
         // Fila de totales

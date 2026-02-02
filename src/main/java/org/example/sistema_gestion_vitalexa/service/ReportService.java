@@ -6,9 +6,22 @@ import java.util.List;
 
 public interface ReportService {
     ReportDTO getCompleteReport(LocalDate startDate, LocalDate endDate);
+
+    ReportDTO getCompleteReport(LocalDate startDate, LocalDate endDate, java.util.UUID vendorId);
+
     SalesReportDTO getSalesReport(LocalDate startDate, LocalDate endDate);
+
+    SalesReportDTO getSalesReport(LocalDate startDate, LocalDate endDate, java.util.UUID vendorId);
+
     ProductReportDTO getProductReport();
+
+    ProductReportDTO getProductReport(java.util.UUID vendorId);
+
     VendorReportDTO getVendorReport(LocalDate startDate, LocalDate endDate);
+
     ClientReportDTO getClientReport();
+
+    ClientReportDTO getClientReport(java.util.UUID vendorId);
+
     List<VendorDailySalesDTO> getVendorDailySalesReport(LocalDate startDate, LocalDate endDate);
 }

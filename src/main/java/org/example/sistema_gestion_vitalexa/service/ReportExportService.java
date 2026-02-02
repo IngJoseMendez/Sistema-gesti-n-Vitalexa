@@ -15,6 +15,8 @@ public interface ReportExportService {
 
     byte[] exportReportToExcel(ReportDTO report, LocalDate startDate, LocalDate endDate);
 
+    byte[] exportReportToExcel(ReportDTO report, LocalDate startDate, LocalDate endDate, java.util.UUID vendorId);
+
     byte[] exportReportToCsv(ReportDTO report, LocalDate startDate, LocalDate endDate);
 
     // Exportaciones específicas
@@ -25,7 +27,7 @@ public interface ReportExportService {
     byte[] exportClientReportToCsv();
 
     void createVendorDailySalesSheets(Workbook workbook, List<VendorDailySalesDTO> vendorSalesReports,
-                                      CellStyle headerStyle, CellStyle dataStyle, CellStyle currencyStyle);
+            CellStyle headerStyle, CellStyle dataStyle, CellStyle currencyStyle);
 
     // Exportaciones por vendedor específico
     byte[] exportVendorReportExcel(VendorDailySalesDTO vendorReport);

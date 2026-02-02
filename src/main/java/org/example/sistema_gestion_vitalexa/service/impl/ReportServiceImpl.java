@@ -43,12 +43,36 @@ public class ReportServiceImpl implements ReportService {
         }
 
         @Override
+        public ReportDTO getCompleteReport(LocalDate startDate, LocalDate endDate, UUID vendorId) {
+                return new ReportDTO(
+                                getSalesReport(startDate, endDate, vendorId),
+                                getProductReport(vendorId),
+                                getVendorReport(startDate, endDate), // El reporte de vendedores sigue mostrando ranking
+                                                                     // general o filtramos? Por ahora general para
+                                                                     // contexto
+                                getClientReport(vendorId));
+        }
+
+        @Override
         public SalesReportDTO getSalesReport(LocalDate startDate, LocalDate endDate) {
                 LocalDateTime start = startDate.atStartOfDay();
                 LocalDateTime end = endDate.atTime(23, 59, 59);
-
                 List<Order> orders = ordenRepository.findByFechaBetween(start, end);
+                return buildSalesReport(orders);
+        }
 
+        @Override
+        public SalesReportDTO getSalesReport(LocalDate startDate, LocalDate endDate, UUID vendorId) {
+                LocalDateTime start = startDate.atStartOfDay();
+                LocalDateTime end = endDate.atTime(23, 59, 59);
+                List<Order> orders = ordenRepository.findByFechaBetween(start, end)
+                                .stream()
+                                .filter(o -> o.getVendedor() != null && o.getVendedor().getId().equals(vendorId))
+                                .toList();
+                return buildSalesReport(orders);
+        }
+
+        private SalesReportDTO buildSalesReport(List<Order> orders) {
                 // Calcular métricas básicas
                 BigDecimal totalRevenue = orders.stream()
                                 .filter(o -> o.getEstado() == OrdenStatus.COMPLETADO)
@@ -92,8 +116,30 @@ public class ReportServiceImpl implements ReportService {
 
         @Override
         public ProductReportDTO getProductReport() {
+                // Producto general: todos los productos
                 List<Product> products = productRepository.findAll();
+                List<Order> completedOrders = ordenRepository.findByEstado(OrdenStatus.COMPLETADO);
+                return buildProductReport(products, completedOrders);
+        }
 
+        @Override
+        public ProductReportDTO getProductReport(UUID vendorId) {
+                // Producto filtrado: métricas de inventario (globales) pero Top Productos
+                // (filtrado por vendedor)
+                // OJO: Decisión de diseño: ¿El vendedor ve todo el inventario o solo lo suyo?
+                // Generalmente ve todo el inventario disponible.
+                // Pero el "Top Selling" debería ser SU top selling.
+
+                List<Product> products = productRepository.findAll();
+                List<Order> vendorOrders = ordenRepository.findByEstado(OrdenStatus.COMPLETADO)
+                                .stream()
+                                .filter(o -> o.getVendedor() != null && o.getVendedor().getId().equals(vendorId))
+                                .toList();
+
+                return buildProductReport(products, vendorOrders);
+        }
+
+        private ProductReportDTO buildProductReport(List<Product> products, List<Order> ordersForStats) {
                 int totalProducts = products.size();
                 int activeProducts = (int) products.stream().filter(Product::isActive).count();
                 int inactiveProducts = totalProducts - activeProducts;
@@ -107,8 +153,8 @@ public class ReportServiceImpl implements ReportService {
                                 .map(p -> p.getPrecio().multiply(BigDecimal.valueOf(p.getStock())))
                                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-                // Top productos más vendidos
-                List<TopProductDTO> topProducts = calculateTopSellingProducts();
+                // Top productos más vendidos (Basado en las órdenes pasadas)
+                List<TopProductDTO> topProducts = calculateTopSellingProducts(ordersForStats);
 
                 // Productos con stock bajo
                 List<LowStockProductDTO> lowStockDetails = products.stream()
@@ -176,25 +222,77 @@ public class ReportServiceImpl implements ReportService {
         @Override
         public ClientReportDTO getClientReport() {
                 List<Client> clients = clientRepository.findAll();
+                // Calcular top basado en transacciones globales (o totales históricos del
+                // cliente)
+                // Para simplificar y consistencia, usamos findAll y lógica en memoria, o
+                // queries personalizadas.
+                // Aquí usamos la lógica existente.
+                return buildClientReport(clients);
+        }
 
+        @Override
+        public ClientReportDTO getClientReport(UUID vendorId) {
+                // Clientes asignados a este vendedor O que le han comprado a este vendedor
+                // Opción A: Solo sus clientes asignados (mejor para CRM)
+                // Opción B: Clientes que le han comprado (mejor para reporte de ventas)
+                // Dado el contexto "Sistema gestión", "Reports", asumiremos clientes asignados
+                // o filtro por ventas.
+                // Usemos clientes que tienen ventas con este vendedor en el periodo? No,
+                // ClientReport suele ser general.
+                // Filtremos clientes por las VENDEDORAS asignadas si existe esa relación,
+                // PERO, en este sistema parece que la relación es vía Orden.
+                // Vamos a filtar los clientes que han comprado a este vendedor.
+
+                List<Client> allClients = clientRepository.findAll();
+                List<Order> vendorOrders = ordenRepository.findAll().stream() // OJO: Performance heavy, pero necesario
+                                                                              // sin query custom
+                                .filter(o -> o.getVendedor() != null && o.getVendedor().getId().equals(vendorId))
+                                .toList();
+
+                Set<UUID> vendorClientIds = vendorOrders.stream()
+                                .map(o -> o.getCliente().getId())
+                                .collect(Collectors.toSet());
+
+                List<Client> vendorClients = allClients.stream()
+                                .filter(c -> vendorClientIds.contains(c.getId()))
+                                .toList();
+
+                return buildClientReport(vendorClients, vendorOrders);
+        }
+
+        private ClientReportDTO buildClientReport(List<Client> clients) {
+                return buildClientReport(clients, ordenRepository.findAll());
+        }
+
+        private ClientReportDTO buildClientReport(List<Client> clients, List<Order> contextOrders) {
                 int totalClients = clients.size();
                 int activeClients = (int) clients.stream().filter(Client::isActive).count();
 
+                // Optimización: Map de conteos y totales pre-calculado del contexto
+                Map<UUID, Long> orderCounts = contextOrders.stream()
+                                .collect(Collectors.groupingBy(o -> o.getCliente().getId(), Collectors.counting()));
+
+                Map<UUID, BigDecimal> orderTotals = contextOrders.stream()
+                                .collect(Collectors.groupingBy(
+                                                o -> o.getCliente().getId(),
+                                                Collectors.mapping(Order::getTotal, Collectors.reducing(BigDecimal.ZERO,
+                                                                BigDecimal::add))));
+
                 // Top clientes
                 List<TopClientDTO> topClients = clients.stream()
-                                .filter(c -> c.getTotalCompras() != null
-                                                && c.getTotalCompras().compareTo(BigDecimal.ZERO) > 0)
-                                .sorted(Comparator.comparing(Client::getTotalCompras).reversed())
+                                .filter(c -> orderTotals.getOrDefault(c.getId(), BigDecimal.ZERO)
+                                                .compareTo(BigDecimal.ZERO) > 0)
+                                .sorted(Comparator.comparing(
+                                                (Client c) -> orderTotals.getOrDefault(c.getId(), BigDecimal.ZERO))
+                                                .reversed())
                                 .limit(10)
                                 .map(c -> {
-                                        // Contar órdenes del cliente
-                                        long orderCount = ordenRepository.findByCliente(c).size();
                                         return new TopClientDTO(
                                                         c.getId().toString(),
                                                         c.getNombre(),
                                                         c.getTelefono(),
-                                                        c.getTotalCompras(),
-                                                        (int) orderCount);
+                                                        orderTotals.getOrDefault(c.getId(), BigDecimal.ZERO),
+                                                        orderCounts.getOrDefault(c.getId(), 0L).intValue());
                                 })
                                 .toList();
 
@@ -252,12 +350,19 @@ public class ReportServiceImpl implements ReportService {
                                 .toList();
         }
 
-        private List<TopProductDTO> calculateTopSellingProducts() {
-                List<Order> completedOrders = ordenRepository.findByEstado(OrdenStatus.COMPLETADO);
+        private List<TopProductDTO> calculateTopSellingProducts(List<Order> orders) {
+                // Usamos las órdenes pasadas como contexto (pueden ser todas o filtradas)
+                // Filtrar solo completadas si no vienen ya filtradas?
+                // Asumimos que el caller pasa órdenes relevantes (idealmente completadas).
+                // Pero `ordersForStats` en `buildProductReport` viene de `completedOrders`.
+                // Sin embargo, aseguramos que sean completadas por si acaso, o confiamos en el
+                // caller.
+                // En `buildProductReport` lines 121 y 134 filtramos por COMPUTADO.
+                // Así que iteramos directo.
 
                 Map<String, ProductSalesData> productSales = new HashMap<>();
 
-                completedOrders.forEach(order -> order.getItems().forEach(item -> {
+                orders.forEach(order -> order.getItems().forEach(item -> {
                         String productId = item.getProduct().getId().toString();
                         productSales.computeIfAbsent(productId, k -> new ProductSalesData(
                                         productId,
