@@ -156,4 +156,72 @@ public class ReportExportController {
 
         return new ResponseEntity<>(csvBytes, headers, HttpStatus.OK);
     }
+
+    // =============================================
+    // DESCARGAR REPORTE POR VENDEDOR ESPECÍFICO
+    // =============================================
+
+    /**
+     * Descargar Excel con ventas de un vendedor específico (solo su hoja)
+     * GET /api/reports/export/vendor/{vendedorId}/excel
+     */
+    @GetMapping("/vendor/{vendedorId}/excel")
+    public ResponseEntity<byte[]> exportVendorReportExcel(
+            @PathVariable java.util.UUID vendedorId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        startDate = defaultStart(startDate);
+        endDate = defaultEnd(endDate);
+
+        java.util.List<org.example.sistema_gestion_vitalexa.dto.VendorDailySalesDTO> allVendorReports =
+                reportService.getVendorDailySalesReport(startDate, endDate);
+
+        // Filtrar solo el vendedor solicitado
+        org.example.sistema_gestion_vitalexa.dto.VendorDailySalesDTO vendorReport = allVendorReports.stream()
+                .filter(v -> v.vendedorId().equals(vendedorId.toString()))
+                .findFirst()
+                .orElseThrow(() -> new org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption(
+                        "No hay ventas para este vendedor en el período especificado"));
+
+        byte[] excelBytes = exportService.exportVendorReportExcel(vendorReport);
+
+        HttpHeaders headers = baseDownloadHeaders(
+                "reporte_ventas_" + vendorReport.vendedorName() + "_" + LocalDate.now() + ".xlsx",
+                XLSX_MEDIA_TYPE
+        );
+        return new ResponseEntity<>(excelBytes, headers, HttpStatus.OK);
+    }
+
+    /**
+     * Descargar PDF con ventas de un vendedor específico
+     * GET /api/reports/export/vendor/{vendedorId}/pdf
+     */
+    @GetMapping("/vendor/{vendedorId}/pdf")
+    public ResponseEntity<byte[]> exportVendorReportPdf(
+            @PathVariable java.util.UUID vendedorId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        startDate = defaultStart(startDate);
+        endDate = defaultEnd(endDate);
+
+        java.util.List<org.example.sistema_gestion_vitalexa.dto.VendorDailySalesDTO> allVendorReports =
+                reportService.getVendorDailySalesReport(startDate, endDate);
+
+        // Filtrar solo el vendedor solicitado
+        org.example.sistema_gestion_vitalexa.dto.VendorDailySalesDTO vendorReport = allVendorReports.stream()
+                .filter(v -> v.vendedorId().equals(vendedorId.toString()))
+                .findFirst()
+                .orElseThrow(() -> new org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption(
+                        "No hay ventas para este vendedor en el período especificado"));
+
+        byte[] pdfBytes = exportService.exportVendorReportPdf(vendorReport);
+
+        HttpHeaders headers = baseDownloadHeaders(
+                "reporte_ventas_" + vendorReport.vendedorName() + "_" + LocalDate.now() + ".pdf",
+                MediaType.APPLICATION_PDF
+        );
+        return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
+    }
 }

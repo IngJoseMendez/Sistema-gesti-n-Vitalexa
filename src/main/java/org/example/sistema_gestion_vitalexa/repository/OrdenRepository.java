@@ -24,6 +24,8 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
 
     List<Order> findByCliente(Client client);
 
+    Optional<Order> findByInvoiceNumber(Long invoiceNumber);
+
     @Query(value = "SELECT nextval('invoice_number_seq')", nativeQuery = true)
     Long nextInvoiceNumber();
 

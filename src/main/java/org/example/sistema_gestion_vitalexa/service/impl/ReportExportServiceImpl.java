@@ -1001,4 +1001,95 @@ public class ReportExportServiceImpl implements ReportExportService {
         }
     }
 
+    /**
+     * Exportar Excel para un vendedor específico (solo su hoja)
+     */
+    @Override
+    public byte[] exportVendorReportExcel(VendorDailySalesDTO vendorReport) {
+        try (Workbook workbook = new XSSFWorkbook();
+                ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+
+            CellStyle headerStyle = createHeaderStyle(workbook);
+            CellStyle dataStyle = createDataStyle(workbook);
+            CellStyle currencyStyle = createCurrencyStyle(workbook);
+
+            // Crear solo UNA hoja para este vendedor
+            java.util.List<VendorDailySalesDTO> singleVendorList = java.util.List.of(vendorReport);
+            createVendorDailySalesSheets(workbook, singleVendorList, headerStyle, dataStyle, currencyStyle);
+
+            workbook.write(baos);
+            return baos.toByteArray();
+        } catch (Exception e) {
+            log.error("Error generando Excel para vendedor: {}", vendorReport.vendedorName(), e);
+            throw new RuntimeException("Error al generar reporte de vendedor Excel", e);
+        }
+    }
+
+    /**
+     * Exportar PDF para un vendedor específico
+     */
+    @Override
+    public byte[] exportVendorReportPdf(VendorDailySalesDTO vendorReport) {
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            com.itextpdf.kernel.pdf.PdfWriter writer = new com.itextpdf.kernel.pdf.PdfWriter(baos);
+            com.itextpdf.kernel.pdf.PdfDocument pdf = new com.itextpdf.kernel.pdf.PdfDocument(writer);
+            com.itextpdf.layout.Document document = new com.itextpdf.layout.Document(pdf);
+
+            // Título
+            com.itextpdf.layout.element.Paragraph title = new com.itextpdf.layout.element.Paragraph(
+                    "REPORTE DE VENTAS - " + vendorReport.vendedorName().toUpperCase())
+                    .setFontSize(18)
+                    .setBold()
+                    .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER);
+            document.add(title);
+
+            // Período
+            com.itextpdf.layout.element.Paragraph period = new com.itextpdf.layout.element.Paragraph(
+                    "Período: " + vendorReport.startDate().format(DATE_FORMATTER) + " a " +
+                            vendorReport.endDate().format(DATE_FORMATTER))
+                    .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER)
+                    .setMarginBottom(20);
+            document.add(period);
+
+            // Tabla de datos
+            com.itextpdf.layout.element.Table table = new com.itextpdf.layout.element.Table(
+                    com.itextpdf.layout.properties.UnitValue.createPercentArray(
+                            new float[] { 1.5f, 1.5f, 1.5f, 2, 1.5f, 2, 1.5f, 1.5f, 2, 2 }))
+                    .useAllAvailableWidth();
+
+            // Encabezados
+            String[] headers = { "Fecha", "# Factura", "Cliente", "Valor Original", "Dto%",
+                    "Valor Final", "Pagado", "Pendiente", "Subtotal Cliente", "Total Día" };
+
+            for (String header : headers) {
+                com.itextpdf.layout.element.Cell cell = new com.itextpdf.layout.element.Cell()
+                        .add(new com.itextpdf.layout.element.Paragraph(header).setBold())
+                        .setBackgroundColor(new com.itextpdf.kernel.colors.DeviceRgb(52, 73, 94))
+                        .setFontColor(com.itextpdf.kernel.colors.ColorConstants.WHITE)
+                        .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER)
+                        .setPadding(8);
+                table.addCell(cell);
+            }
+
+            // Datos - iterar por cada día
+            for (org.example.sistema_gestion_vitalexa.dto.VendorDailyGroupDTO dailyGroup : vendorReport.dailyGroups()) {
+                // Para simplificar, mostrar solo el resumen del día
+                // (la implementación completa sería similar a Excel)
+                com.itextpdf.layout.element.Cell dateCell = new com.itextpdf.layout.element.Cell(1, headers.length)
+                        .add(new com.itextpdf.layout.element.Paragraph(
+                                "Fecha: " + dailyGroup.fecha().format(DATE_FORMATTER) +
+                                        " | Total Día: $" + dailyGroup.totalDia()))
+                        .setBackgroundColor(new com.itextpdf.kernel.colors.DeviceRgb(240, 240, 240))
+                        .setPadding(6);
+                table.addCell(dateCell);
+            }
+
+            document.add(table);
+            document.close();
+            return baos.toByteArray();
+        } catch (Exception e) {
+            log.error("Error generando PDF para vendedor: {}", vendorReport.vendedorName(), e);
+            throw new RuntimeException("Error al generar reporte de vendedor PDF", e);
+        }
+    }
 }

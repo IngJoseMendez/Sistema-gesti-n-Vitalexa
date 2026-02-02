@@ -39,10 +39,10 @@ public class OrderServiceImpl implements OrdenService {
     private final SaleGoalService saleGoalService;
     private final ProductTagService productTagService;
     private final PromotionService promotionService;
+    private final org.example.sistema_gestion_vitalexa.repository.PaymentRepository paymentRepository;
 
     // =========================
     // CREATE ORDER (VENDEDOR)
-    // =========================
     // =========================
     // CREATE ORDER (VENDEDOR)
     // =========================
@@ -1255,5 +1255,133 @@ public class OrderServiceImpl implements OrdenService {
                 order.addItem(item);
             }
         });
+    }
+
+    /**
+     * Crear factura histórica para cuadre de caja
+     * (Solo Owner - para facturas anteriores al sistema)
+     *
+     * IMPORTANTE: La factura se asigna al VENDEDOR del cliente, no al Owner
+     * - Si el cliente pertenece a VendedorX → la factura se registra como venta de VendedorX
+     * - Si el cliente no tiene vendedor asignado → se asigna al Owner (por defecto)
+     */
+    @Override
+    public OrderResponse createHistoricalInvoice(
+            org.example.sistema_gestion_vitalexa.dto.CreateHistoricalInvoiceRequest request,
+            String ownerUsername) {
+
+        // Validar que sea Owner
+        User owner = userRepository.findByUsername(ownerUsername)
+                .orElseThrow(() -> new BusinessExeption("Usuario no encontrado"));
+
+        if (owner.getRole() != org.example.sistema_gestion_vitalexa.enums.Role.OWNER) {
+            throw new BusinessExeption("Solo el Owner puede crear facturas históricas");
+        }
+
+        // Validar que el número de factura sea único
+        if (ordenRepository.findByInvoiceNumber(request.invoiceNumber()).isPresent()) {
+            throw new BusinessExeption("Ya existe una factura con el número: " + request.invoiceNumber());
+        }
+
+        // Validar que amountPaid no sea mayor al totalValue
+        if (request.amountPaid().compareTo(request.totalValue()) > 0) {
+            throw new BusinessExeption("El monto pagado ($" + request.amountPaid() +
+                    ") no puede ser mayor al valor total ($" + request.totalValue() + ")");
+        }
+
+        // Obtener cliente si se proporciona ID
+        Client client = null;
+        if (request.clientId() != null) {
+            client = clientService.findEntityById(request.clientId());
+        } else if (request.clientName() != null) {
+            log.info("Factura histórica sin cliente vinculado: {}", request.invoiceNumber());
+        }
+
+        // ✅ CLAVE: Asignar la factura al VENDEDOR DEL CLIENTE, no al Owner
+        // Si el cliente pertenece a un vendedor → usar ese vendedor
+        // Si no → usar el Owner como default
+        User vendedor = owner; // Default es el Owner
+
+        if (client != null && client.getVendedorAsignado() != null) {
+            vendedor = client.getVendedorAsignado();
+            log.info("Factura histórica asignada al vendedor del cliente: {}", vendedor.getUsername());
+        } else if (client != null) {
+            log.info("Cliente sin vendedor asignado. Factura se registra a nombre del Owner: {}", owner.getUsername());
+        }
+
+        // Crear orden sin items (es solo para registro)
+        Order order = new Order(vendedor, client);
+        order.setFecha(request.fecha());
+        order.setTotal(request.totalValue());
+        order.setInvoiceNumber(request.invoiceNumber());
+        order.setEstado(OrdenStatus.COMPLETADO); // Factura histórica siempre está completada
+
+        // Calcular lo que debe el cliente
+        BigDecimal amountDue = request.totalValue().subtract(request.amountPaid());
+
+        // Construir notas con información de la factura histórica
+        StringBuilder notes = new StringBuilder("[HISTÓRICA] ");
+        notes.append("Tipo: ").append(request.invoiceType().getLabel()).append(" | ");
+        notes.append("Vendedor: ").append(vendedor.getUsername()).append(" | ");
+
+        if (request.clientName() != null) {
+            notes.append("Cliente: ").append(request.clientName()).append(" | ");
+        }
+        if (request.clientPhone() != null) {
+            notes.append("Tel: ").append(request.clientPhone()).append(" | ");
+        }
+        if (request.clientEmail() != null) {
+            notes.append("Email: ").append(request.clientEmail()).append(" | ");
+        }
+        if (request.clientAddress() != null) {
+            notes.append("Dir: ").append(request.clientAddress()).append(" | ");
+        }
+
+        // Mostrar claramente: Pagado vs Debe
+        notes.append("Pagado: $").append(request.amountPaid())
+                .append(" | Debe: $").append(amountDue);
+
+        if (request.notes() != null && !request.notes().isBlank()) {
+            notes.append(" - ").append(request.notes());
+        }
+
+        // Agregar el suffix del tipo de factura
+        notes.append(" ").append(request.invoiceType().getSuffix());
+
+        order.setNotas(notes.toString());
+
+        // Si el cliente existe, registrar la compra
+        if (client != null) {
+            client.registerPurchase(request.totalValue());
+        }
+
+        // Guardar orden
+        Order savedOrder = ordenRepository.save(order);
+
+        // 💳 Registrar el pago (si el cliente pagó algo)
+        if (request.amountPaid().compareTo(BigDecimal.ZERO) > 0) {
+            org.example.sistema_gestion_vitalexa.entity.Payment payment =
+                    org.example.sistema_gestion_vitalexa.entity.Payment.builder()
+                    .order(savedOrder)
+                    .amount(request.amountPaid())
+                    .paymentDate(request.fecha())
+                    .withinDeadline(true) // Facturas históricas se asumen dentro de plazo
+                    .discountApplied(BigDecimal.ZERO)
+                    .registeredBy(owner)
+                    .notes("[HISTÓRICA] Pago registrado de factura histórica")
+                    .build();
+            paymentRepository.save(payment);
+            log.info("Pago registrado: ${} para factura histórica {}", request.amountPaid(), request.invoiceNumber());
+        }
+
+        log.info("Factura histórica creada: {} | Monto: ${} | Pagado: ${} | Debe: ${} | Vendedor: {} | Owner: {}",
+                request.invoiceNumber(),
+                request.totalValue(),
+                request.amountPaid(),
+                amountDue,
+                vendedor.getUsername(),
+                ownerUsername);
+
+        return orderMapper.toResponse(savedOrder);
     }
 }

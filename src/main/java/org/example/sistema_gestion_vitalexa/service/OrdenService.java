@@ -1,6 +1,7 @@
 package org.example.sistema_gestion_vitalexa.service;
 
 import org.example.sistema_gestion_vitalexa.dto.AddAssortmentItemRequest;
+import org.example.sistema_gestion_vitalexa.dto.CreateHistoricalInvoiceRequest;
 import org.example.sistema_gestion_vitalexa.dto.OrderRequestDto;
 import org.example.sistema_gestion_vitalexa.dto.OrderResponse;
 import org.example.sistema_gestion_vitalexa.enums.OrdenStatus;
@@ -43,5 +44,11 @@ public interface OrdenService {
      * Actualizar ETA de un item sin stock
      */
     void updateItemEta(UUID orderId, UUID itemId, java.time.LocalDate eta, String note);
+
+    /**
+     * Crear factura histórica para cuadre de caja
+     * (Solo Owner - para facturas anteriores al sistema)
+     */
+    OrderResponse createHistoricalInvoice(CreateHistoricalInvoiceRequest request, String ownerUsername);
 
 }

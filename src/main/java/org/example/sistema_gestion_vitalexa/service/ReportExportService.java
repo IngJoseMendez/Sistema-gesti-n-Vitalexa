@@ -27,4 +27,8 @@ public interface ReportExportService {
     void createVendorDailySalesSheets(Workbook workbook, List<VendorDailySalesDTO> vendorSalesReports,
                                       CellStyle headerStyle, CellStyle dataStyle, CellStyle currencyStyle);
 
+    // Exportaciones por vendedor específico
+    byte[] exportVendorReportExcel(VendorDailySalesDTO vendorReport);
+
+    byte[] exportVendorReportPdf(VendorDailySalesDTO vendorReport);
 }
