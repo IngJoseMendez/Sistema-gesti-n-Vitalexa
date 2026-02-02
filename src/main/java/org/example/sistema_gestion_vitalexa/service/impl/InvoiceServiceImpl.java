@@ -24,10 +24,8 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -234,6 +232,9 @@ public class InvoiceServiceImpl implements InvoiceService {
                 }
 
                 // 2. Agregar items regulares primero
+                // Ordenar: Pagados primero, Bonificados al final
+                regularItems.sort(Comparator.comparing((OrderItem item) -> Boolean.TRUE.equals(item.getIsBonified())));
+
                 for (OrderItem item : regularItems) {
                         if (Boolean.TRUE.equals(item.getIsBonified())) {
                                 addFreeItemRow(table, item);
