@@ -5,7 +5,6 @@ import org.example.sistema_gestion_vitalexa.entity.Order;
 import org.example.sistema_gestion_vitalexa.entity.User;
 import org.example.sistema_gestion_vitalexa.enums.OrdenStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -38,10 +37,12 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
         /**
          * Sincronizar la secuencia de facturas para que use un nuevo valor
          * Se ejecuta después de crear facturas históricas con números altos
+         * REQUIRES_NEW: Se ejecuta en una transacción separada para no afectar la
+         * principal si falla
          */
-        @Modifying
+        @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
         @Query(value = "SELECT setval('invoice_number_seq', :newValue, false)", nativeQuery = true)
-        void syncInvoiceSequence(@Param("newValue") Long newValue);
+        Long syncInvoiceSequence(@Param("newValue") Long newValue);
 
         /**
          * Buscar órdenes completadas de un vendedor en un mes/año específico
