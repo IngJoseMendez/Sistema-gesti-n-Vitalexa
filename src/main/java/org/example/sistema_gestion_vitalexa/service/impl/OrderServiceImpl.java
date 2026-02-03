@@ -840,6 +840,14 @@ public class OrderServiceImpl implements OrdenService {
             throw new BusinessExeption("La orden debe tener al menos un producto o una promoción");
         }
 
+        // CAPTURAR IDs DE PROMOCIONES ACTUALES **ANTES** DE LIMPIAR ITEMS
+        // Esto es CRÍTICO para comparar correctamente si las promociones cambiaron
+        java.util.Set<UUID> currentPromotionIds = order.getItems().stream()
+                .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem()))
+                .map(i -> i.getPromotion() != null ? i.getPromotion().getId() : null)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+
         // RESTAURAR STOCK de items anteriores (solo los que no son items de promoción)
         order.getItems().forEach(item -> {
             Product product = item.getProduct();
@@ -899,9 +907,16 @@ public class OrderServiceImpl implements OrdenService {
             order.addItem(freightItem);
         }
 
-        // DETECTAR TIPO DE ORDEN (por suffix en notas)
+        // DETECTAR TIPO DE ORDEN - Usar items de promoción REALES, no solo notas
+        // Las notas pueden estar vacías o ser modificadas por el usuario
         String currentNotes = order.getNotas() != null ? order.getNotas() : "";
-        boolean isPromoOrder = currentNotes.contains("[Promoción]");
+
+        // Detectar si REALMENTE es orden de promoción verificando si tiene items de
+        // promo
+        boolean isPromoOrder = !currentPromotionIds.isEmpty() || hasPromotions;
+
+        log.info("📝 Orden {}: Notas='{}', tieneItemsPromo={}, tienePromoIdsEnRequest={}, esPromocion={}",
+                orderId, currentNotes, !currentPromotionIds.isEmpty(), hasPromotions, isPromoOrder);
 
         // AGREGAR NUEVOS ITEMS (con validación de stock y split)
         // IMPORTANTE:
@@ -909,6 +924,8 @@ public class OrderServiceImpl implements OrdenService {
         // - Si es orden Promo: NO agregar items normales
         // - Si es orden Normal/S/R: Agregar todos los items excepto flete
         if (hasItems) {
+            log.info("📦 Request tiene {} items totales", request.items().size());
+
             // Filtrar items de flete
             List<OrderItemRequestDTO> freightItemsReq = new java.util.ArrayList<>();
             List<OrderItemRequestDTO> normalItemsReq = new java.util.ArrayList<>();
@@ -921,6 +938,8 @@ public class OrderServiceImpl implements OrdenService {
                 }
             });
 
+            log.info("📦 Items filtrados: {} normales, {} flete", normalItemsReq.size(), freightItemsReq.size());
+
             // Procesar items de flete (PRIMERO, antes que los items normales)
             if (!freightItemsReq.isEmpty()) {
                 processFreightItems(order, freightItemsReq);
@@ -931,7 +950,8 @@ public class OrderServiceImpl implements OrdenService {
             normalItemsReq.forEach(itemReq -> {
                 // ❌ BLOQUEAR items normales en orden de Promo
                 if (isPromoOrder) {
-                    log.debug("Item normal ignorado en edición de orden promo: {}", itemReq.productId());
+                    log.info("⚠️ BLOQUEADO: Item normal ignorado en edición de orden promo: {} (cantidad: {})",
+                            itemReq.productId(), itemReq.cantidad());
                     return;
                 }
 
@@ -999,12 +1019,9 @@ public class OrderServiceImpl implements OrdenService {
         // PROCESAR PROMOCIONES - Solo si están cambiando
         // Si la orden YA es orden promocional y los IDs no cambiaron, NO re-procesar
         if (hasPromotions) {
-            // Obtener IDs de promociones actuales en la orden
-            java.util.Set<UUID> currentPromotionIds = order.getItems().stream()
-                    .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem()))
-                    .map(i -> i.getPromotion() != null ? i.getPromotion().getId() : null)
-                    .filter(java.util.Objects::nonNull)
-                    .collect(java.util.stream.Collectors.toSet());
+            // Usar los IDs capturados ANTES de limpiar items (línea 846)
+            // NO capturarlos aquí porque ya re-agregamos los items y la comparación no
+            // funcionaría
 
             java.util.Set<UUID> requestedPromotionIds = new java.util.HashSet<>(request.promotionIds());
 
@@ -1401,6 +1418,19 @@ public class OrderServiceImpl implements OrdenService {
                     .build();
             paymentRepository.save(payment);
             log.info("Pago registrado: ${} para factura histórica {}", request.amountPaid(), request.invoiceNumber());
+        }
+
+        // 🔄 SINCRONIZAR SECUENCIA DE FACTURAS
+        // Asegurar que la secuencia esté siempre por delante de la factura más alta
+        try {
+            Long maxInvoice = ordenRepository.findMaxInvoiceNumber();
+            // setval(..., val, false) hace que el siguiene nextval devuelva 'val'
+            // Queremos que el siguiente sea max + 1
+            ordenRepository.syncInvoiceSequence(maxInvoice + 1);
+            log.info("Secuencia de facturas sincronizada. Próxima factura será: {}", maxInvoice + 1);
+        } catch (Exception e) {
+            log.error("Error sincronizando secuencia de facturas", e);
+            // No fallamos la transacción por esto, pero es importante loguearlo
         }
 
         log.info("Factura histórica creada: {} | Monto: ${} | Pagado: ${} | Debe: ${} | Vendedor: {} | Owner: {}",

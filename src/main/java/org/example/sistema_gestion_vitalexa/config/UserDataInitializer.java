@@ -28,7 +28,6 @@ public class UserDataInitializer implements CommandLineRunner {
         createOrUpdate("luisE", "JKMaoqi213", Role.EMPACADOR);
 
         // Crear vendedores ANTES de crear clientes que los referencian
-        createOrUpdate("rosario", "1234", Role.VENDEDOR);
         createOrUpdate("arnoldVentas", "ArnoldV123", Role.VENDEDOR);
         createOrUpdate("NinaTorres", "ninori123jam", Role.VENDEDOR);
         createOrUpdate("MercyMaestre", "mercyV123R", Role.VENDEDOR);
