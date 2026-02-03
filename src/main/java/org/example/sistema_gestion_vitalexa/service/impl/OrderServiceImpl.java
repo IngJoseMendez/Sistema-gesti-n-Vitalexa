@@ -871,14 +871,16 @@ public class OrderServiceImpl implements OrdenService {
             }
         });
 
-        // Limpiar SOLO items no promocionados ni de flete (preservar items de promo y flete)
+        // Limpiar SOLO items no promocionados ni de flete (preservar items de promo y
+        // flete)
         List<OrderItem> promotionItems = new java.util.ArrayList<>();
         List<OrderItem> freightItems = new java.util.ArrayList<>();
         for (OrderItem item : order.getItems()) {
             if (Boolean.TRUE.equals(item.getIsPromotionItem())) {
                 promotionItems.add(item);
             }
-            // IMPORTANTE: Solo preservar items de flete si NO hay nuevos items de flete en la solicitud
+            // IMPORTANTE: Solo preservar items de flete si NO hay nuevos items de flete en
+            // la solicitud
             if (Boolean.TRUE.equals(item.getIsFreightItem()) && (request.items() == null ||
                     request.items().stream().noneMatch(i -> Boolean.TRUE.equals(i.isFreightItem())))) {
                 freightItems.add(item);
@@ -891,7 +893,8 @@ public class OrderServiceImpl implements OrdenService {
             order.addItem(promoItem);
         }
 
-        // Re-agregar items de flete para preservar configuración (solo si NO hay nuevos)
+        // Re-agregar items de flete para preservar configuración (solo si NO hay
+        // nuevos)
         for (OrderItem freightItem : freightItems) {
             order.addItem(freightItem);
         }
@@ -993,14 +996,39 @@ public class OrderServiceImpl implements OrdenService {
             processBonifiedItems(order, request.bonifiedItems());
         }
 
-        // PROCESAR PROMOCIONES (CRÍTICO: Restaurar promociones al editar)
+        // PROCESAR PROMOCIONES - Solo si están cambiando
+        // Si la orden YA es orden promocional y los IDs no cambiaron, NO re-procesar
         if (hasPromotions) {
-            int totalNormalItemsCount = order.getItems().stream()
-                    .filter(i -> !Boolean.TRUE.equals(i.getIsPromotionItem()))
-                    .mapToInt(OrderItem::getCantidad)
-                    .sum();
-            processPromotions(order, request.promotionIds(), totalNormalItemsCount);
-            log.info("Promociones restauradas en edición de orden {}: {}", orderId, request.promotionIds());
+            // Obtener IDs de promociones actuales en la orden
+            java.util.Set<UUID> currentPromotionIds = order.getItems().stream()
+                    .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem()))
+                    .map(i -> i.getPromotion() != null ? i.getPromotion().getId() : null)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(java.util.stream.Collectors.toSet());
+
+            java.util.Set<UUID> requestedPromotionIds = new java.util.HashSet<>(request.promotionIds());
+
+            // Solo re-procesar si las promociones están cambiando
+            if (!currentPromotionIds.equals(requestedPromotionIds)) {
+                // Las promociones cambiaron - necesitamos limpiar las viejas y aplicar las
+                // nuevas
+                log.info("Promociones cambiaron en orden {}: {} -> {}", orderId, currentPromotionIds,
+                        requestedPromotionIds);
+
+                // Remover items de promoción viejos
+                order.getItems().removeIf(item -> Boolean.TRUE.equals(item.getIsPromotionItem()));
+
+                int totalNormalItemsCount = order.getItems().stream()
+                        .filter(i -> !Boolean.TRUE.equals(i.getIsPromotionItem()))
+                        .mapToInt(OrderItem::getCantidad)
+                        .sum();
+                processPromotions(order, request.promotionIds(), totalNormalItemsCount);
+                log.info("Promociones actualizadas en edición de orden {}: {} items de promo creados",
+                        orderId, request.promotionIds().size());
+            } else {
+                log.info("Promociones sin cambios en edición de orden {}: {} - Items preservados (no re-procesados)",
+                        orderId, currentPromotionIds);
+            }
         }
 
         // Actualizar notas - PRESERVAR SUFIJOS DE TIPO DE ORDEN
@@ -1262,7 +1290,8 @@ public class OrderServiceImpl implements OrdenService {
      * (Solo Owner - para facturas anteriores al sistema)
      *
      * IMPORTANTE: La factura se asigna al VENDEDOR del cliente, no al Owner
-     * - Si el cliente pertenece a VendedorX → la factura se registra como venta de VendedorX
+     * - Si el cliente pertenece a VendedorX → la factura se registra como venta de
+     * VendedorX
      * - Si el cliente no tiene vendedor asignado → se asigna al Owner (por defecto)
      */
     @Override
@@ -1360,8 +1389,8 @@ public class OrderServiceImpl implements OrdenService {
 
         // 💳 Registrar el pago (si el cliente pagó algo)
         if (request.amountPaid().compareTo(BigDecimal.ZERO) > 0) {
-            org.example.sistema_gestion_vitalexa.entity.Payment payment =
-                    org.example.sistema_gestion_vitalexa.entity.Payment.builder()
+            org.example.sistema_gestion_vitalexa.entity.Payment payment = org.example.sistema_gestion_vitalexa.entity.Payment
+                    .builder()
                     .order(savedOrder)
                     .amount(request.amountPaid())
                     .paymentDate(request.fecha())
