@@ -43,7 +43,7 @@ public class ReportServiceImpl implements ReportService {
                                 getVendorReport(startDate, endDate),
                                 getClientReport());
         }
-
+        //fix
         @Override
         public ReportDTO getCompleteReport(LocalDate startDate, LocalDate endDate, UUID vendorId) {
                 return new ReportDTO(
