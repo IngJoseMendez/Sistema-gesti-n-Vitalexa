@@ -19,6 +19,10 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     List<Payment> findByRegisteredBy(User user);
 
+    // For shared users (Nina/Yicela) - find payments registered by multiple
+    // usernames
+    List<Payment> findByRegisteredByUsernameIn(List<String> usernames);
+
     /**
      * Suma total de pagos para una orden
      */

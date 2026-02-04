@@ -16,6 +16,7 @@ import org.example.sistema_gestion_vitalexa.repository.OrdenItemRepository;
 import org.example.sistema_gestion_vitalexa.repository.OrdenRepository;
 import org.example.sistema_gestion_vitalexa.repository.UserRepository;
 import org.example.sistema_gestion_vitalexa.service.*;
+import org.example.sistema_gestion_vitalexa.util.UserUnificationUtil;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -805,6 +806,16 @@ public class OrderServiceImpl implements OrdenService {
         User vendedor = userRepository.findByUsername(username)
                 .orElseThrow(() -> new BusinessExeption("Usuario no encontrado"));
 
+        // Check if this is a shared user (NinaTorres/YicelaSandoval)
+        if (UserUnificationUtil.isSharedUser(username)) {
+            // Get orders for both shared usernames
+            List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(username);
+            return ordenRepository.findByVendedorUsernameIn(sharedUsernames)
+                    .stream()
+                    .map(orderMapper::toResponse)
+                    .toList();
+        }
+
         return ordenRepository.findByVendedor(vendedor)
                 .stream()
                 .map(orderMapper::toResponse)
@@ -871,14 +882,16 @@ public class OrderServiceImpl implements OrdenService {
             }
         });
 
-        // Limpiar SOLO items no promocionados ni de flete (preservar items de promo y flete)
+        // Limpiar SOLO items no promocionados ni de flete (preservar items de promo y
+        // flete)
         List<OrderItem> promotionItems = new java.util.ArrayList<>();
         List<OrderItem> freightItems = new java.util.ArrayList<>();
         for (OrderItem item : order.getItems()) {
             if (Boolean.TRUE.equals(item.getIsPromotionItem())) {
                 promotionItems.add(item);
             }
-            // IMPORTANTE: Solo preservar items de flete si NO hay nuevos items de flete en la solicitud
+            // IMPORTANTE: Solo preservar items de flete si NO hay nuevos items de flete en
+            // la solicitud
             if (Boolean.TRUE.equals(item.getIsFreightItem()) && (request.items() == null ||
                     request.items().stream().noneMatch(i -> Boolean.TRUE.equals(i.isFreightItem())))) {
                 freightItems.add(item);
@@ -891,7 +904,8 @@ public class OrderServiceImpl implements OrdenService {
             order.addItem(promoItem);
         }
 
-        // Re-agregar items de flete para preservar configuración (solo si NO hay nuevos)
+        // Re-agregar items de flete para preservar configuración (solo si NO hay
+        // nuevos)
         for (OrderItem freightItem : freightItems) {
             order.addItem(freightItem);
         }
@@ -1262,7 +1276,8 @@ public class OrderServiceImpl implements OrdenService {
      * (Solo Owner - para facturas anteriores al sistema)
      *
      * IMPORTANTE: La factura se asigna al VENDEDOR del cliente, no al Owner
-     * - Si el cliente pertenece a VendedorX → la factura se registra como venta de VendedorX
+     * - Si el cliente pertenece a VendedorX → la factura se registra como venta de
+     * VendedorX
      * - Si el cliente no tiene vendedor asignado → se asigna al Owner (por defecto)
      */
     @Override
@@ -1360,8 +1375,8 @@ public class OrderServiceImpl implements OrdenService {
 
         // 💳 Registrar el pago (si el cliente pagó algo)
         if (request.amountPaid().compareTo(BigDecimal.ZERO) > 0) {
-            org.example.sistema_gestion_vitalexa.entity.Payment payment =
-                    org.example.sistema_gestion_vitalexa.entity.Payment.builder()
+            org.example.sistema_gestion_vitalexa.entity.Payment payment = org.example.sistema_gestion_vitalexa.entity.Payment
+                    .builder()
                     .order(savedOrder)
                     .amount(request.amountPaid())
                     .paymentDate(request.fecha())

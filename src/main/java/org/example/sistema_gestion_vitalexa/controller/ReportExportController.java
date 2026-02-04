@@ -15,7 +15,7 @@ import java.time.LocalDate;
 @RequestMapping("/api/reports/export")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
-@PreAuthorize("hasRole('OWNER')")
+@PreAuthorize("hasAnyRole('ADMIN', 'OWNER')")
 public class ReportExportController {
 
         private final ReportService reportService;

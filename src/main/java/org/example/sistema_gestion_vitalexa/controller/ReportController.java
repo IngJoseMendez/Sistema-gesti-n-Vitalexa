@@ -13,7 +13,7 @@ import java.time.LocalDate;
 @RestController
 @RequestMapping("/api/owner/reports")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('OWNER')")
+@PreAuthorize("hasAnyRole('ADMIN', 'OWNER')")
 public class ReportController {
 
     private final ReportService reportService;

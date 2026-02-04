@@ -35,6 +35,9 @@ public interface ClientRepository extends JpaRepository<Client, UUID> {
     // For shared client access by usernames
     List<Client> findByVendedorAsignadoUsernameIn(List<String> usernames);
 
+    // For filtering clients by address keyword (route/location)
+    List<Client> findByDireccionContainingIgnoreCase(String keyword);
+
     // Uniqueness validation for nombre and direccion
     boolean existsByNombre(String nombre);
 

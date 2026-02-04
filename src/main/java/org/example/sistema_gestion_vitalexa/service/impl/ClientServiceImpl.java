@@ -14,6 +14,7 @@ import org.example.sistema_gestion_vitalexa.service.UserService; // Import UserS
 import org.example.sistema_gestion_vitalexa.entity.User; // Import User entity
 import org.example.sistema_gestion_vitalexa.repository.UserRepository; // Import UserRepository
 import org.example.sistema_gestion_vitalexa.enums.Role;
+import org.example.sistema_gestion_vitalexa.util.UserUnificationUtil;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -23,12 +24,6 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class ClientServiceImpl implements ClientService {
-
-    private static final String NINA_USERNAME = "NinaTorres";
-    private static final String GISELA_USERNAME = "YicelaSandoval";
-    private static final List<String> SHARED_USERNAMES = List.of(NINA_USERNAME, GISELA_USERNAME);
-    private static final List<String> SHARED_USERNAMES_LOWER = List.of(
-            NINA_USERNAME.toLowerCase(), GISELA_USERNAME.toLowerCase());
 
     private final ClientRepository repository;
     private final ClientMapper clientMapper;
@@ -136,9 +131,9 @@ public class ClientServiceImpl implements ClientService {
         List<Client> clients;
         String username = vendedor.getUsername();
 
-        // If vendedor is Nina or Gisela, return shared clients from both
-        if (SHARED_USERNAMES_LOWER.contains(username.toLowerCase())) {
-            clients = repository.findByVendedorAsignadoUsernameIn(SHARED_USERNAMES);
+        // If vendedor is Nina or Yicela, return shared clients from both
+        if (UserUnificationUtil.isSharedUser(username)) {
+            clients = repository.findByVendedorAsignadoUsernameIn(UserUnificationUtil.SHARED_USERNAMES);
         } else {
             clients = repository.findByVendedorAsignado(vendedor);
         }
@@ -169,9 +164,9 @@ public class ClientServiceImpl implements ClientService {
             return false;
         }
 
-        // Nina/Gisela exception - they share all their clients
-        boolean vendedorIsShared = SHARED_USERNAMES_LOWER.contains(requestingVendedor.getUsername().toLowerCase());
-        boolean clientBelongsToShared = SHARED_USERNAMES_LOWER.contains(clientVendedor.getUsername().toLowerCase());
+        // Nina/Yicela exception - they share all their clients
+        boolean vendedorIsShared = UserUnificationUtil.isSharedUser(requestingVendedor.getUsername());
+        boolean clientBelongsToShared = UserUnificationUtil.isSharedUser(clientVendedor.getUsername());
 
         return vendedorIsShared && clientBelongsToShared;
     }

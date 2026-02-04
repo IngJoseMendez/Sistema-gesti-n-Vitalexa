@@ -6,13 +6,15 @@ import org.example.sistema_gestion_vitalexa.entity.Order;
 import org.example.sistema_gestion_vitalexa.entity.OrderItem;
 import org.example.sistema_gestion_vitalexa.entity.Product;
 import org.example.sistema_gestion_vitalexa.entity.Client;
+import org.example.sistema_gestion_vitalexa.entity.User;
 import org.example.sistema_gestion_vitalexa.enums.OrdenStatus;
+import org.example.sistema_gestion_vitalexa.repository.ClientRepository;
 import org.example.sistema_gestion_vitalexa.repository.OrdenRepository;
 import org.example.sistema_gestion_vitalexa.repository.ProductRepository;
-import org.example.sistema_gestion_vitalexa.repository.ClientRepository;
 import org.example.sistema_gestion_vitalexa.repository.UserRepository;
 import org.example.sistema_gestion_vitalexa.repository.PaymentRepository;
 import org.example.sistema_gestion_vitalexa.service.ReportService;
+import org.example.sistema_gestion_vitalexa.util.UserUnificationUtil;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -65,10 +67,29 @@ public class ReportServiceImpl implements ReportService {
         public SalesReportDTO getSalesReport(LocalDate startDate, LocalDate endDate, UUID vendorId) {
                 LocalDateTime start = startDate.atStartOfDay();
                 LocalDateTime end = endDate.atTime(23, 59, 59);
-                List<Order> orders = ordenRepository.findByFechaBetween(start, end)
-                                .stream()
-                                .filter(o -> o.getVendedor() != null && o.getVendedor().getId().equals(vendorId))
-                                .toList();
+
+                // Get vendor user to check if it's a shared user
+                User vendor = userRepository.findById(vendorId)
+                                .orElseThrow(() -> new RuntimeException("Vendedor no encontrado"));
+
+                List<Order> orders;
+                if (UserUnificationUtil.isSharedUser(vendor.getUsername())) {
+                        // Get orders for both shared users
+                        List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(vendor.getUsername());
+                        orders = ordenRepository.findByFechaBetween(start, end)
+                                        .stream()
+                                        .filter(o -> o.getVendedor() != null &&
+                                                        sharedUsernames.contains(o.getVendedor().getUsername()))
+                                        .toList();
+                } else {
+                        // Normal vendor - filter by ID
+                        orders = ordenRepository.findByFechaBetween(start, end)
+                                        .stream()
+                                        .filter(o -> o.getVendedor() != null
+                                                        && o.getVendedor().getId().equals(vendorId))
+                                        .toList();
+                }
+
                 return buildSalesReport(orders);
         }
 
@@ -124,17 +145,28 @@ public class ReportServiceImpl implements ReportService {
 
         @Override
         public ProductReportDTO getProductReport(UUID vendorId) {
-                // Producto filtrado: métricas de inventario (globales) pero Top Productos
-                // (filtrado por vendedor)
-                // OJO: Decisión de diseño: ¿El vendedor ve todo el inventario o solo lo suyo?
-                // Generalmente ve todo el inventario disponible.
-                // Pero el "Top Selling" debería ser SU top selling.
-
                 List<Product> products = productRepository.findAll();
-                List<Order> vendorOrders = ordenRepository.findByEstado(OrdenStatus.COMPLETADO)
-                                .stream()
-                                .filter(o -> o.getVendedor() != null && o.getVendedor().getId().equals(vendorId))
-                                .toList();
+
+                // Get vendor user to check if it's a shared user
+                User vendor = userRepository.findById(vendorId)
+                                .orElseThrow(() -> new RuntimeException("Vendedor no encontrado"));
+
+                List<Order> vendorOrders;
+                if (UserUnificationUtil.isSharedUser(vendor.getUsername())) {
+                        // Get orders for both shared users
+                        List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(vendor.getUsername());
+                        vendorOrders = ordenRepository.findByEstado(OrdenStatus.COMPLETADO)
+                                        .stream()
+                                        .filter(o -> o.getVendedor() != null &&
+                                                        sharedUsernames.contains(o.getVendedor().getUsername()))
+                                        .toList();
+                } else {
+                        vendorOrders = ordenRepository.findByEstado(OrdenStatus.COMPLETADO)
+                                        .stream()
+                                        .filter(o -> o.getVendedor() != null
+                                                        && o.getVendedor().getId().equals(vendorId))
+                                        .toList();
+                }
 
                 return buildProductReport(products, vendorOrders);
         }
@@ -232,22 +264,26 @@ public class ReportServiceImpl implements ReportService {
 
         @Override
         public ClientReportDTO getClientReport(UUID vendorId) {
-                // Clientes asignados a este vendedor O que le han comprado a este vendedor
-                // Opción A: Solo sus clientes asignados (mejor para CRM)
-                // Opción B: Clientes que le han comprado (mejor para reporte de ventas)
-                // Dado el contexto "Sistema gestión", "Reports", asumiremos clientes asignados
-                // o filtro por ventas.
-                // Usemos clientes que tienen ventas con este vendedor en el periodo? No,
-                // ClientReport suele ser general.
-                // Filtremos clientes por las VENDEDORAS asignadas si existe esa relación,
-                // PERO, en este sistema parece que la relación es vía Orden.
-                // Vamos a filtar los clientes que han comprado a este vendedor.
+                // Get vendor user to check if it's a shared user
+                User vendor = userRepository.findById(vendorId)
+                                .orElseThrow(() -> new RuntimeException("Vendedor no encontrado"));
 
                 List<Client> allClients = clientRepository.findAll();
-                List<Order> vendorOrders = ordenRepository.findAll().stream() // OJO: Performance heavy, pero necesario
-                                                                              // sin query custom
-                                .filter(o -> o.getVendedor() != null && o.getVendedor().getId().equals(vendorId))
-                                .toList();
+                List<Order> vendorOrders;
+
+                if (UserUnificationUtil.isSharedUser(vendor.getUsername())) {
+                        // Get orders for both shared users
+                        List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(vendor.getUsername());
+                        vendorOrders = ordenRepository.findAll().stream()
+                                        .filter(o -> o.getVendedor() != null &&
+                                                        sharedUsernames.contains(o.getVendedor().getUsername()))
+                                        .toList();
+                } else {
+                        vendorOrders = ordenRepository.findAll().stream()
+                                        .filter(o -> o.getVendedor() != null
+                                                        && o.getVendedor().getId().equals(vendorId))
+                                        .toList();
+                }
 
                 Set<UUID> vendorClientIds = vendorOrders.stream()
                                 .map(o -> o.getCliente().getId())
@@ -340,13 +376,14 @@ public class ReportServiceImpl implements ReportService {
 
                                         return new MonthlySalesDTO(
                                                         monthName,
+                                                        monthNum, // Add numeric month for sorting
                                                         year,
                                                         monthlyRevenue,
                                                         entry.getValue().size());
                                 })
                                 .sorted(Comparator.comparing(MonthlySalesDTO::year)
-                                                .thenComparing(m -> java.time.Month.valueOf(
-                                                                m.month().toUpperCase(Locale.ROOT)).getValue()))
+                                                .thenComparingInt(MonthlySalesDTO::monthNumber)) // Sort by numeric
+                                                                                                 // month
                                 .toList();
         }
 
@@ -416,9 +453,17 @@ public class ReportServiceImpl implements ReportService {
                                 .filter(o -> o.getEstado() == OrdenStatus.COMPLETADO)
                                 .toList();
 
-                // 2. Agrupar por vendedor
+                // 2. Agrupar por vendedor (unificando usuarios compartidos)
                 Map<String, List<Order>> ordersByVendor = completedOrders.stream()
-                                .collect(Collectors.groupingBy(o -> o.getVendedor().getId().toString()));
+                                .collect(Collectors.groupingBy(o -> {
+                                        String username = o.getVendedor().getUsername();
+                                        // If this is a shared user, use a unified key
+                                        if (UserUnificationUtil.isSharedUser(username)) {
+                                                // Use the first shared username as the canonical key
+                                                return UserUnificationUtil.getSharedUsernames(username).get(0);
+                                        }
+                                        return o.getVendedor().getId().toString();
+                                }));
 
                 // 3. Crear reporte por vendedor
                 return ordersByVendor.entrySet().stream()

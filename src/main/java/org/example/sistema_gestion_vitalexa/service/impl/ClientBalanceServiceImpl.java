@@ -18,6 +18,7 @@ import org.example.sistema_gestion_vitalexa.repository.OrdenRepository;
 import org.example.sistema_gestion_vitalexa.repository.PaymentRepository;
 import org.example.sistema_gestion_vitalexa.repository.UserRepository;
 import org.example.sistema_gestion_vitalexa.service.ClientBalanceService;
+import org.example.sistema_gestion_vitalexa.util.UserUnificationUtil;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -53,7 +54,20 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
 
         @Override
         public List<ClientBalanceDTO> getClientBalancesByVendedor(UUID vendedorId) {
-                return clientRepository.findByVendedorAsignadoId(vendedorId).stream()
+                // Get vendor to check if it's a shared user
+                User vendedor = userRepository.findById(vendedorId)
+                                .orElseThrow(() -> new RuntimeException("Vendedor no encontrado"));
+
+                List<Client> clients;
+                if (UserUnificationUtil.isSharedUser(vendedor.getUsername())) {
+                        // Get clients for both shared usernames
+                        List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(vendedor.getUsername());
+                        clients = clientRepository.findByVendedorAsignadoUsernameIn(sharedUsernames);
+                } else {
+                        clients = clientRepository.findByVendedorAsignadoId(vendedorId);
+                }
+
+                return clients.stream()
                                 .map(this::calculateClientBalance)
                                 .collect(Collectors.toList());
         }
@@ -62,6 +76,17 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
         public List<ClientBalanceDTO> getMyClientBalances(String vendedorUsername) {
                 User vendedor = userRepository.findByUsername(vendedorUsername)
                                 .orElseThrow(() -> new BusinessExeption("Vendedor no encontrado"));
+
+                // Check if this is a shared user (NinaTorres/Yicela Sandoval)
+                if (UserUnificationUtil.isSharedUser(vendedorUsername)) {
+                        // Get clients for both shared usernames
+                        List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(vendedorUsername);
+                        return clientRepository.findByVendedorAsignadoUsernameIn(sharedUsernames)
+                                        .stream()
+                                        .map(this::calculateClientBalance)
+                                        .collect(Collectors.toList());
+                }
+
                 return getClientBalancesByVendedor(vendedor.getId());
         }
 
