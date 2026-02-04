@@ -42,4 +42,9 @@ public interface ClientRepository extends JpaRepository<Client, UUID> {
     boolean existsByNombre(String nombre);
 
     boolean existsByDireccion(String direccion);
+
+    // Calcular total de compras dinámicamente (solo órdenes completadas)
+    @org.springframework.data.jpa.repository.Query("SELECT COALESCE(SUM(o.total), 0) FROM Order o WHERE o.cliente.id = :clientId AND o.estado = 'COMPLETADO'")
+    java.math.BigDecimal calculateTotalPurchases(
+            @org.springframework.data.repository.query.Param("clientId") UUID clientId);
 }

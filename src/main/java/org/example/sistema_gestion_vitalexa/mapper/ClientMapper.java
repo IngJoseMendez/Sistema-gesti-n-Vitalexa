@@ -11,13 +11,24 @@ import org.mapstruct.ReportingPolicy;
 import java.util.List;
 
 @Mapper(componentModel = "spring")
-public interface ClientMapper {
+public abstract class ClientMapper {
+
+    @org.springframework.beans.factory.annotation.Autowired
+    protected org.example.sistema_gestion_vitalexa.repository.ClientRepository clientRepository;
+
     @Mapping(target = "vendedorAsignadoNombre", source = "vendedorAsignado.username")
     @Mapping(target = "creadoPorNombre", source = "creadoPor.username")
-    ClientResponse toResponse(Client client);
+    @Mapping(target = "totalCompras", expression = "java(calculateTotal(client))")
+    public abstract ClientResponse toResponse(Client client);
 
-    List<ClientResponse> toResponseList(List<Client> clients);
+    public abstract List<ClientResponse> toResponseList(List<Client> clients);
 
     @BeanMapping(unmappedTargetPolicy = ReportingPolicy.IGNORE)
-    Client toEntity(CreateClientRequest createClientRequest);
+    public abstract Client toEntity(CreateClientRequest createClientRequest);
+
+    protected java.math.BigDecimal calculateTotal(Client client) {
+        if (client.getId() == null)
+            return java.math.BigDecimal.ZERO;
+        return clientRepository.calculateTotalPurchases(client.getId());
+    }
 }

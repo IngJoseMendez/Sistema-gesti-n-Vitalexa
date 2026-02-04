@@ -183,8 +183,13 @@ public class ReportExportServiceImpl implements ReportExportService {
                 // 2. Hojas por Vendedor
                 // Agrupar por vendedor
                 java.util.Map<String, java.util.List<ClientBalanceDTO>> balancesByVendor = clientBalances.stream()
-                        .collect(java.util.stream.Collectors.groupingBy(
-                                b -> b.vendedorAsignadoName() != null ? b.vendedorAsignadoName() : "Sin Asignar"));
+                        .collect(java.util.stream.Collectors.groupingBy(b -> {
+                            String vName = b.vendedorAsignadoName() != null ? b.vendedorAsignadoName() : "Sin Asignar";
+                            if (UserUnificationUtil.isSharedUser(vName)) {
+                                return UserUnificationUtil.getSharedUsernames(vName).get(0);
+                            }
+                            return vName;
+                        }));
 
                 for (java.util.Map.Entry<String, java.util.List<ClientBalanceDTO>> entry : balancesByVendor
                         .entrySet()) {
