@@ -16,9 +16,12 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.example.sistema_gestion_vitalexa.dto.*;
+import org.example.sistema_gestion_vitalexa.entity.User;
+import org.example.sistema_gestion_vitalexa.repository.UserRepository;
 import org.example.sistema_gestion_vitalexa.service.ClientBalanceService;
 import org.example.sistema_gestion_vitalexa.service.ReportExportService;
 import org.example.sistema_gestion_vitalexa.service.ReportService;
+import org.example.sistema_gestion_vitalexa.util.UserUnificationUtil;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
@@ -36,6 +39,7 @@ public class ReportExportServiceImpl implements ReportExportService {
 
     private final ReportService reportService;
     private final ClientBalanceService clientBalanceService;
+    private final UserRepository userRepository;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     // =============================================
@@ -138,9 +142,22 @@ public class ReportExportServiceImpl implements ReportExportService {
             // HOJA 6: VENTAS DIARIAS DESGLOSADAS
             List<VendorDailySalesDTO> vendorSalesReports;
             if (vendorId != null) {
-                // Si filtramos por vendedor, obtenemos SOLO el reporte diario de ese vendedor
+                // Get vendor to check if it's a shared user
+                User vendor = userRepository.findById(vendorId)
+                        .orElseThrow(() -> new org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption(
+                                "Vendedor no encontrado"));
+
+                // For shared users, use the canonical username for matching
+                String matchUsername;
+                if (UserUnificationUtil.isSharedUser(vendor.getUsername())) {
+                    matchUsername = UserUnificationUtil.getSharedUsernames(vendor.getUsername()).get(0);
+                } else {
+                    matchUsername = vendor.getUsername();
+                }
+
+                // Filter by vendorName (username) instead of UUID
                 VendorDailySalesDTO vendorDaily = reportService.getVendorDailySalesReport(startDate, endDate).stream()
-                        .filter(v -> v.vendedorId().equals(vendorId.toString()))
+                        .filter(v -> v.vendedorName().equals(matchUsername))
                         .findFirst()
                         .orElseThrow(() -> new org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption(
                                 "No se encontraron ventas para este vendedor"));
