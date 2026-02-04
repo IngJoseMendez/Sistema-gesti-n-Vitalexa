@@ -36,4 +36,5 @@ build/
 .vscode/
 
 # Uploads (solo para desarrollo local)
-uploads/
+uploads/compile-with-java17.sh
+run-with-java17.sh
