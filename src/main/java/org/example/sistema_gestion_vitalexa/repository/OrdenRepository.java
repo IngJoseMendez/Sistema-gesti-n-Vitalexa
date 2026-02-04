@@ -32,6 +32,13 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
         @Query(value = "SELECT nextval('invoice_number_seq')", nativeQuery = true)
         Long nextInvoiceNumber();
 
+        @Query(value = "SELECT COALESCE(MAX(invoice_number), 0) FROM orders", nativeQuery = true)
+        Long findMaxInvoiceNumber();
+
+        @org.springframework.data.jpa.repository.Modifying
+        @Query(value = "SELECT setval('invoice_number_seq', ?1, false)", nativeQuery = true)
+        void syncInvoiceSequence(Long nextValue);
+
         /**
          * Buscar órdenes completadas de un vendedor en un mes/año específico
          */
