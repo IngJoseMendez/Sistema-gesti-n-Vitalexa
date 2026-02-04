@@ -43,7 +43,8 @@ public class ReportServiceImpl implements ReportService {
                                 getVendorReport(startDate, endDate),
                                 getClientReport());
         }
-        //fix
+
+        // fix
         @Override
         public ReportDTO getCompleteReport(LocalDate startDate, LocalDate endDate, UUID vendorId) {
                 return new ReportDTO(
@@ -220,9 +221,17 @@ public class ReportServiceImpl implements ReportService {
                                 .filter(o -> o.getEstado() == OrdenStatus.COMPLETADO)
                                 .toList();
 
-                // Agrupar por vendedor
+                // 2. Agrupar por vendedor (unificando usuarios compartidos)
                 Map<String, List<Order>> ordersByVendor = orders.stream()
-                                .collect(Collectors.groupingBy(o -> o.getVendedor().getId().toString()));
+                                .collect(Collectors.groupingBy(o -> {
+                                        String username = o.getVendedor().getUsername();
+                                        // If this is a shared user, use a unified key
+                                        if (UserUnificationUtil.isSharedUser(username)) {
+                                                // Use the first shared username as the canonical key
+                                                return UserUnificationUtil.getSharedUsernames(username).get(0);
+                                        }
+                                        return o.getVendedor().getId().toString();
+                                }));
 
                 List<VendorPerformanceDTO> topVendors = ordersByVendor.entrySet().stream()
                                 .map(entry -> {
