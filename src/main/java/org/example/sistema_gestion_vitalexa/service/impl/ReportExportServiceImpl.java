@@ -978,6 +978,12 @@ public class ReportExportServiceImpl implements ReportExportService {
         partialStyle.setFillForegroundColor(IndexedColors.YELLOW.getIndex());
         partialStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
 
+        // Estilos para celdas de datos (no moneda)
+        CellStyle paidDataStyle = workbook.createCellStyle();
+        paidDataStyle.cloneStyleFrom(dataStyle);
+        paidDataStyle.setFillForegroundColor(IndexedColors.LIGHT_GREEN.getIndex());
+        paidDataStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
         CellStyle partialDataStyle = workbook.createCellStyle();
         partialDataStyle.cloneStyleFrom(dataStyle);
         partialDataStyle.setFillForegroundColor(IndexedColors.YELLOW.getIndex());
@@ -991,26 +997,27 @@ public class ReportExportServiceImpl implements ReportExportService {
 
             // Determinar si aplica color condicional (Pagado > 0 y Pendiente > 0) ->
             // Partial (Yellow)
-            // Si Pendiente <= 0 -> Green (Pagado) - aunque esto ya se manejaba
+            // Si Pendiente <= 0 -> Green (Pagado)
             boolean isPartial = balance.totalPaid().compareTo(BigDecimal.ZERO) > 0
                     && balance.pendingBalance().compareTo(BigDecimal.ZERO) > 0;
             boolean isPaid = balance.pendingBalance().compareTo(BigDecimal.ZERO) <= 0;
 
+            // Estilos de fila según estado de pago - TODA LA FILA se colorea
             CellStyle rowDataStyle = dataStyle;
             CellStyle rowCurrencyStyle = currencyStyle;
 
             if (isPaid) {
-                // rowDataStyle = paidDataStyle; // Si quisieramos pintar toda la fila
-                rowCurrencyStyle = paidStyle;
+                rowDataStyle = paidDataStyle; // Verde para datos
+                rowCurrencyStyle = paidStyle; // Verde para moneda
             } else if (isPartial) {
-                rowDataStyle = partialDataStyle;
-                rowCurrencyStyle = partialStyle;
+                rowDataStyle = partialDataStyle; // Amarillo para datos
+                rowCurrencyStyle = partialStyle; // Amarillo para moneda
             }
 
             // Cliente
             Cell clientCell = row.createCell(colNum++);
             clientCell.setCellValue(balance.clientName());
-            clientCell.setCellStyle(rowDataStyle); // Pintamos cliente si es parcial
+            clientCell.setCellStyle(rowDataStyle);
 
             // Vendedora
             Cell vendorCell = row.createCell(colNum++);
@@ -1021,31 +1028,31 @@ public class ReportExportServiceImpl implements ReportExportService {
             Cell creditLimitCell = row.createCell(colNum++);
             if (balance.creditLimit() != null && balance.creditLimit().compareTo(BigDecimal.ZERO) > 0) {
                 creditLimitCell.setCellValue(balance.creditLimit().doubleValue());
-                creditLimitCell.setCellStyle(currencyStyle); // No pintamos este
+                creditLimitCell.setCellStyle(rowCurrencyStyle); // AHORA usa estilo de fila
             } else {
                 creditLimitCell.setCellValue("Sin límite");
-                creditLimitCell.setCellStyle(dataStyle);
+                creditLimitCell.setCellStyle(rowDataStyle); // AHORA usa estilo de fila
             }
 
             // Saldo Inicial
             Cell initialCell = row.createCell(colNum++);
             initialCell.setCellValue(balance.initialBalance() != null ? balance.initialBalance().doubleValue() : 0);
-            initialCell.setCellStyle(currencyStyle);
+            initialCell.setCellStyle(rowCurrencyStyle); // AHORA usa estilo de fila
 
             // Total Órdenes
             Cell totalOrdersCell = row.createCell(colNum++);
             totalOrdersCell.setCellValue(balance.totalOrders().doubleValue());
-            totalOrdersCell.setCellStyle(currencyStyle);
+            totalOrdersCell.setCellStyle(rowCurrencyStyle); // AHORA usa estilo de fila
 
             // Total Pagado
             Cell paidCell = row.createCell(colNum++);
             paidCell.setCellValue(balance.totalPaid().doubleValue());
-            paidCell.setCellStyle(currencyStyle);
+            paidCell.setCellStyle(rowCurrencyStyle); // AHORA usa estilo de fila
 
-            // Saldo Pendiente (con color según valor)
+            // Saldo Pendiente
             Cell pendingCell = row.createCell(colNum++);
             pendingCell.setCellValue(balance.pendingBalance().doubleValue());
-            pendingCell.setCellStyle(rowCurrencyStyle); // Color fuerte aquí
+            pendingCell.setCellStyle(rowCurrencyStyle);
 
             totalPending = totalPending.add(balance.pendingBalance());
 
