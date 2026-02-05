@@ -61,6 +61,54 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
                         @Param("start") LocalDateTime start,
                         @Param("end") LocalDateTime end);
 
+        @Query("""
+                        SELECT o FROM Order o
+                        WHERE o.vendedor.id = :vendedorId
+                        AND o.estado = 'COMPLETADO'
+                        AND MONTH(o.fecha) = :month
+                        AND YEAR(o.fecha) = :year
+                        ORDER BY o.fecha DESC
+                        """)
+        List<Order> findByVendedorIdAndMonth(@Param("vendedorId") UUID vendedorId,
+                        @Param("month") int month,
+                        @Param("year") int year);
+
+        /**
+         * Buscar órdenes por estado y rango de fechas
+         */
+        @Query("""
+                        SELECT o FROM Order o
+                        WHERE o.estado = :estado
+                        AND o.fecha >= :startDate
+                        AND o.fecha < :endDate
+                        ORDER BY o.fecha DESC
+                        """)
+        List<Order> findByEstadoAndFechaBetween(
+                        @Param("estado") OrdenStatus estado,
+                        @Param("startDate") LocalDateTime startDate,
+                        @Param("endDate") LocalDateTime endDate);
+
+        /**
+         * Buscar órdenes completadas entre un rango de fechas
+         * Para reportes de productos y clientes en períodos específicos
+         */
+        default List<Order> findCompletedOrdersBetween(LocalDateTime startDate, LocalDateTime endDate) {
+                return findByEstadoAndFechaBetween(OrdenStatus.COMPLETADO, startDate, endDate);
+        }
+
+        /**
+         * Obtener ingresos totales en un rango de fechas
+         */
+        @Query("""
+                        SELECT COALESCE(SUM(o.total), 0)
+                        FROM Order o
+                        WHERE o.estado = 'COMPLETADO'
+                        AND o.fecha >= :startDate
+                        AND o.fecha < :endDate
+                        """)
+        BigDecimal getTotalRevenueBetween(@Param("startDate") LocalDateTime startDate,
+                        @Param("endDate") LocalDateTime endDate);
+
         /**
          * Buscar orden por ID con EAGER loading de items, productos y promociones
          * Útil para generar facturas PDF que necesitan acceso a las promociones

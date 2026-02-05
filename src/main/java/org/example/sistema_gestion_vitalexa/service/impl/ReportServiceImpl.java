@@ -39,9 +39,9 @@ public class ReportServiceImpl implements ReportService {
         public ReportDTO getCompleteReport(LocalDate startDate, LocalDate endDate) {
                 return new ReportDTO(
                                 getSalesReport(startDate, endDate),
-                                getProductReport(),
+                                getProductReport(startDate, endDate),
                                 getVendorReport(startDate, endDate),
-                                getClientReport());
+                                getClientReport(startDate, endDate));
         }
 
         // fix
@@ -49,11 +49,11 @@ public class ReportServiceImpl implements ReportService {
         public ReportDTO getCompleteReport(LocalDate startDate, LocalDate endDate, UUID vendorId) {
                 return new ReportDTO(
                                 getSalesReport(startDate, endDate, vendorId),
-                                getProductReport(vendorId),
+                                getProductReport(startDate, endDate, vendorId),
                                 getVendorReport(startDate, endDate), // El reporte de vendedores sigue mostrando ranking
                                                                      // general o filtramos? Por ahora general para
                                                                      // contexto
-                                getClientReport(vendorId));
+                                getClientReport(startDate, endDate, vendorId));
         }
 
         @Override
@@ -164,6 +164,45 @@ public class ReportServiceImpl implements ReportService {
                 } else {
                         vendorOrders = ordenRepository.findByEstado(OrdenStatus.COMPLETADO)
                                         .stream()
+                                        .filter(o -> o.getVendedor() != null
+                                                        && o.getVendedor().getId().equals(vendorId))
+                                        .toList();
+                }
+
+                return buildProductReport(products, vendorOrders);
+        }
+
+        @Override
+        public ProductReportDTO getProductReport(LocalDate startDate, LocalDate endDate) {
+                // Productos general filtered by date
+                List<Product> products = productRepository.findAll();
+                LocalDateTime start = startDate.atStartOfDay();
+                LocalDateTime end = endDate.atTime(23, 59, 59);
+                List<Order> completedOrders = ordenRepository.findCompletedOrdersBetween(start, end);
+                return buildProductReport(products, completedOrders);
+        }
+
+        @Override
+        public ProductReportDTO getProductReport(LocalDate startDate, LocalDate endDate, UUID vendorId) {
+                List<Product> products = productRepository.findAll();
+                LocalDateTime start = startDate.atStartOfDay();
+                LocalDateTime end = endDate.atTime(23, 59, 59);
+
+                // Get vendor user to check if it's a shared user
+                User vendor = userRepository.findById(vendorId)
+                                .orElseThrow(() -> new RuntimeException("Vendedor no encontrado"));
+
+                List<Order> vendorOrders = ordenRepository.findCompletedOrdersBetween(start, end);
+
+                if (UserUnificationUtil.isSharedUser(vendor.getUsername())) {
+                        // Filter for both shared users
+                        List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(vendor.getUsername());
+                        vendorOrders = vendorOrders.stream()
+                                        .filter(o -> o.getVendedor() != null &&
+                                                        sharedUsernames.contains(o.getVendedor().getUsername()))
+                                        .toList();
+                } else {
+                        vendorOrders = vendorOrders.stream()
                                         .filter(o -> o.getVendedor() != null
                                                         && o.getVendedor().getId().equals(vendorId))
                                         .toList();
@@ -289,6 +328,52 @@ public class ReportServiceImpl implements ReportService {
                                         .toList();
                 } else {
                         vendorOrders = ordenRepository.findAll().stream()
+                                        .filter(o -> o.getVendedor() != null
+                                                        && o.getVendedor().getId().equals(vendorId))
+                                        .toList();
+                }
+
+                Set<UUID> vendorClientIds = vendorOrders.stream()
+                                .map(o -> o.getCliente().getId())
+                                .collect(Collectors.toSet());
+
+                List<Client> vendorClients = allClients.stream()
+                                .filter(c -> vendorClientIds.contains(c.getId()))
+                                .toList();
+
+                return buildClientReport(vendorClients, vendorOrders);
+        }
+
+        @Override
+        public ClientReportDTO getClientReport(LocalDate startDate, LocalDate endDate) {
+                List<Client> clients = clientRepository.findAll();
+                LocalDateTime start = startDate.atStartOfDay();
+                LocalDateTime end = endDate.atTime(23, 59, 59);
+                List<Order> ordersInPeriod = ordenRepository.findByFechaBetween(start, end);
+                return buildClientReport(clients, ordersInPeriod);
+        }
+
+        @Override
+        public ClientReportDTO getClientReport(LocalDate startDate, LocalDate endDate, UUID vendorId) {
+                LocalDateTime start = startDate.atStartOfDay();
+                LocalDateTime end = endDate.atTime(23, 59, 59);
+
+                // Get vendor user to check if it's a shared user
+                User vendor = userRepository.findById(vendorId)
+                                .orElseThrow(() -> new RuntimeException("Vendedor no encontrado"));
+
+                List<Client> allClients = clientRepository.findAll();
+                List<Order> vendorOrders = ordenRepository.findByFechaBetween(start, end);
+
+                if (UserUnificationUtil.isSharedUser(vendor.getUsername())) {
+                        // Filter for both shared users
+                        List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(vendor.getUsername());
+                        vendorOrders = vendorOrders.stream()
+                                        .filter(o -> o.getVendedor() != null &&
+                                                        sharedUsernames.contains(o.getVendedor().getUsername()))
+                                        .toList();
+                } else {
+                        vendorOrders = vendorOrders.stream()
                                         .filter(o -> o.getVendedor() != null
                                                         && o.getVendedor().getId().equals(vendorId))
                                         .toList();

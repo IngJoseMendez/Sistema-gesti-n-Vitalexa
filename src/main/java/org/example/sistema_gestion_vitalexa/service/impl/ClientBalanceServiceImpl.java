@@ -171,6 +171,7 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
                                 client.getId(),
                                 client.getNombre(),
                                 client.getTelefono(),
+                                client.getRepresentanteLegal(),
                                 client.getVendedorAsignado() != null
                                                 ? client.getVendedorAsignado().getUsername()
                                                 : null,

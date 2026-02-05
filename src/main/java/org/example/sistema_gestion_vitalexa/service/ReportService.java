@@ -17,11 +17,19 @@ public interface ReportService {
 
     ProductReportDTO getProductReport(java.util.UUID vendorId);
 
+    ProductReportDTO getProductReport(LocalDate startDate, LocalDate endDate);
+
+    ProductReportDTO getProductReport(LocalDate startDate, LocalDate endDate, java.util.UUID vendorId);
+
     VendorReportDTO getVendorReport(LocalDate startDate, LocalDate endDate);
 
     ClientReportDTO getClientReport();
 
     ClientReportDTO getClientReport(java.util.UUID vendorId);
+
+    ClientReportDTO getClientReport(LocalDate startDate, LocalDate endDate);
+
+    ClientReportDTO getClientReport(LocalDate startDate, LocalDate endDate, java.util.UUID vendorId);
 
     List<VendorDailySalesDTO> getVendorDailySalesReport(LocalDate startDate, LocalDate endDate);
 }
