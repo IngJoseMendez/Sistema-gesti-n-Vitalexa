@@ -17,6 +17,11 @@ public interface OrderMapper {
     @Mapping(source = "isFreightBonified", target = "isFreightBonified")
     @Mapping(source = "freightCustomText", target = "freightCustomText")
     @Mapping(source = "freightQuantity", target = "freightQuantity")
+    @Mapping(source = "cliente.representanteLegal", target = "representanteLegal")
+    @Mapping(source = "cliente.telefono", target = "clientePhone")
+    @Mapping(source = "cliente.direccion", target = "clienteAddress")
+    @Mapping(source = "cliente.nit", target = "clienteNit")
+    @Mapping(source = "cliente.email", target = "clienteEmail")
     OrderResponse toResponse(Order order);
 
     List<OrderResponse> toResponseList(List<Order> orders);
