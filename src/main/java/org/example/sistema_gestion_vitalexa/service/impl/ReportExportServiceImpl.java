@@ -170,9 +170,9 @@ public class ReportExportServiceImpl implements ReportExportService {
                     // Merge all daily groups from both users
                     List<VendorDailyGroupDTO> mergedDailyGroups = new java.util.ArrayList<>();
                     BigDecimal totalPeriod = BigDecimal.ZERO;
-                    for (VendorDailySalesDTO report : matchingReports) {
-                        mergedDailyGroups.addAll(report.dailyGroups());
-                        totalPeriod = totalPeriod.add(report.totalPeriod());
+                    for (VendorDailySalesDTO vendorReport : matchingReports) {
+                        mergedDailyGroups.addAll(vendorReport.dailyGroups());
+                        totalPeriod = totalPeriod.add(vendorReport.totalPeriod());
                     }
                     
                     // Create unified report with canonical name (first shared username - Nina)
