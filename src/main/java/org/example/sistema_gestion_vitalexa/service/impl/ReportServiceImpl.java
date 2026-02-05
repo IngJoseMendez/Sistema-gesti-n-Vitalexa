@@ -275,7 +275,18 @@ public class ReportServiceImpl implements ReportService {
                 List<VendorPerformanceDTO> topVendors = ordersByVendor.entrySet().stream()
                                 .map(entry -> {
                                         List<Order> vendorOrders = entry.getValue();
-                                        String vendorName = vendorOrders.get(0).getVendedor().getUsername();
+                                        // Get the actual username from the first order
+                                        String actualUsername = vendorOrders.get(0).getVendedor().getUsername();
+
+                                        // If this is a shared user, use the canonical name (NinaTorres)
+                                        String vendorName;
+                                        if (UserUnificationUtil.isSharedUser(actualUsername)) {
+                                                vendorName = UserUnificationUtil.getSharedUsernames(actualUsername)
+                                                                .get(0);
+                                        } else {
+                                                vendorName = actualUsername;
+                                        }
+
                                         int totalOrders = vendorOrders.size();
                                         BigDecimal totalRevenue = vendorOrders.stream()
                                                         .map(Order::getTotal)
@@ -564,7 +575,17 @@ public class ReportServiceImpl implements ReportService {
                                 .map(vendorEntry -> {
                                         String vendedorId = vendorEntry.getKey();
                                         List<Order> vendorOrders = vendorEntry.getValue();
-                                        String vendedorName = vendorOrders.get(0).getVendedor().getUsername();
+                                        // Get the actual username from the first order
+                                        String actualUsername = vendorOrders.get(0).getVendedor().getUsername();
+
+                                        // If this is a shared user, use the canonical name (NinaTorres)
+                                        String vendedorName;
+                                        if (UserUnificationUtil.isSharedUser(actualUsername)) {
+                                                vendedorName = UserUnificationUtil.getSharedUsernames(actualUsername)
+                                                                .get(0);
+                                        } else {
+                                                vendedorName = actualUsername;
+                                        }
 
                                         // 3.1 Agrupar órdenes por día
                                         Map<LocalDate, List<Order>> ordersByDay = vendorOrders.stream()
