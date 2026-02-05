@@ -1537,9 +1537,8 @@ public class OrderServiceImpl implements OrdenService {
         notes.append("Pagado: $").append(request.amountPaid())
                 .append(" | Debe: $").append(amountDue);
 
-        if (request.notes() != null && !request.notes().isBlank()) {
-            notes.append(" - ").append(request.notes());
-        }
+        // NO agregamos request.notes() aquí para evitar duplicación
+        // El usuario maneja la nota completa en el frontend
         notes.append(" ").append(request.invoiceType().getSuffix());
 
         order.setNotas(notes.toString());

@@ -147,21 +147,41 @@ public class ReportExportServiceImpl implements ReportExportService {
                         .orElseThrow(() -> new org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption(
                                 "Vendedor no encontrado"));
 
-                // For shared users, use the canonical username for matching
-                String matchUsername;
+                // For shared users, get both usernames
+                List<String> matchUsernames;
                 if (UserUnificationUtil.isSharedUser(vendor.getUsername())) {
-                    matchUsername = UserUnificationUtil.getSharedUsernames(vendor.getUsername()).get(0);
+                    matchUsernames = UserUnificationUtil.getSharedUsernames(vendor.getUsername());
                 } else {
-                    matchUsername = vendor.getUsername();
+                    matchUsernames = List.of(vendor.getUsername());
                 }
 
-                // Filter by vendorName (username) instead of UUID
-                VendorDailySalesDTO vendorDaily = reportService.getVendorDailySalesReport(startDate, endDate).stream()
-                        .filter(v -> v.vendedorName().equals(matchUsername))
-                        .findFirst()
-                        .orElseThrow(() -> new org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption(
-                                "No se encontraron ventas para este vendedor"));
-                vendorSalesReports = List.of(vendorDaily);
+                // Filter by any of the shared usernames
+                List<VendorDailySalesDTO> matchingReports = reportService.getVendorDailySalesReport(startDate, endDate).stream()
+                        .filter(v -> matchUsernames.contains(v.vendedorName()))
+                        .toList();
+
+                if (matchingReports.isEmpty()) {
+                    throw new org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption(
+                            "No se encontraron ventas para este vendedor");
+                }
+
+                // If there are multiple reports (shared users), merge them
+                if (matchingReports.size() > 1) {
+                    // Merge all daily groups from both users
+                    List<VendorDailyGroupDTO> mergedDailyGroups = new java.util.ArrayList<>();
+                    for (VendorDailySalesDTO report : matchingReports) {
+                        mergedDailyGroups.addAll(report.dailyGroups());
+                    }
+                    
+                    // Create unified report with canonical name (first shared username - Nina)
+                    VendorDailySalesDTO unifiedReport = new VendorDailySalesDTO(
+                        matchUsernames.get(0),  // Use canonical name (NinaTorres)
+                        mergedDailyGroups
+                    );
+                    vendorSalesReports = List.of(unifiedReport);
+                } else {
+                    vendorSalesReports = matchingReports;
+                }
             } else {
                 vendorSalesReports = reportService.getVendorDailySalesReport(startDate, endDate);
             }
@@ -846,7 +866,6 @@ public class ReportExportServiceImpl implements ReportExportService {
             BigDecimal totalPendingPeriod = BigDecimal.ZERO;
             BigDecimal totalPaidPeriod = BigDecimal.ZERO;
 
-            // Mapa para acumular deuda por cliente (para el resumen lateral)
             // Mapa para facturas pendientes por cliente: Cliente -> List de [InvoiceNum, Fecha, Amount]
             java.util.Map<String, java.util.List<Object[]>> clientPendingInvoices = new java.util.LinkedHashMap<>();
 
@@ -865,10 +884,10 @@ public class ReportExportServiceImpl implements ReportExportService {
                         totalPendingPeriod = totalPendingPeriod.add(inv.pendingAmount());
                         totalPaidPeriod = totalPaidPeriod.add(inv.paidAmount());
 
-                        // Agregar factura siel tiene saldo pendiente
+                        // Agregar factura si tiene saldo pendiente
                         if (inv.pendingAmount().compareTo(BigDecimal.ZERO) > 0) {
                             String clientKey = inv.numeroCliente();
-                            clientPendingInvoices. computeIfAbsent(clientKey, k -> new java.util.ArrayList<>())
+                            clientPendingInvoices.computeIfAbsent(clientKey, k -> new java.util.ArrayList<>())
                                 .add(new Object[]{inv.numeroFactura(), inv.fecha(), inv.pendingAmount()});
                         }
                     }
