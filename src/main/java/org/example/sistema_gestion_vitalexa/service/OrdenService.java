@@ -51,4 +51,10 @@ public interface OrdenService {
      */
     OrderResponse createHistoricalInvoice(CreateHistoricalInvoiceRequest request, String ownerUsername);
 
+    /**
+     * Actualizar factura histórica (Solo Owner/Admin)
+     * Permite editar TODO (fecha, total, cliente, etc) incluso si está COMPLETADO
+     */
+    OrderResponse updateHistoricalInvoice(UUID orderId, CreateHistoricalInvoiceRequest request, String username);
+
 }

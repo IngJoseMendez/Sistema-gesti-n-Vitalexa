@@ -23,6 +23,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     // usernames
     List<Payment> findByRegisteredByUsernameIn(List<String> usernames);
 
+    void deleteByOrder(org.example.sistema_gestion_vitalexa.entity.Order order);
+
     /**
      * Suma total de pagos para una orden
      */

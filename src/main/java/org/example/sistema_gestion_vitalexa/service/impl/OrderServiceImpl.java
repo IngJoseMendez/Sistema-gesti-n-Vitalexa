@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.sistema_gestion_vitalexa.dto.AddAssortmentItemRequest;
 import org.example.sistema_gestion_vitalexa.dto.BonifiedItemRequestDTO;
+import org.example.sistema_gestion_vitalexa.dto.CreateHistoricalInvoiceRequest;
 import org.example.sistema_gestion_vitalexa.dto.OrderRequestDto;
 import org.example.sistema_gestion_vitalexa.dto.OrderResponse;
 import org.example.sistema_gestion_vitalexa.dto.OrderItemRequestDTO;
@@ -1452,6 +1453,131 @@ public class OrderServiceImpl implements OrdenService {
                 vendedor.getUsername(),
                 ownerUsername);
 
+        return orderMapper.toResponse(savedOrder);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse updateHistoricalInvoice(UUID orderId, CreateHistoricalInvoiceRequest request,
+            String username) {
+        // Validar permisos (Owner o Admin)
+        User currentUser = userRepository.findByUsername(username)
+                .orElseThrow(() -> new BusinessExeption("Usuario no encontrado"));
+
+        if (currentUser.getRole() != org.example.sistema_gestion_vitalexa.enums.Role.OWNER &&
+                currentUser.getRole() != org.example.sistema_gestion_vitalexa.enums.Role.ADMIN) {
+            throw new BusinessExeption("Solo Owner o Admin pueden editar facturas históricas");
+        }
+
+        Order order = ordenRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessExeption("Orden no encontrada"));
+
+        // Validar unicidad de número de factura si cambió
+        if (order.getInvoiceNumber() != null && !order.getInvoiceNumber().equals(request.invoiceNumber())) {
+            if (ordenRepository.findByInvoiceNumber(request.invoiceNumber()).isPresent()) {
+                throw new BusinessExeption("Ya existe una factura con el número: " + request.invoiceNumber());
+            }
+        } else if (order.getInvoiceNumber() == null) {
+            // Caso raro, pero posible
+            if (ordenRepository.findByInvoiceNumber(request.invoiceNumber()).isPresent()) {
+                throw new BusinessExeption("Ya existe una factura con el número: " + request.invoiceNumber());
+            }
+        }
+
+        // Validar montos
+        if (request.amountPaid().compareTo(request.totalValue()) > 0) {
+            throw new BusinessExeption("El monto pagado no puede ser mayor al valor total");
+        }
+
+        // Actualizar datos básicos
+        order.setFecha(request.fecha());
+        order.setTotal(request.totalValue());
+        order.setInvoiceNumber(request.invoiceNumber());
+        // Estado sigue siendo COMPLETADO (o lo forzamos por si acaso)
+        order.setEstado(OrdenStatus.COMPLETADO);
+
+        // Actualizar Cliente y Vendedor
+        Client client = null;
+        if (request.clientId() != null) {
+            client = clientService.findEntityById(request.clientId());
+        }
+
+        // Lógica de asignación de vendedor (igual que en create)
+        User owner = userRepository.findAll().stream()
+                .filter(u -> u.getRole() == org.example.sistema_gestion_vitalexa.enums.Role.OWNER)
+                .findFirst()
+                .orElse(currentUser); // Fallback al usuario actual si no halla owner explicito
+
+        User vendedor = owner;
+        if (client != null && client.getVendedorAsignado() != null) {
+            vendedor = client.getVendedorAsignado();
+        } else if (client != null) {
+            // Cliente sin vendedor -> Owner
+        }
+
+        // Actualizar cliente y vendedor en orden
+        order.setCliente(client);
+        order.setVendedor(vendedor);
+
+        // Reconstruir Notas
+        BigDecimal amountDue = request.totalValue().subtract(request.amountPaid());
+        StringBuilder notes = new StringBuilder("[HISTÓRICA] [EDITADA] ");
+        notes.append("Tipo: ").append(request.invoiceType().getLabel()).append(" | ");
+        notes.append("Vendedor: ").append(vendedor.getUsername()).append(" | ");
+
+        if (request.clientName() != null)
+            notes.append("Cliente: ").append(request.clientName()).append(" | ");
+        if (request.clientPhone() != null)
+            notes.append("Tel: ").append(request.clientPhone()).append(" | ");
+        if (request.clientEmail() != null)
+            notes.append("Email: ").append(request.clientEmail()).append(" | ");
+        if (request.clientAddress() != null)
+            notes.append("Dir: ").append(request.clientAddress()).append(" | ");
+
+        notes.append("Pagado: $").append(request.amountPaid())
+                .append(" | Debe: $").append(amountDue);
+
+        if (request.notes() != null && !request.notes().isBlank()) {
+            notes.append(" - ").append(request.notes());
+        }
+        notes.append(" ").append(request.invoiceType().getSuffix());
+
+        order.setNotas(notes.toString());
+
+        // Actualizar compras del cliente (restar anterior, sumar nueva??)
+        // La lógica de `registerPurchase` SUMA. Deberíamos recalcular?
+        // Es complejo recalcular el acumulado exacto.
+        // Opción: No tocar el acumulado aquí, asumiendo que el "Total Compras" dinámico
+        // lo arregla.
+        // COMO IMPLEMENTAMOS "Total Compras" dinámico en la sesión anterior,
+        // NO necesitamos actualizar manualmente `client.totalCompras`.
+        // El nuevo mapper calcula SUM(Orders Completed). Al guardar esta orden con
+        // nuevo total,
+        // el cálculo dinámico se arregla solo. ¡Excelente!
+
+        Order savedOrder = ordenRepository.save(order);
+
+        // Actualizar Pagos
+        // Estrategia: Borrar pagos anteriores y crear uno nuevo con el nuevo monto
+        // (Simplificación válida para facturas históricas manuales)
+        paymentRepository.deleteByOrder(savedOrder);
+        paymentRepository.flush(); // Forzar borrado inmediato
+
+        if (request.amountPaid().compareTo(BigDecimal.ZERO) > 0) {
+            org.example.sistema_gestion_vitalexa.entity.Payment payment = org.example.sistema_gestion_vitalexa.entity.Payment
+                    .builder()
+                    .order(savedOrder)
+                    .amount(request.amountPaid())
+                    .paymentDate(request.fecha())
+                    .withinDeadline(true)
+                    .discountApplied(BigDecimal.ZERO)
+                    .registeredBy(currentUser)
+                    .notes("[HISTÓRICA-EDIT] Pago actualizado")
+                    .build();
+            paymentRepository.save(payment);
+        }
+
+        log.info("Factura histórica actualizada: {}", request.invoiceNumber());
         return orderMapper.toResponse(savedOrder);
     }
 }

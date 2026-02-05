@@ -22,7 +22,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/owner/invoices")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('OWNER')")
+@PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
 public class InvoiceOwnerController {
 
     private final OrdenService ordenService;
@@ -31,7 +31,8 @@ public class InvoiceOwnerController {
     /**
      * GET /api/owner/invoices/clients
      * Obtener lista de TODOS los clientes disponibles del sistema
-     * (no solo los del Owner, sino todos para poder vincularlos a facturas históricas)
+     * (no solo los del Owner, sino todos para poder vincularlos a facturas
+     * históricas)
      */
     @GetMapping("/clients")
     public ResponseEntity<List<ClientResponse>> getAvailableClients() {
@@ -66,5 +67,18 @@ public class InvoiceOwnerController {
         OrderResponse response = ordenService.createHistoricalInvoice(request, auth.getName());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
-}
 
+    /**
+     * PUT /api/owner/invoices/{id}
+     * Actualizar una factura histórica (Owner/Admin)
+     */
+    @PutMapping("/{id}")
+    public ResponseEntity<OrderResponse> updateHistoricalInvoice(
+            @PathVariable java.util.UUID id,
+            @Valid @RequestBody CreateHistoricalInvoiceRequest request,
+            Authentication auth) {
+
+        OrderResponse response = ordenService.updateHistoricalInvoice(id, request, auth.getName());
+        return ResponseEntity.ok(response);
+    }
+}
