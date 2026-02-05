@@ -156,7 +156,8 @@ public class ReportExportServiceImpl implements ReportExportService {
                 }
 
                 // Filter by any of the shared usernames
-                List<VendorDailySalesDTO> matchingReports = reportService.getVendorDailySalesReport(startDate, endDate).stream()
+                List<VendorDailySalesDTO> matchingReports = reportService.getVendorDailySalesReport(startDate, endDate)
+                        .stream()
                         .filter(v -> matchUsernames.contains(v.vendedorName()))
                         .toList();
 
@@ -174,18 +175,17 @@ public class ReportExportServiceImpl implements ReportExportService {
                         mergedDailyGroups.addAll(vendorReport.dailyGroups());
                         totalPeriod = totalPeriod.add(vendorReport.totalPeriod());
                     }
-                    
+
                     // Create unified report with canonical name (first shared username - Nina)
                     // Use the first report's vendorId, startDate, endDate
                     VendorDailySalesDTO firstReport = matchingReports.get(0);
                     VendorDailySalesDTO unifiedReport = new VendorDailySalesDTO(
-                        firstReport.vendedorId(),
-                        matchUsernames.get(0),  // Use canonical name (NinaTorres)
-                        firstReport.startDate(),
-                        firstReport.endDate(),
-                        mergedDailyGroups,
-                        totalPeriod
-                    );
+                            firstReport.vendedorId(),
+                            matchUsernames.get(0), // Use canonical name (NinaTorres)
+                            firstReport.startDate(),
+                            firstReport.endDate(),
+                            mergedDailyGroups,
+                            totalPeriod);
                     vendorSalesReports = List.of(unifiedReport);
                 } else {
                     vendorSalesReports = matchingReports;
@@ -874,7 +874,8 @@ public class ReportExportServiceImpl implements ReportExportService {
             BigDecimal totalPendingPeriod = BigDecimal.ZERO;
             BigDecimal totalPaidPeriod = BigDecimal.ZERO;
 
-            // Mapa para facturas pendientes por cliente: Cliente -> List de [InvoiceNum, Fecha, Amount]
+            // Mapa para facturas pendientes por cliente: Cliente -> List de [InvoiceNum,
+            // Fecha, Amount]
             java.util.Map<String, java.util.List<Object[]>> clientPendingInvoices = new java.util.LinkedHashMap<>();
 
             // Datos: iterar por cada día
@@ -896,7 +897,7 @@ public class ReportExportServiceImpl implements ReportExportService {
                         if (inv.pendingAmount().compareTo(BigDecimal.ZERO) > 0) {
                             String clientKey = inv.numeroCliente();
                             clientPendingInvoices.computeIfAbsent(clientKey, k -> new java.util.ArrayList<>())
-                                .add(new Object[]{inv.numeroFactura(), inv.fecha(), inv.pendingAmount()});
+                                    .add(new Object[] { inv.numeroFactura(), inv.fecha(), inv.pendingAmount() });
                         }
                     }
 
@@ -1068,14 +1069,14 @@ public class ReportExportServiceImpl implements ReportExportService {
 
             // Datos del resumen: Listar facturas con deuda > 0, agrupadas por cliente
             int summaryDataRow = summaryHeaderRow + 1;
-            
+
             for (java.util.Map.Entry<String, java.util.List<Object[]>> entry : clientPendingInvoices.entrySet()) {
                 String clientName = entry.getKey();
                 java.util.List<Object[]> clientInvoices = entry.getValue();
-                
+
                 // Ordenar por fecha (índice 1 del array)
-                clientInvoices.sort((a, b) -> ((LocalDate)a[1]).compareTo((LocalDate)b[1]));
-                
+                clientInvoices.sort((a, b) -> ((LocalDate) a[1]).compareTo((LocalDate) b[1]));
+
                 for (int i = 0; i < clientInvoices.size(); i++) {
                     Object[] inv = clientInvoices.get(i);
                     Row clientRow = sheet.getRow(summaryDataRow);
@@ -1092,41 +1093,41 @@ public class ReportExportServiceImpl implements ReportExportService {
 
                     // # Factura
                     Cell invoiceNumCell = clientRow.createCell(summaryCol + 1);
-                    invoiceNumCell.setCellValue((String)inv[0]);
+                    invoiceNumCell.setCellValue((String) inv[0]);
                     invoiceNumCell.setCellStyle(dataStyle);
 
                     // Fecha
                     Cell dateCell = clientRow.createCell(summaryCol + 2);
-                    dateCell.setCellValue(((LocalDate)inv[1]).format(DATE_FORMATTER));
+                    dateCell.setCellValue(((LocalDate) inv[1]).format(DATE_FORMATTER));
                     dateCell.setCellStyle(dataStyle);
 
                     // Debe
                     Cell debtCell = clientRow.createCell(summaryCol + 3);
-                    debtCell.setCellValue(((BigDecimal)inv[2]).doubleValue());
+                    debtCell.setCellValue(((BigDecimal) inv[2]).doubleValue());
                     debtCell.setCellStyle(currencyStyle);
 
                     summaryDataRow++;
                 }
-                
+
                 // Línea de subtotal por cliente si tiene más de una factura
                 if (clientInvoices.size() > 1) {
                     Row subtotalRow = sheet.getRow(summaryDataRow);
                     if (subtotalRow == null) {
                         subtotalRow = sheet.createRow(summaryDataRow);
                     }
-                    
+
                     Cell subtotalLabelCell = subtotalRow.createCell(summaryCol + 2);
                     subtotalLabelCell.setCellValue("Subtotal:");
                     subtotalLabelCell.setCellStyle(headerStyle);
-                    
+
                     BigDecimal clientTotal = clientInvoices.stream()
-                        .map(a -> (BigDecimal)a[2])
-                        .reduce(BigDecimal.ZERO, BigDecimal::add);
-                    
+                            .map(a -> (BigDecimal) a[2])
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
                     Cell subtotalValueCell = subtotalRow.createCell(summaryCol + 3);
                     subtotalValueCell.setCellValue(clientTotal.doubleValue());
                     subtotalValueCell.setCellStyle(currencyStyle);
-                    
+
                     summaryDataRow++;
                 }
             }
@@ -1164,7 +1165,14 @@ public class ReportExportServiceImpl implements ReportExportService {
         if (balances.isEmpty())
             return "Vendedor";
         String vName = balances.get(0).vendedorAsignadoName();
-        return vName != null ? vName : "Sin Asignar";
+        if (vName == null) {
+            return "Sin Asignar";
+        }
+        // If this is a shared user, use the canonical name (NinaTorres)
+        if (UserUnificationUtil.isSharedUser(vName)) {
+            return UserUnificationUtil.getSharedUsernames(vName).get(0);
+        }
+        return vName;
     }
 
     private void createClientBalanceSheetInternal(Workbook workbook, String sheetName, List<ClientBalanceDTO> balances,
@@ -1248,7 +1256,12 @@ public class ReportExportServiceImpl implements ReportExportService {
 
             // Vendedora
             Cell vendorCell = row.createCell(colNum++);
-            vendorCell.setCellValue(balance.vendedorAsignadoName() != null ? balance.vendedorAsignadoName() : "-");
+            String displayVendorName = balance.vendedorAsignadoName() != null ? balance.vendedorAsignadoName() : "-";
+            // If this is a shared user, use the canonical name (NinaTorres)
+            if (!"-".equals(displayVendorName) && UserUnificationUtil.isSharedUser(displayVendorName)) {
+                displayVendorName = UserUnificationUtil.getSharedUsernames(displayVendorName).get(0);
+            }
+            vendorCell.setCellValue(displayVendorName);
             vendorCell.setCellStyle(rowDataStyle);
 
             // Tope Crédito
