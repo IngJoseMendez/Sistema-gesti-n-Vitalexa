@@ -836,12 +836,15 @@ public class ReportExportServiceImpl implements ReportExportService {
             // Encabezados - con columnas de descuento y saldo pendiente
             Row headerRow = sheet.createRow(rowNum++);
             String[] headers = { "Fecha", "# Factura", "# Cliente", "Valor Original", "Dto%", "Valor Final",
-                    "Pagado", "Pendiente", "Subtotal Cliente", "Total Día" };
+                    "Pagado", "Pendiente", "Subtotal Cliente", "VALOR A COBRAR", "Total Día" }; // Added VALOR A COBRAR
             for (int i = 0; i < headers.length; i++) {
                 Cell cell = headerRow.createCell(i);
                 cell.setCellValue(headers[i]);
                 cell.setCellStyle(headerStyle);
             }
+
+            BigDecimal totalPendingPeriod = BigDecimal.ZERO;
+            BigDecimal totalPaidPeriod = BigDecimal.ZERO;
 
             // Datos: iterar por cada día
             for (VendorDailyGroupDTO dailyGroup : vendor.dailyGroups()) {
@@ -850,18 +853,30 @@ public class ReportExportServiceImpl implements ReportExportService {
                 // Por cada cliente del día
                 for (ClientDailyGroupDTO clientGroup : dailyGroup.clientGroups()) {
                     int facturaIndex = 0;
+                    BigDecimal clientTotalPending = BigDecimal.ZERO;
+
+                    // Calcular pendiente del cliente para este día
+                    for (VendorInvoiceRowDTO inv : clientGroup.facturas()) {
+                        clientTotalPending = clientTotalPending.add(inv.pendingAmount());
+                        totalPendingPeriod = totalPendingPeriod.add(inv.pendingAmount());
+                        totalPaidPeriod = totalPaidPeriod.add(inv.paidAmount());
+                    }
 
                     // Por cada factura del cliente
                     for (VendorInvoiceRowDTO invoice : clientGroup.facturas()) {
                         Row row = sheet.createRow(rowNum++);
 
-                        // Determinar estilo según estado de pago
+                        // Determinar estilo según estado de pago (Logica explícita)
                         CellStyle rowDataStyle = dataStyle;
                         CellStyle rowCurrencyStyle = currencyStyle;
-                        if ("PAID".equals(invoice.paymentStatus())) {
+
+                        boolean isPaid = invoice.pendingAmount().compareTo(BigDecimal.ZERO) <= 0;
+                        boolean isPartial = !isPaid && invoice.paidAmount().compareTo(BigDecimal.ZERO) > 0;
+
+                        if (isPaid) {
                             rowDataStyle = paidDataStyle;
                             rowCurrencyStyle = paidStyle;
-                        } else if ("PARTIAL".equals(invoice.paymentStatus())) {
+                        } else if (isPartial) {
                             rowDataStyle = partialDataStyle;
                             rowCurrencyStyle = partialStyle;
                         }
@@ -913,12 +928,20 @@ public class ReportExportServiceImpl implements ReportExportService {
                         pendingCell.setCellValue(invoice.pendingAmount().doubleValue());
                         pendingCell.setCellStyle(rowCurrencyStyle);
 
-                        // Subtotal cliente (solo en la ÚLTIMA factura del cliente)
+                        // Subtotal cliente (Totla Compra) (solo en la ÚLTIMA factura del cliente)
                         Cell subtotalCell = row.createCell(colNum++);
                         if (facturaIndex == clientGroup.facturas().size() - 1) {
                             subtotalCell.setCellValue(clientGroup.subtotalCliente().doubleValue());
                         }
                         subtotalCell.setCellStyle(rowCurrencyStyle);
+
+                        // VALOR A COBRAR (Total Pendiente Cliente) (solo en la ÚLTIMA factura del
+                        // cliente)
+                        Cell toCollectCell = row.createCell(colNum++);
+                        if (facturaIndex == clientGroup.facturas().size() - 1) {
+                            toCollectCell.setCellValue(clientTotalPending.doubleValue());
+                        }
+                        toCollectCell.setCellStyle(rowCurrencyStyle);
 
                         // Total del día (solo en la ÚLTIMA factura del ÚLTIMO cliente del día)
                         Cell totalDiaCell = row.createCell(colNum++);
@@ -936,14 +959,34 @@ public class ReportExportServiceImpl implements ReportExportService {
 
             // Fila final: Total período
             rowNum++;
-            Row totalRow = sheet.createRow(rowNum);
-            Cell totalLabelCell = totalRow.createCell(8);
+            Row totalRow = sheet.createRow(rowNum++);
+            Cell totalLabelCell = totalRow.createCell(9); // Shifted
             totalLabelCell.setCellValue("TOTAL VENDEDORA:");
             totalLabelCell.setCellStyle(headerStyle);
 
-            Cell totalValueCell = totalRow.createCell(9);
+            Cell totalValueCell = totalRow.createCell(10); // Shifted
             totalValueCell.setCellValue(vendor.totalPeriod().doubleValue());
             totalValueCell.setCellStyle(currencyStyle);
+
+            // Fila Total Cartera
+            Row portfolioRow = sheet.createRow(rowNum++);
+            Cell portfolioLabel = portfolioRow.createCell(9);
+            portfolioLabel.setCellValue("TOTAL CARTERA:");
+            portfolioLabel.setCellStyle(headerStyle);
+
+            Cell portfolioValue = portfolioRow.createCell(10);
+            portfolioValue.setCellValue(totalPendingPeriod.doubleValue());
+            portfolioValue.setCellStyle(currencyStyle);
+
+            // Fila Total Cobrado
+            Row collectedRow = sheet.createRow(rowNum++);
+            Cell collectedLabel = collectedRow.createCell(9);
+            collectedLabel.setCellValue("TOTAL COBRADO:");
+            collectedLabel.setCellStyle(headerStyle);
+
+            Cell collectedValue = collectedRow.createCell(10);
+            collectedValue.setCellValue(totalPaidPeriod.doubleValue());
+            collectedValue.setCellStyle(currencyStyle);
 
             // Ajustar ancho de columnas
             for (int i = 0; i < headers.length; i++) {
