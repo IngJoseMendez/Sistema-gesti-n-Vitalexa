@@ -93,7 +93,7 @@ public class ReportServiceImpl implements ReportService {
 
                 return buildSalesReport(orders);
         }
-
+        //rebuild
         private SalesReportDTO buildSalesReport(List<Order> orders) {
                 // Calcular métricas básicas
                 BigDecimal totalRevenue = orders.stream()
