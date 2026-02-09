@@ -7,6 +7,7 @@ import org.example.sistema_gestion_vitalexa.dto.UpdateProductRequest;
 import org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption;
 import org.example.sistema_gestion_vitalexa.service.ProductImageService;
 import org.example.sistema_gestion_vitalexa.service.ProductService;
+import org.example.sistema_gestion_vitalexa.service.ProductAuditService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -32,19 +33,67 @@ public class ProductAdminController {
 
     private final ProductService productService;
     private final ProductImageService imageService;
+    private final ProductAuditService auditService;
+
+    /**
+     * Crear múltiples productos y descargar huella contable
+     */
+    @PostMapping("/bulk")
+    public ResponseEntity<byte[]> createBulk(
+            @RequestBody List<CreateProductRequest> requests,
+            org.springframework.security.core.Authentication authentication) {
+
+        // 1. Crear productos
+        List<ProductResponse> createdProducts = productService.createBulk(requests);
+
+        // 2. Generar PDF
+        String username = authentication != null ? authentication.getName() : "Unknown";
+        byte[] pdfBytes = auditService.generateProductAudit(createdProducts, username, "CREACIÓN MASIVA");
+
+        // 3. Retornar PDF
+        return ResponseEntity.ok()
+                .header("Content-Disposition",
+                        "attachment; filename=huella_contable_creacion_" + System.currentTimeMillis() + ".pdf")
+                .header("Content-Type", "application/pdf")
+                .body(pdfBytes);
+    }
+
+    /**
+     * Actualizar múltiples productos y descargar huella contable
+     */
+    @PutMapping("/bulk")
+    public ResponseEntity<byte[]> updateBulk(
+            @RequestBody List<org.example.sistema_gestion_vitalexa.dto.UpdateProductBulkRequest> requests,
+            org.springframework.security.core.Authentication authentication) {
+
+        // 1. Actualizar productos
+        List<ProductResponse> updatedProducts = productService.updateBulk(requests);
+
+        // 2. Generar PDF
+        String username = authentication != null ? authentication.getName() : "Unknown";
+        byte[] pdfBytes = auditService.generateProductAudit(updatedProducts, username, "ACTUALIZACIÓN MASIVA");
+
+        // 3. Retornar PDF
+        return ResponseEntity.ok()
+                .header("Content-Disposition",
+                        "attachment; filename=huella_contable_actualizacion_" + System.currentTimeMillis() + ".pdf")
+                .header("Content-Type", "application/pdf")
+                .body(pdfBytes);
+    }
 
     /**
      * Crear nuevo producto con imagen
      */
     @PostMapping
-    public ResponseEntity<ProductResponse> create(
+    public ResponseEntity<byte[]> create(
             @RequestParam String nombre,
             @RequestParam String descripcion,
             @RequestParam BigDecimal precio,
             @RequestParam Integer stock,
             @RequestParam(required = false, defaultValue = "10") Integer reorderPoint,
             @RequestParam(required = false) UUID tagId,
-            @RequestParam(required = false) MultipartFile image) {
+            @RequestParam(required = false) MultipartFile image,
+            org.springframework.security.core.Authentication authentication) {
         try {
             String imageUrl = null;
             if (image != null && !image.isEmpty()) {
@@ -60,8 +109,18 @@ public class ProductAdminController {
                     imageUrl,
                     tagId);
 
-            ProductResponse response = productService.create(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+            ProductResponse createdProduct = productService.create(request);
+
+            // Generar PDF para auditoría
+            String username = authentication != null ? authentication.getName() : "Unknown";
+            byte[] pdfBytes = auditService.generateProductAudit(List.of(createdProduct), username,
+                    "CREACIÓN INDIVIDUAL");
+
+            return ResponseEntity.ok()
+                    .header("Content-Disposition",
+                            "attachment; filename=huella_contable_creacion_" + System.currentTimeMillis() + ".pdf")
+                    .header("Content-Type", "application/pdf")
+                    .body(pdfBytes);
         } catch (IOException e) {
             log.error("Error guardando imagen al crear producto", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
@@ -72,7 +131,40 @@ public class ProductAdminController {
      * Actualizar producto existente
      */
     @PutMapping("/{id}")
-    public ResponseEntity<?> update(
+    public ResponseEntity<byte[]> update(
+            @PathVariable UUID id,
+            @RequestBody UpdateProductRequest request,
+            org.springframework.security.core.Authentication authentication) {
+        try {
+            log.debug("Update request id={} request={}", id, request);
+
+            ProductResponse updatedProduct = productService.update(id, request);
+
+            // Generar PDF para auditoría
+            String username = authentication != null ? authentication.getName() : "Unknown";
+            byte[] pdfBytes = auditService.generateProductAudit(List.of(updatedProduct), username,
+                    "ACTUALIZACIÓN INDIVIDUAL");
+
+            return ResponseEntity.ok()
+                    .header("Content-Disposition",
+                            "attachment; filename=huella_contable_actualizacion_" + System.currentTimeMillis() + ".pdf")
+                    .header("Content-Type", "application/pdf")
+                    .body(pdfBytes);
+        } catch (BusinessExeption be) {
+            log.warn("Business error updating product {}: {}", id, be.getMessage());
+            return ResponseEntity.badRequest().body(be.getMessage().getBytes()); // Convert message to bytes
+        } catch (Exception e) {
+            log.error("Unexpected error updating product {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error actualizando producto".getBytes()); // Convert message to bytes
+        }
+    }
+
+    /**
+     * Endpoint alternativo para actualizar (POST multipart)
+     */
+    @PostMapping("/{id}/update")
+    public ResponseEntity<?> updateViaPost(
             @PathVariable UUID id,
             @RequestParam(required = false) String nombre,
             @RequestParam(required = false) String descripcion,
@@ -81,14 +173,16 @@ public class ProductAdminController {
             @RequestParam(required = false) String reorderPoint,
             @RequestParam(required = false) UUID tagId,
             @RequestParam(required = false) MultipartFile image,
-            @RequestParam(required = false) Boolean active) {
+            @RequestParam(required = false) Boolean active,
+            org.springframework.security.core.Authentication authentication) {
         try {
-            log.debug("Update request id={} nombre={} precio={} stock={} active={}",
+            log.debug("Update via POST request id={} nombre={} precio={} stock={} active={}",
                     id, nombre, precio, stock, active);
 
             BigDecimal precioVal = null;
             Integer stockVal = null;
             Integer reorderPointVal = null;
+            String imageUrl = null;
 
             if (precio != null && !precio.isBlank()) {
                 try {
@@ -118,7 +212,6 @@ public class ProductAdminController {
                 }
             }
 
-            String imageUrl = null;
             if (image != null && !image.isEmpty()) {
                 imageUrl = imageService.saveImage(image);
             }
@@ -133,8 +226,19 @@ public class ProductAdminController {
                     active,
                     tagId);
 
-            ProductResponse response = productService.update(id, request);
-            return ResponseEntity.ok(response);
+            ProductResponse updatedProduct = productService.update(id, request);
+
+            // Generar PDF para auditoría
+            String username = authentication != null ? authentication.getName() : "Unknown";
+            byte[] pdfBytes = auditService.generateProductAudit(List.of(updatedProduct), username,
+                    "ACTUALIZACIÓN INDIVIDUAL (Multipart)");
+
+            return ResponseEntity.ok()
+                    .header("Content-Disposition",
+                            "attachment; filename=huella_contable_actualizacion_multipart_" + System.currentTimeMillis()
+                                    + ".pdf")
+                    .header("Content-Type", "application/pdf")
+                    .body(pdfBytes);
         } catch (BusinessExeption be) {
             log.warn("Business error updating product {}: {}", id, be.getMessage());
             return ResponseEntity.badRequest().body(be.getMessage());
@@ -148,43 +252,39 @@ public class ProductAdminController {
     }
 
     /**
-     * Endpoint alternativo para actualizar (POST multipart)
-     */
-    @PostMapping("/{id}/update")
-    public ResponseEntity<?> updateViaPost(
-            @PathVariable UUID id,
-            @RequestParam(required = false) String nombre,
-            @RequestParam(required = false) String descripcion,
-            @RequestParam(required = false) String precio,
-            @RequestParam(required = false) String stock,
-            @RequestParam(required = false) String reorderPoint,
-            @RequestParam(required = false) UUID tagId,
-            @RequestParam(required = false) MultipartFile image,
-            @RequestParam(required = false) Boolean active) {
-        return update(id, nombre, descripcion, precio, stock, reorderPoint, tagId, image, active);
-    }
-
-    /**
      * Eliminar (soft delete) o hard delete si se pasa ?hard=true
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(
+    public ResponseEntity<byte[]> delete(
             @PathVariable UUID id,
-            @RequestParam(name = "hard", required = false, defaultValue = "false") boolean hard) {
+            @RequestParam(name = "hard", required = false, defaultValue = "false") boolean hard,
+            org.springframework.security.core.Authentication authentication) {
         try {
-            log.debug("Delete request for id={} hard={}", id, hard);
+            // Obtenemos el producto antes de eliminarlo para la auditoría
+            ProductResponse productToDelete = productService.findById(id);
+
             if (hard) {
                 productService.hardDelete(id);
             } else {
                 productService.softDelete(id);
             }
-            return ResponseEntity.noContent().build();
+
+            // Generar PDF para auditoría
+            String username = authentication != null ? authentication.getName() : "Unknown";
+            String opType = hard ? "ELIMINACIÓN FÍSICA (HARD DELETE)" : "ELIMINACIÓN LÓGICA (SOFT DELETE)";
+            byte[] pdfBytes = auditService.generateProductAudit(List.of(productToDelete), username, opType);
+
+            return ResponseEntity.ok()
+                    .header("Content-Disposition",
+                            "attachment; filename=huella_contable_eliminacion_" + System.currentTimeMillis() + ".pdf")
+                    .header("Content-Type", "application/pdf")
+                    .body(pdfBytes);
         } catch (BusinessExeption be) {
             log.warn("Business error deleting product {}: {}", id, be.getMessage());
-            return ResponseEntity.badRequest().body(be.getMessage());
+            return ResponseEntity.badRequest().body(be.getMessage().getBytes());
         } catch (Exception e) {
             log.error("Unexpected error deleting product {}", id, e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error eliminando producto");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error eliminando producto".getBytes());
         }
     }
 

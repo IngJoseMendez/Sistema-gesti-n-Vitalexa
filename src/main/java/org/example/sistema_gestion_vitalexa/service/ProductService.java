@@ -3,6 +3,7 @@ package org.example.sistema_gestion_vitalexa.service;
 import org.example.sistema_gestion_vitalexa.dto.CreateProductRequest;
 import org.example.sistema_gestion_vitalexa.dto.ProductResponse;
 import org.example.sistema_gestion_vitalexa.dto.UpdateProductRequest;
+import org.example.sistema_gestion_vitalexa.dto.UpdateProductBulkRequest;
 import org.example.sistema_gestion_vitalexa.entity.Product;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -12,6 +13,16 @@ import java.util.UUID;
 
 public interface ProductService {
     ProductResponse create(CreateProductRequest request);
+
+    /**
+     * Crea múltiples productos en una sola transacción
+     */
+    List<ProductResponse> createBulk(List<CreateProductRequest> requests);
+
+    /**
+     * Actualiza múltiples productos en una sola transacción
+     */
+    List<ProductResponse> updateBulk(List<UpdateProductBulkRequest> requests);
 
     ProductResponse update(UUID id, UpdateProductRequest request);
 

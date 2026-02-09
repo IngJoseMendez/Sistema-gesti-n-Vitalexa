@@ -4,6 +4,7 @@ import org.example.sistema_gestion_vitalexa.dto.CreateProductRequest;
 import org.example.sistema_gestion_vitalexa.dto.ProductResponse;
 import org.example.sistema_gestion_vitalexa.dto.ReembolsoResponse;
 import org.example.sistema_gestion_vitalexa.dto.UpdateProductRequest;
+import org.example.sistema_gestion_vitalexa.dto.UpdateProductBulkRequest;
 import org.example.sistema_gestion_vitalexa.entity.Product;
 import org.example.sistema_gestion_vitalexa.entity.Reembolso;
 import org.example.sistema_gestion_vitalexa.entity.ReembolsoItem;
@@ -28,6 +29,7 @@ public interface ProductMapper {
     @Mapping(target = "stock", source = "stock")
     @Mapping(target = "imageUrl", source = "imageUrl")
     @Mapping(target = "active", source = "active")
+    @Mapping(target = "reorderPoint", source = "reorderPoint")
     @Mapping(target = "tagId", expression = "java(product.getTag() != null ? product.getTag().getId() : null)")
     @Mapping(target = "tagName", expression = "java(product.getTag() != null ? product.getTag().getName() : null)")
     ProductResponse toResponse(Product product);
@@ -43,6 +45,15 @@ public interface ProductMapper {
     @Mapping(target = "imageUrl", source = "imageUrl")
     void updateEntity(UpdateProductRequest dto, @MappingTarget Product product);
 
+    @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+    @Mapping(target = "active", source = "active")
+    @Mapping(target = "nombre", source = "nombre")
+    @Mapping(target = "descripcion", source = "descripcion")
+    @Mapping(target = "precio", source = "precio")
+    @Mapping(target = "stock", source = "stock")
+    @Mapping(target = "imageUrl", source = "imageUrl")
+    @Mapping(target = "reorderPoint", source = "reorderPoint")
+    void updateEntity(UpdateProductBulkRequest dto, @MappingTarget Product product);
 
     @Mapping(target = "empacadorUsername", source = "empacador.username")
     @Mapping(target = "items", expression = "java(mapReembolsoItems(reembolso.getItems()))")

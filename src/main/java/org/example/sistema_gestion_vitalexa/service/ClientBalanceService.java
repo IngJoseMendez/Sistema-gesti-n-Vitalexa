@@ -45,4 +45,9 @@ public interface ClientBalanceService {
      * Elimina el tope de crédito de un cliente (Owner)
      */
     void removeCreditLimit(UUID clientId, String ownerUsername);
+
+    /**
+     * Agregar Saldo a Favor a un cliente
+     */
+    void addBalanceFavor(UUID clientId, BigDecimal amount, String ownerUsername);
 }

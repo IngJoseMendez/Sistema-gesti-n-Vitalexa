@@ -136,6 +136,24 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
                                 client.getNombre(), ownerUsername);
         }
 
+        @Override
+        public void addBalanceFavor(UUID clientId, BigDecimal amount, String ownerUsername) {
+                Client client = clientRepository.findById(clientId)
+                                .orElseThrow(() -> new BusinessExeption("Cliente no encontrado"));
+
+                if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+                        throw new BusinessExeption("El monto a agregar debe ser mayor a cero");
+                }
+
+                BigDecimal currentBalance = client.getBalanceFavor() != null ? client.getBalanceFavor()
+                                : BigDecimal.ZERO;
+                client.setBalanceFavor(currentBalance.add(amount));
+                clientRepository.save(client);
+
+                log.info("Saldo a favor de ${} agregado a cliente {} por {}. Nuevo saldo: ${}",
+                                amount, client.getNombre(), ownerUsername, client.getBalanceFavor());
+        }
+
         /**
          * Calcula el saldo completo de un cliente
          */
@@ -180,6 +198,7 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
                                 totalOrders,
                                 totalPaid,
                                 pendingBalance,
+                                client.getBalanceFavor(), // Saldo a favor
                                 pendingOrders.size(),
                                 pendingOrders);
         }

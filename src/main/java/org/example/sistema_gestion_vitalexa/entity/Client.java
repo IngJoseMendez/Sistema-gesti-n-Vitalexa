@@ -70,6 +70,11 @@ public class Client {
     @Builder.Default
     private Boolean initialBalanceSet = false;
 
+    // Saldo a Favor (Dinero adelantado por el cliente)
+    @Column(name = "balance_favor", precision = 12, scale = 2)
+    @Builder.Default
+    private BigDecimal balanceFavor = BigDecimal.ZERO;
+
     // Audit: User who created this client
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "creado_por_id")

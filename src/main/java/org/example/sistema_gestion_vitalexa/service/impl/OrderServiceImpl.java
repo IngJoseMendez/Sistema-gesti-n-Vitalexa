@@ -42,6 +42,7 @@ public class OrderServiceImpl implements OrdenService {
     private final ProductTagService productTagService;
     private final PromotionService promotionService;
     private final org.example.sistema_gestion_vitalexa.repository.PaymentRepository paymentRepository;
+    private final org.example.sistema_gestion_vitalexa.repository.ClientRepository clientRepository;
 
     // =========================
     // CREATE ORDER (VENDEDOR)
@@ -266,6 +267,10 @@ public class OrderServiceImpl implements OrdenService {
             totalPurchase = totalPurchase.add(saved.getTotal());
             response = orderMapper.toResponse(saved); // Prioridad 1 para response
             logMsg.append("Standard (").append(saved.getId()).append(") ");
+
+            // Intentar pagar con saldo a favor
+            if (client != null)
+                processAutomaticPayment(saved, client);
         }
 
         // 2. ORDEN S/R
@@ -290,6 +295,10 @@ public class OrderServiceImpl implements OrdenService {
                 if (response == null)
                     response = orderMapper.toResponse(saved); // Prioridad 2
                 logMsg.append("S/R (").append(saved.getId()).append(") ");
+
+                // Intentar pagar con saldo a favor
+                if (client != null)
+                    processAutomaticPayment(saved, client);
             }
         }
 
@@ -355,6 +364,10 @@ public class OrderServiceImpl implements OrdenService {
                 if (response == null)
                     response = orderMapper.toResponse(saved); // Prioridad 3
                 logMsg.append("Promo (").append(saved.getId()).append(") ");
+
+                // Intentar pagar con saldo a favor
+                if (client != null)
+                    processAutomaticPayment(saved, client);
             } else {
                 log.warn("Orden de promoción vacía descartada (sin items válidos)");
             }
@@ -368,6 +381,65 @@ public class OrderServiceImpl implements OrdenService {
         log.info("{} por vendedor {}", logMsg.toString(), username);
 
         return response;
+    }
+
+    /**
+     * Procesa el pago automático con saldo a favor si el cliente tiene saldo
+     * disponible
+     */
+    private void processAutomaticPayment(Order order, Client client) {
+        if (client == null || client.getBalanceFavor() == null ||
+                client.getBalanceFavor().compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        BigDecimal orderTotal = order.getDiscountedTotal() != null ? order.getDiscountedTotal() : order.getTotal();
+        BigDecimal currentBalance = client.getBalanceFavor();
+
+        // Calcular cuánto falta por pagar (aunque sea nueva, por robustez)
+        BigDecimal alreadyPaid = paymentRepository.sumPaymentsByOrderId(order.getId());
+        if (alreadyPaid == null)
+            alreadyPaid = BigDecimal.ZERO;
+
+        BigDecimal pending = orderTotal.subtract(alreadyPaid);
+
+        if (pending.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        // Determinar cuánto vamos a pagar
+        BigDecimal amountToPay = pending.min(currentBalance);
+
+        if (amountToPay.compareTo(BigDecimal.ZERO) > 0) {
+            // Crear el pago
+            Payment payment = Payment.builder()
+                    .order(order)
+                    .amount(amountToPay)
+                    .paymentDate(java.time.LocalDateTime.now())
+                    .registeredBy(order.getVendedor()) // Registrado por el mismo vendedor que crea la orden
+                    .notes("Pago automático con saldo a favor")
+                    .withinDeadline(true) // Asumimos a tiempo porque es instantáneo
+                    .build();
+            paymentRepository.save(payment);
+
+            // Actualizar saldo del cliente
+            client.setBalanceFavor(currentBalance.subtract(amountToPay));
+            // No guardamos el cliente aquí porque se guarda por cascada o referencia en la
+            // transacción,
+            // pero para estar seguros y evitar problemas de estado detachado:
+            clientRepository.save(client);
+
+            // Actualizar estado de pago de la orden
+            if (amountToPay.compareTo(pending) >= 0) { // Si pagamos todo lo pendiente
+                order.setPaymentStatus(org.example.sistema_gestion_vitalexa.enums.PaymentStatus.PAID);
+            } else {
+                order.setPaymentStatus(org.example.sistema_gestion_vitalexa.enums.PaymentStatus.PARTIAL);
+            }
+            ordenRepository.save(order);
+
+            log.info("Pago automático de ${} aplicado a orden {} usando saldo a favor del cliente {}",
+                    amountToPay, order.getId(), client.getNombre());
+        }
     }
 
     /**
@@ -445,6 +517,9 @@ public class OrderServiceImpl implements OrdenService {
 
         if (client != null) {
             client.registerPurchase(savedOrder.getTotal());
+
+            // Intentar pagar con saldo a favor
+            processAutomaticPayment(savedOrder, client);
         }
 
         return orderMapper.toResponse(savedOrder);

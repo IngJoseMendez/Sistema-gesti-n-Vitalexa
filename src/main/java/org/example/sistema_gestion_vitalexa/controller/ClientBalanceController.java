@@ -108,4 +108,17 @@ public class ClientBalanceController {
         clientBalanceService.removeCreditLimit(clientId, auth.getName());
         return ResponseEntity.noContent().build();
     }
+
+    /**
+     * Agregar Saldo a Favor a un cliente (solo Owner)
+     */
+    @PutMapping("/client/{clientId}/balance-favor")
+    @PreAuthorize("hasRole('OWNER')")
+    public ResponseEntity<Void> addBalanceFavor(
+            @PathVariable UUID clientId,
+            @RequestParam BigDecimal amount,
+            Authentication auth) {
+        clientBalanceService.addBalanceFavor(clientId, amount, auth.getName());
+        return ResponseEntity.ok().build();
+    }
 }

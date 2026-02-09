@@ -34,6 +34,81 @@ public class ProductImageService {
     private Cloudinary cloudinary;
 
     /**
+     * Guarda imagen desde array de bytes (para carga masiva/Base64)
+     */
+    public String saveImage(byte[] data, String originalFilename) throws IOException {
+        if (data == null || data.length == 0) {
+            throw new IllegalArgumentException("El array de imagen está vacío");
+        }
+
+        // Si estamos en producción Y cloudinary está disponible
+        if ("prod".equals(activeProfile) && cloudinary != null) {
+            return saveToCloudinary(data, originalFilename);
+        } else {
+            return saveToLocalDisk(data, originalFilename);
+        }
+    }
+
+    private String saveToCloudinary(byte[] data, String originalFilename) throws IOException {
+        try {
+            log.info("Subiendo imagen (bytes) a Cloudinary: {}", originalFilename);
+
+            Map uploadResult = cloudinary.uploader().upload(data,
+                    ObjectUtils.asMap(
+                            "folder", "vitalexa/products",
+                            "resource_type", "auto",
+                            "use_filename", true,
+                            "unique_filename", true,
+                            "filename", originalFilename // Hint to Cloudinary about name
+                    ));
+
+            String imageUrl = (String) uploadResult.get("secure_url");
+            String publicId = (String) uploadResult.get("public_id");
+
+            log.info("Imagen subida exitosamente a Cloudinary. URL: {}", imageUrl);
+            log.debug("Public ID: {}", publicId);
+
+            return imageUrl;
+
+        } catch (Exception e) {
+            log.error("Error al subir imagen a Cloudinary", e);
+            throw new IOException("Error al subir imagen a Cloudinary: " + e.getMessage(), e);
+        }
+    }
+
+    private String saveToLocalDisk(byte[] data, String originalFilename) throws IOException {
+        try {
+            log.info("Guardando imagen (bytes) localmente: {}", originalFilename);
+
+            // Crear directorio si no existe
+            Path uploadPath = Paths.get(uploadDir);
+            if (!Files.exists(uploadPath)) {
+                Files.createDirectories(uploadPath);
+                log.debug("Directorio creado: {}", uploadPath);
+            }
+
+            // Generar nombre único
+            String extension = originalFilename != null && originalFilename.contains(".")
+                    ? originalFilename.substring(originalFilename.lastIndexOf("."))
+                    : ".jpg";
+            String filename = UUID.randomUUID().toString() + extension;
+
+            // Guardar archivo
+            Path filePath = uploadPath.resolve(filename);
+            Files.write(filePath, data);
+
+            String relativePath = "/uploads/products/" + filename;
+            log.info("Imagen guardada localmente: {}", relativePath);
+
+            return relativePath;
+
+        } catch (IOException e) {
+            log.error("Error al guardar imagen localmente", e);
+            throw new IOException("Error al guardar imagen: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * Guarda imagen en Cloudinary (producción) o disco local (desarrollo)
      */
     public String saveImage(MultipartFile file) throws IOException {
@@ -67,8 +142,7 @@ public class ProductImageService {
                             "folder", "vitalexa/products",
                             "resource_type", "auto",
                             "use_filename", true,
-                            "unique_filename", true
-                    ));
+                            "unique_filename", true));
 
             String imageUrl = (String) uploadResult.get("secure_url");
             String publicId = (String) uploadResult.get("public_id");
@@ -152,7 +226,8 @@ public class ProductImageService {
 
         try {
             // Extraer public_id de la URL
-            // URL formato: https://res.cloudinary.com/{cloud_name}/image/upload/v{version}/{public_id}.{format}
+            // URL formato:
+            // https://res.cloudinary.com/{cloud_name}/image/upload/v{version}/{public_id}.{format}
             String publicId = extractPublicIdFromUrl(imageUrl);
 
             if (publicId != null) {
@@ -187,7 +262,8 @@ public class ProductImageService {
      */
     private String extractPublicIdFromUrl(String url) {
         try {
-            // URL formato: https://res.cloudinary.com/{cloud_name}/image/upload/v{version}/{folder}/{filename}.{ext}
+            // URL formato:
+            // https://res.cloudinary.com/{cloud_name}/image/upload/v{version}/{folder}/{filename}.{ext}
             String[] parts = url.split("/upload/");
             if (parts.length == 2) {
                 String afterUpload = parts[1];

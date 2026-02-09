@@ -11,13 +11,14 @@ public record ProductResponse(
         Integer stock,
         String imageUrl,
         Boolean active,
+        Integer reorderPoint,
         UUID tagId,
-        String tagName
-) {
+        String tagName) {
     /**
      * Constructor sin tag (backward compatibility)
      */
-    public ProductResponse(UUID id, String nombre, String descripcion, BigDecimal precio, Integer stock, String imageUrl, Boolean active) {
-        this(id, nombre, descripcion, precio, stock, imageUrl, active, null, null);
+    public ProductResponse(UUID id, String nombre, String descripcion, BigDecimal precio, Integer stock,
+            String imageUrl, Boolean active) {
+        this(id, nombre, descripcion, precio, stock, imageUrl, active, null, null, null);
     }
 }
