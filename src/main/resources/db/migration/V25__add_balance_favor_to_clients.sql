@@ -1,0 +1,1 @@
+ALTER TABLE clients ADD COLUMN balance_favor DECIMAL(12,2) DEFAULT 0.00;
