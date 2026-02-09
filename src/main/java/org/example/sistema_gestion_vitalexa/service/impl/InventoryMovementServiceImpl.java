@@ -73,15 +73,61 @@ public class InventoryMovementServiceImpl implements InventoryMovementService {
     }
 
     @Override
-    public Page<InventoryMovement> getHistory(UUID productId, InventoryMovementType type, LocalDateTime startDate,
+    public Page<org.example.sistema_gestion_vitalexa.dto.InventoryMovementResponseDTO> getHistory(UUID productId,
+            InventoryMovementType type, LocalDateTime startDate,
             LocalDateTime endDate, Pageable pageable) {
-        return repository.findWithFilters(productId, type, startDate, endDate, pageable);
+        return repository.findAll(createSpecification(productId, type, startDate, endDate), pageable)
+                .map(this::mapToDTO);
+    }
+
+    private org.example.sistema_gestion_vitalexa.dto.InventoryMovementResponseDTO mapToDTO(InventoryMovement movement) {
+        return org.example.sistema_gestion_vitalexa.dto.InventoryMovementResponseDTO.builder()
+                .id(movement.getId())
+                .productId(movement.getProduct() != null ? movement.getProduct().getId() : null)
+                .productName(movement.getProductName())
+                .type(movement.getType())
+                .quantity(movement.getQuantity())
+                .previousStock(movement.getPreviousStock())
+                .newStock(movement.getNewStock())
+                .reason(movement.getReason())
+                .username(movement.getUsername())
+                .timestamp(movement.getTimestamp())
+                .build();
     }
 
     @Override
     public List<InventoryMovement> getAllHistory(UUID productId, InventoryMovementType type, LocalDateTime startDate,
             LocalDateTime endDate) {
-        return repository.findAllWithFilters(productId, type, startDate, endDate);
+        return repository.findAll(createSpecification(productId, type, startDate, endDate));
+    }
+
+    private org.springframework.data.jpa.domain.Specification<InventoryMovement> createSpecification(UUID productId,
+            InventoryMovementType type, LocalDateTime startDate, LocalDateTime endDate) {
+        return (root, query, criteriaBuilder) -> {
+            java.util.List<jakarta.persistence.criteria.Predicate> predicates = new java.util.ArrayList<>();
+
+            if (productId != null) {
+                predicates.add(criteriaBuilder.equal(root.get("product").get("id"), productId));
+            }
+            if (type != null) {
+                predicates.add(criteriaBuilder.equal(root.get("type"), type));
+            }
+            if (startDate != null) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("timestamp"), startDate));
+            }
+            if (endDate != null) {
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("timestamp"), endDate));
+            }
+
+            // Add default sort if not present in pageable?
+            // The controller passes a pageable with Sort. So we don't need to force it here
+            // unless strictly needed for list.
+            // For getAllHistory (List), we should probably ensure validation order.
+            // query.orderBy(criteriaBuilder.desc(root.get("timestamp"))); // This modifies
+            // the query itself
+
+            return criteriaBuilder.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        };
     }
 
     @Override

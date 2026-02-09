@@ -1,6 +1,7 @@
 package org.example.sistema_gestion_vitalexa.controller.admin;
 
 import lombok.RequiredArgsConstructor;
+import org.example.sistema_gestion_vitalexa.dto.InventoryMovementResponseDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.example.sistema_gestion_vitalexa.entity.InventoryMovement;
 import org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType;
@@ -25,59 +26,60 @@ import java.util.UUID;
 @PreAuthorize("hasAnyRole('ADMIN','OWNER')")
 public class InventoryHistoryController {
 
-    private final InventoryMovementService movementService;
+        private final InventoryMovementService movementService;
 
-    @GetMapping
-    public ResponseEntity<Page<InventoryMovement>> getHistory(
-            @RequestParam(required = false) UUID productId,
-            @RequestParam(required = false) InventoryMovementType type,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
-            @PageableDefault(size = 20, sort = "timestamp", direction = Sort.Direction.DESC) Pageable pageable) {
+        @GetMapping
+        public ResponseEntity<Page<InventoryMovementResponseDTO>> getHistory(
+                        @RequestParam(required = false) UUID productId,
+                        @RequestParam(required = false) InventoryMovementType type,
+                        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
+                        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
+                        @PageableDefault(size = 20, sort = "timestamp", direction = Sort.Direction.DESC) Pageable pageable) {
 
-        return ResponseEntity.ok(movementService.getHistory(productId, type, startDate, endDate, pageable));
-    }
+                return ResponseEntity.ok(movementService.getHistory(productId, type, startDate, endDate, pageable));
+        }
 
-    @GetMapping("/export")
-    public ResponseEntity<byte[]> exportHistory(
-            @RequestParam(required = false) UUID productId,
-            @RequestParam(required = false) InventoryMovementType type,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
-            org.springframework.security.core.Authentication authentication) {
+        @GetMapping("/export")
+        public ResponseEntity<byte[]> exportHistory(
+                        @RequestParam(required = false) UUID productId,
+                        @RequestParam(required = false) InventoryMovementType type,
+                        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
+                        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
+                        org.springframework.security.core.Authentication authentication) {
 
-        String username = authentication != null ? authentication.getName() : "Unknown";
-        List<InventoryMovement> movements = movementService.getAllHistory(productId, type, startDate, endDate);
+                String username = authentication != null ? authentication.getName() : "Unknown";
+                List<InventoryMovement> movements = movementService.getAllHistory(productId, type, startDate, endDate);
 
-        String filterDesc = "Filtros: " +
-                (productId != null ? "Producto ID=" + productId + " " : "") +
-                (type != null ? "Tipo=" + type + " " : "") +
-                (startDate != null ? "Desde=" + startDate + " " : "") +
-                (endDate != null ? "Hasta=" + endDate : "");
+                String filterDesc = "Filtros: " +
+                                (productId != null ? "Producto ID=" + productId + " " : "") +
+                                (type != null ? "Tipo=" + type + " " : "") +
+                                (startDate != null ? "Desde=" + startDate + " " : "") +
+                                (endDate != null ? "Hasta=" + endDate : "");
 
-        byte[] pdfBytes = movementService.generateHistoryPdf(movements, username, filterDesc);
+                byte[] pdfBytes = movementService.generateHistoryPdf(movements, username, filterDesc);
 
-        return ResponseEntity.ok()
-                .header("Content-Disposition",
-                        "attachment; filename=historial_inventario_" + System.currentTimeMillis() + ".pdf")
-                .header("Content-Type", "application/pdf")
-                .body(pdfBytes);
-    }
+                return ResponseEntity.ok()
+                                .header("Content-Disposition",
+                                                "attachment; filename=historial_inventario_"
+                                                                + System.currentTimeMillis() + ".pdf")
+                                .header("Content-Type", "application/pdf")
+                                .body(pdfBytes);
+        }
 
-    @GetMapping("/{id}/export")
-    public ResponseEntity<byte[]> exportSingleMovement(
-            @PathVariable UUID id,
-            org.springframework.security.core.Authentication authentication) {
+        @GetMapping("/{id}/export")
+        public ResponseEntity<byte[]> exportSingleMovement(
+                        @PathVariable UUID id,
+                        org.springframework.security.core.Authentication authentication) {
 
-        String username = authentication != null ? authentication.getName() : "Unknown";
-        InventoryMovement movement = movementService.findById(id);
+                String username = authentication != null ? authentication.getName() : "Unknown";
+                InventoryMovement movement = movementService.findById(id);
 
-        byte[] pdfBytes = movementService.generateHistoryPdf(List.of(movement), username,
-                "Reporte Individual Movimiento ID: " + id);
+                byte[] pdfBytes = movementService.generateHistoryPdf(List.of(movement), username,
+                                "Reporte Individual Movimiento ID: " + id);
 
-        return ResponseEntity.ok()
-                .header("Content-Disposition", "attachment; filename=movimiento_" + id + ".pdf")
-                .header("Content-Type", "application/pdf")
-                .body(pdfBytes);
-    }
+                return ResponseEntity.ok()
+                                .header("Content-Disposition", "attachment; filename=movimiento_" + id + ".pdf")
+                                .header("Content-Type", "application/pdf")
+                                .body(pdfBytes);
+        }
 }
