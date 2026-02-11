@@ -132,15 +132,70 @@ public class ProductAdminController {
     }
 
     /**
-     * Actualizar producto existente
+     * Actualizar producto existente (ahora acepta multipart/form-data)
      */
     @PutMapping("/{id}")
     public ResponseEntity<byte[]> update(
             @PathVariable UUID id,
-            @RequestBody UpdateProductRequest request,
+            @RequestParam(required = false) String nombre,
+            @RequestParam(required = false) String descripcion,
+            @RequestParam(required = false) String precio,
+            @RequestParam(required = false) String stock,
+            @RequestParam(required = false) String reorderPoint,
+            @RequestParam(required = false) UUID tagId,
+            @RequestParam(required = false) MultipartFile image,
+            @RequestParam(required = false) Boolean active,
             org.springframework.security.core.Authentication authentication) {
         try {
-            log.debug("Update request id={} request={}", id, request);
+            log.debug("Update request id={} nombre={} precio={} stock={} active={}",
+                    id, nombre, precio, stock, active);
+
+            BigDecimal precioVal = null;
+            Integer stockVal = null;
+            Integer reorderPointVal = null;
+            String imageUrl = null;
+
+            if (precio != null && !precio.isBlank()) {
+                try {
+                    String normalized = precio.replace(',', '.').trim();
+                    precioVal = new BigDecimal(normalized);
+                } catch (NumberFormatException nfe) {
+                    log.warn("Precio inválido recibido: {}", precio);
+                    return ResponseEntity.badRequest().body("Precio inválido".getBytes());
+                }
+            }
+
+            if (stock != null && !stock.isBlank()) {
+                try {
+                    stockVal = Integer.valueOf(stock);
+                } catch (NumberFormatException nfe) {
+                    log.warn("Stock inválido recibido: {}", stock);
+                    return ResponseEntity.badRequest().body("Stock inválido".getBytes());
+                }
+            }
+
+            if (reorderPoint != null && !reorderPoint.isBlank()) {
+                try {
+                    reorderPointVal = Integer.valueOf(reorderPoint);
+                } catch (NumberFormatException nfe) {
+                    log.warn("Reorder point inválido recibido: {}", reorderPoint);
+                    return ResponseEntity.badRequest().body("Punto de reorden inválido".getBytes());
+                }
+            }
+
+            if (image != null && !image.isEmpty()) {
+                imageUrl = imageService.saveImage(image);
+            }
+
+            UpdateProductRequest request = new UpdateProductRequest(
+                    nombre,
+                    descripcion,
+                    precioVal,
+                    stockVal,
+                    reorderPointVal,
+                    imageUrl,
+                    active,
+                    tagId);
 
             ProductResponse updatedProduct = productService.update(id, request);
 
@@ -156,11 +211,14 @@ public class ProductAdminController {
                     .body(pdfBytes);
         } catch (BusinessExeption be) {
             log.warn("Business error updating product {}: {}", id, be.getMessage());
-            return ResponseEntity.badRequest().body(be.getMessage().getBytes()); // Convert message to bytes
+            return ResponseEntity.badRequest().body(be.getMessage().getBytes());
+        } catch (IOException ioe) {
+            log.error("IO error when saving image for product {}", id, ioe);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error guardando imagen".getBytes());
         } catch (Exception e) {
             log.error("Unexpected error updating product {}", id, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error actualizando producto".getBytes()); // Convert message to bytes
+                    .body("Error actualizando producto".getBytes());
         }
     }
 
