@@ -8,11 +8,13 @@ RUN mvn dependency:go-offline -B
 COPY src ./src
 
 # Configurar memoria de Maven para evitar OOM en build
-ENV MAVEN_OPTS="-Xmx2048m -Xms512m"
+# Reducir heap y optimizar para entornos con poca memoria
+ENV MAVEN_OPTS="-Xmx1536m -Xms256m -XX:+UseSerialGC -Djava.awt.headless=true"
 
 RUN mvn clean package -DskipTests -B \
     -Dproject.build.sourceEncoding=UTF-8 \
-    -Dproject.reporting.outputEncoding=UTF-8
+    -Dproject.reporting.outputEncoding=UTF-8 \
+    -T 1C
 
 # Etapa 2: Runtime
 FROM eclipse-temurin:17-jre
