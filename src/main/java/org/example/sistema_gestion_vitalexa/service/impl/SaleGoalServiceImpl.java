@@ -298,6 +298,63 @@ public class SaleGoalServiceImpl implements SaleGoalService {
                 }
         }
 
+        @Override
+        public void recalculateGoalForVendorMonth(UUID vendedorId, int month, int year) {
+                User vendedor = userRepository.findById(vendedorId)
+                                .orElseThrow(() -> new BusinessExeption("Vendedor no encontrado"));
+
+                // Buscar la meta para este vendedor/mes/año
+                saleGoalRepository.findByVendedorAndMonthAndYear(vendedor, month, year)
+                                .ifPresent(saleGoal -> {
+                                        // Recalcular desde cero
+                                        BigDecimal actualSales = calculateExistingSalesForMonth(
+                                                        vendedorId, month, year);
+
+                                        saleGoal.setCurrentAmount(actualSales);
+                                        saleGoalRepository.save(saleGoal);
+
+                                        log.info("Meta recalculada para {} en {}/{}: ${}/{}",
+                                                        vendedor.getUsername(), month, year,
+                                                        actualSales, saleGoal.getTargetAmount());
+                                });
+
+                // If this is a shared user, also recalculate for the other shared user
+                if (UserUnificationUtil.isSharedUser(vendedor.getUsername())) {
+                        List<UUID> sharedUserIds = UserUnificationUtil.getSharedUserIds(
+                                        vendedorId,
+                                        vendedor.getUsername(),
+                                        userRepository.findByUsername(
+                                                        vendedor.getUsername().equals(UserUnificationUtil.NINA_TORRES)
+                                                                        ? UserUnificationUtil.YICELA_SANDOVAL
+                                                                        : UserUnificationUtil.NINA_TORRES)
+                                                        .map(User::getId)
+                                                        .orElse(null));
+
+                        for (UUID sharedUserId : sharedUserIds) {
+                                if (!sharedUserId.equals(vendedorId)) {
+                                        userRepository.findById(sharedUserId).ifPresent(otherVendedor -> {
+                                                saleGoalRepository
+                                                                .findByVendedorAndMonthAndYear(otherVendedor, month,
+                                                                                year)
+                                                                .ifPresent(otherGoal -> {
+                                                                        BigDecimal actualSales = calculateExistingSalesForMonth(
+                                                                                        sharedUserId, month, year);
+
+                                                                        otherGoal.setCurrentAmount(actualSales);
+                                                                        saleGoalRepository.save(otherGoal);
+
+                                                                        log.info("[Unificación] Meta recalculada para {} en {}/{}: ${}/{}",
+                                                                                        otherVendedor.getUsername(),
+                                                                                        month, year,
+                                                                                        actualSales,
+                                                                                        otherGoal.getTargetAmount());
+                                                                });
+                                        });
+                                }
+                        }
+                }
+        }
+
         // =============================================
         // UTILIDADES
         // =============================================

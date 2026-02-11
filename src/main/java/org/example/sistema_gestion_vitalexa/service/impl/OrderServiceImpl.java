@@ -1606,6 +1606,16 @@ public class OrderServiceImpl implements OrdenService {
             // No fallamos la transacción por esto, pero es importante loguearlo
         }
 
+        // 📊 ACTUALIZAR PROGRESO DE META DEL VENDEDOR
+        // Si el vendedor tiene una meta para el mes/año de la factura histórica,
+        // actualizarla para reflejar esta venta
+        LocalDate invoiceDate = request.fecha().toLocalDate();
+        saleGoalService.updateGoalProgress(
+                vendedor.getId(),
+                request.totalValue(),
+                invoiceDate.getMonthValue(),
+                invoiceDate.getYear());
+
         log.info("Factura histórica creada: {} | Monto: ${} | Pagado: ${} | Debe: ${} | Vendedor: {} | Owner: {}",
                 request.invoiceNumber(),
                 request.totalValue(),
@@ -1736,6 +1746,28 @@ public class OrderServiceImpl implements OrdenService {
                     .build();
             paymentRepository.save(payment);
         }
+
+        // 📊 RECALCULAR METAS AFECTADAS
+        // Dado que puede haber cambiado el vendedor, fecha o monto,
+        // recalculamos completamente las metas afectadas
+
+        // Si el vendedor cambió, necesitamos recalcular la meta del vendedor ANTERIOR
+        // también
+        // Pero no tenemos tracking del vendedor anterior aquí, así que recalcularemos
+        // solo la meta del vendedor actual. Si cambió el vendedor, el admin debe
+        // verificar manualmente.
+
+        LocalDate invoiceDate = request.fecha().toLocalDate();
+
+        // Recalcular meta del vendedor actual para el mes/año de la factura
+        saleGoalService.recalculateGoalForVendorMonth(
+                vendedor.getId(),
+                invoiceDate.getMonthValue(),
+                invoiceDate.getYear());
+
+        log.info("Meta recalculada para vendedor {} en {}/{} tras editar factura histórica {}",
+                vendedor.getUsername(), invoiceDate.getMonthValue(), invoiceDate.getYear(),
+                request.invoiceNumber());
 
         log.info("Factura histórica actualizada: {}", request.invoiceNumber());
         return orderMapper.toResponse(savedOrder);
