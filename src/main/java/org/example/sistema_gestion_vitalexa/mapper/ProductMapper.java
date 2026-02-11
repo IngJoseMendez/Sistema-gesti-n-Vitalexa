@@ -32,6 +32,7 @@ public interface ProductMapper {
     @Mapping(target = "reorderPoint", source = "reorderPoint")
     @Mapping(target = "tagId", expression = "java(product.getTag() != null ? product.getTag().getId() : null)")
     @Mapping(target = "tagName", expression = "java(product.getTag() != null ? product.getTag().getName() : null)")
+    @Mapping(target = "linkedSpecialCount", expression = "java(product.getSpecialProducts() != null ? product.getSpecialProducts().size() : 0)")
     ProductResponse toResponse(Product product);
 
     List<ProductResponse> toResponseList(List<Product> products);

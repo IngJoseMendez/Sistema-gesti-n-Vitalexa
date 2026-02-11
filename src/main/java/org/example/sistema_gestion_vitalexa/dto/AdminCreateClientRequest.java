@@ -8,21 +8,22 @@ import java.util.UUID;
 
 /**
  * DTO for Admin/Owner creating a client for a specific vendedor
+ * (Updated to force recompile)
  */
 public record AdminCreateClientRequest(
-        @NotNull(message = "El vendedor es obligatorio") UUID vendedorId, // Required - vendedor to assign
+                @NotNull(message = "El vendedor es obligatorio") UUID vendedorId, // Required - vendedor to assign
 
-        String nombre, // Opcional - nombre del establecimiento
+                String nombre, // Opcional - nombre del establecimiento
 
-        @Email(message = "Email inválido") String email,
+                @Email(message = "Email inválido") String email,
 
-        String telefono,
+                String telefono,
 
-        String direccion,
+                String direccion,
 
-        @NotBlank(message = "El NIT es obligatorio") String nit,
+                @NotBlank(message = "El NIT es obligatorio") String nit,
 
-        String administrador,
+                String administrador,
 
-        String representanteLegal) {
+                String representanteLegal) {
 }

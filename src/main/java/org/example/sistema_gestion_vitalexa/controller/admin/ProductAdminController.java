@@ -4,7 +4,9 @@ import lombok.RequiredArgsConstructor;
 import org.example.sistema_gestion_vitalexa.dto.CreateProductRequest;
 import org.example.sistema_gestion_vitalexa.dto.ProductResponse;
 import org.example.sistema_gestion_vitalexa.dto.UpdateProductRequest;
+import org.example.sistema_gestion_vitalexa.entity.SpecialProduct;
 import org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption;
+import org.example.sistema_gestion_vitalexa.repository.SpecialProductRepository;
 import org.example.sistema_gestion_vitalexa.service.ProductImageService;
 import org.example.sistema_gestion_vitalexa.service.ProductService;
 import org.example.sistema_gestion_vitalexa.service.ProductAuditService;
@@ -20,6 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,6 +37,7 @@ public class ProductAdminController {
     private final ProductService productService;
     private final ProductImageService imageService;
     private final ProductAuditService auditService;
+    private final SpecialProductRepository specialProductRepository;
 
     /**
      * Crear múltiples productos y descargar huella contable
@@ -293,17 +297,72 @@ public class ProductAdminController {
      */
     @GetMapping
     public ResponseEntity<List<ProductResponse>> findAll() {
-        List<ProductResponse> productos = productService.findAllAdmin();
+        // 1. Productos regulares
+        List<ProductResponse> productos = new ArrayList<>(productService.findAllAdmin());
+
+        // 2. Todos los productos especiales (activos e inactivos)
+        List<SpecialProduct> specialProducts = specialProductRepository.findAll();
+        for (SpecialProduct sp : specialProducts) {
+            productos.add(toProductResponse(sp));
+        }
+
         return ResponseEntity.ok(productos);
     }
 
     /**
-     * Obtener solo productos activos
+     * Obtener solo productos activos (regulares + especiales para admin)
      */
     @GetMapping("/active")
     public ResponseEntity<List<ProductResponse>> findAllActive() {
-        List<ProductResponse> productos = productService.findAllActive();
+        // 1. Productos regulares
+        List<ProductResponse> productos = new ArrayList<>(productService.findAllActive());
+
+        // 2. Todos los productos especiales activos (admin ve todo)
+        List<SpecialProduct> specialProducts = specialProductRepository.findByActiveTrue();
+        for (SpecialProduct sp : specialProducts) {
+            productos.add(toProductResponse(sp));
+        }
+
         return ResponseEntity.ok(productos);
+    }
+
+    /**
+     * Obtener productos para un vendedor específico (vista de Admin simulando
+     * Vendedor)
+     */
+    @GetMapping("/seller/{sellerId}")
+    public ResponseEntity<List<ProductResponse>> findAllActiveBySeller(@PathVariable UUID sellerId) {
+        // 1. Productos regulares (todos los activos son visibles para todos los
+        // vendedores)
+        List<ProductResponse> result = new ArrayList<>(productService.findAllActive());
+
+        // 2. Productos especiales asignados al vendedor específico
+        List<SpecialProduct> specialProducts = specialProductRepository.findActiveByVendorId(sellerId);
+        for (SpecialProduct sp : specialProducts) {
+            result.add(toProductResponse(sp));
+        }
+
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Convierte un SpecialProduct a ProductResponse para unificación en el catálogo
+     */
+    private ProductResponse toProductResponse(SpecialProduct sp) {
+        return new ProductResponse(
+                sp.getId(),
+                sp.getNombre(),
+                sp.getDescripcion(),
+                sp.getPrecio(),
+                sp.getEffectiveStock(),
+                sp.getImageUrl(),
+                sp.isActive(),
+                sp.getReorderPoint(),
+                sp.getTag() != null ? sp.getTag().getId() : null,
+                sp.getTag() != null ? sp.getTag().getName() : null,
+                0,
+                true,
+                sp.getId());
     }
 
     /**

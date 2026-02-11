@@ -2,25 +2,66 @@ package org.example.sistema_gestion_vitalexa.controller.vendedor;
 
 import lombok.RequiredArgsConstructor;
 import org.example.sistema_gestion_vitalexa.dto.ProductResponse;
+import org.example.sistema_gestion_vitalexa.entity.SpecialProduct;
+import org.example.sistema_gestion_vitalexa.entity.User;
+import org.example.sistema_gestion_vitalexa.repository.SpecialProductRepository;
+import org.example.sistema_gestion_vitalexa.repository.UserRepository;
 import org.example.sistema_gestion_vitalexa.service.ProductService;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/vendedor/products")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('VENDEDOR')")
-public class ProductVendedorController  {
+public class ProductVendedorController {
 
     private final ProductService productService;
+    private final SpecialProductRepository specialProductRepository;
+    private final UserRepository userRepository;
 
     @GetMapping
-    public List<ProductResponse> findAllActive() {
-        return productService.findAllActive();
+    public List<ProductResponse> findAllActive(Authentication authentication) {
+        // 1. Productos regulares
+        List<ProductResponse> result = new ArrayList<>(productService.findAllActive());
+
+        // 2. Productos especiales asignados al vendedor autenticado
+        User vendor = userRepository.findByUsername(authentication.getName())
+                .orElse(null);
+        if (vendor != null) {
+            List<SpecialProduct> specialProducts = specialProductRepository
+                    .findActiveByVendorId(vendor.getId());
+            for (SpecialProduct sp : specialProducts) {
+                result.add(toProductResponse(sp));
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Convierte un SpecialProduct a ProductResponse para unificación en el catálogo
+     */
+    private ProductResponse toProductResponse(SpecialProduct sp) {
+        return new ProductResponse(
+                sp.getId(),
+                sp.getNombre(),
+                sp.getDescripcion(),
+                sp.getPrecio(),
+                sp.getEffectiveStock(),
+                sp.getImageUrl(),
+                sp.isActive(),
+                sp.getReorderPoint(),
+                sp.getTag() != null ? sp.getTag().getId() : null,
+                sp.getTag() != null ? sp.getTag().getName() : null,
+                0,
+                true,
+                sp.getId());
     }
 }
-

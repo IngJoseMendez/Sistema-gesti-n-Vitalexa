@@ -5,6 +5,8 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -83,4 +85,12 @@ public class Product {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_tag_id")
     private ProductTag tag;
+
+    /**
+     * Productos especiales vinculados a este producto (hard link).
+     * Se usa para saber cuántos especiales comparten el stock de este producto.
+     */
+    @OneToMany(mappedBy = "parentProduct", fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<SpecialProduct> specialProducts = new ArrayList<>();
 }

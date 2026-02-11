@@ -87,6 +87,13 @@ public class OrderItem {
     @Builder.Default
     private Boolean isFreightItem = false;
 
+    // ==========================================
+    // CAMPOS PARA PRODUCTOS ESPECIALES
+    // ==========================================
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "special_product_id")
+    private SpecialProduct specialProduct;
+
     @PrePersist
     @PreUpdate
     public void calcularSubTotal() {
