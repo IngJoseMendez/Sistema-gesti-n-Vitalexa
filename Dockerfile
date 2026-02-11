@@ -7,6 +7,9 @@ RUN mvn dependency:go-offline -B
 
 COPY src ./src
 
+# Configurar memoria de Maven para evitar OOM en build
+ENV MAVEN_OPTS="-Xmx2048m -Xms512m"
+
 RUN mvn clean package -DskipTests -B \
     -Dproject.build.sourceEncoding=UTF-8 \
     -Dproject.reporting.outputEncoding=UTF-8
