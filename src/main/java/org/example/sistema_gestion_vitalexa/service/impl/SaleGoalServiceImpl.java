@@ -166,8 +166,22 @@ public class SaleGoalServiceImpl implements SaleGoalService {
                         saleGoal.setTargetAmount(request.targetAmount());
                 }
 
-                SaleGoal updated = saleGoalRepository.save(saleGoal);
-                log.info("Meta actualizada: {}", id);
+                // Guardar cambio de meta
+                saleGoalRepository.saveAndFlush(saleGoal);
+
+                // Forzar recálculo del progreso basado en ventas reales
+                // Esto corrige discrepancias si hubo facturas históricas creadas antes
+                // o si la meta estaba desactualizada.
+                recalculateGoalForVendorMonth(
+                                saleGoal.getVendedor().getId(),
+                                saleGoal.getMonth(),
+                                saleGoal.getYear());
+
+                // Recargar entidad actualizada para retornar respuesta correcta
+                SaleGoal updated = saleGoalRepository.findById(id)
+                                .orElseThrow(() -> new BusinessExeption("Meta no encontrada tras actualización"));
+
+                log.info("Meta actualizada y recalculada: {}", id);
 
                 return saleGoalMapper.toResponse(updated);
         }
