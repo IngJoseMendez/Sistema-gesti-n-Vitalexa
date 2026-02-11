@@ -297,16 +297,22 @@ public class ProductAdminController {
      */
     @GetMapping
     public ResponseEntity<List<ProductResponse>> findAll() {
+        // Usar Map para evitar duplicados
+        java.util.Map<java.util.UUID, ProductResponse> uniqueProducts = new java.util.LinkedHashMap<>();
+
         // 1. Productos regulares
-        List<ProductResponse> productos = new ArrayList<>(productService.findAllAdmin());
+        List<ProductResponse> regularProducts = productService.findAllAdmin();
+        for (ProductResponse p : regularProducts) {
+            uniqueProducts.put(p.id(), p);
+        }
 
         // 2. Todos los productos especiales (activos e inactivos)
         List<SpecialProduct> specialProducts = specialProductRepository.findAll();
         for (SpecialProduct sp : specialProducts) {
-            productos.add(toProductResponse(sp));
+            uniqueProducts.put(sp.getId(), toProductResponse(sp));
         }
 
-        return ResponseEntity.ok(productos);
+        return ResponseEntity.ok(new ArrayList<>(uniqueProducts.values()));
     }
 
     /**
@@ -314,16 +320,22 @@ public class ProductAdminController {
      */
     @GetMapping("/active")
     public ResponseEntity<List<ProductResponse>> findAllActive() {
+        // Usar Map para evitar duplicados
+        java.util.Map<java.util.UUID, ProductResponse> uniqueProducts = new java.util.LinkedHashMap<>();
+
         // 1. Productos regulares
-        List<ProductResponse> productos = new ArrayList<>(productService.findAllActive());
+        List<ProductResponse> regularProducts = productService.findAllActive();
+        for (ProductResponse p : regularProducts) {
+            uniqueProducts.put(p.id(), p);
+        }
 
         // 2. Todos los productos especiales activos (admin ve todo)
         List<SpecialProduct> specialProducts = specialProductRepository.findByActiveTrue();
         for (SpecialProduct sp : specialProducts) {
-            productos.add(toProductResponse(sp));
+            uniqueProducts.put(sp.getId(), toProductResponse(sp));
         }
 
-        return ResponseEntity.ok(productos);
+        return ResponseEntity.ok(new ArrayList<>(uniqueProducts.values()));
     }
 
     /**
@@ -332,17 +344,23 @@ public class ProductAdminController {
      */
     @GetMapping("/seller/{sellerId}")
     public ResponseEntity<List<ProductResponse>> findAllActiveBySeller(@PathVariable UUID sellerId) {
+        // Usar Map para evitar duplicados
+        java.util.Map<java.util.UUID, ProductResponse> uniqueProducts = new java.util.LinkedHashMap<>();
+
         // 1. Productos regulares (todos los activos son visibles para todos los
         // vendedores)
-        List<ProductResponse> result = new ArrayList<>(productService.findAllActive());
+        List<ProductResponse> regularProducts = productService.findAllActive();
+        for (ProductResponse p : regularProducts) {
+            uniqueProducts.put(p.id(), p);
+        }
 
         // 2. Productos especiales asignados al vendedor específico
         List<SpecialProduct> specialProducts = specialProductRepository.findActiveByVendorId(sellerId);
         for (SpecialProduct sp : specialProducts) {
-            result.add(toProductResponse(sp));
+            uniqueProducts.put(sp.getId(), toProductResponse(sp));
         }
 
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(new ArrayList<>(uniqueProducts.values()));
     }
 
     /**

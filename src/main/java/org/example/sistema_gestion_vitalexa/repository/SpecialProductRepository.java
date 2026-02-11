@@ -37,14 +37,14 @@ public interface SpecialProductRepository extends JpaRepository<SpecialProduct, 
    * Encuentra productos especiales activos asignados a un vendedor específico.
    */
   @Query("""
-      SELECT sp FROM SpecialProduct sp
+      SELECT DISTINCT sp FROM SpecialProduct sp
       JOIN sp.allowedVendors v
       WHERE sp.active = true AND v.id = :vendorId
       """)
   List<SpecialProduct> findActiveByVendorId(@Param("vendorId") UUID vendorId);
 
   @Query("""
-      SELECT sp FROM SpecialProduct sp
+      SELECT DISTINCT sp FROM SpecialProduct sp
       JOIN sp.allowedVendors v
       WHERE sp.active = true AND v.id = :vendorId
       """)

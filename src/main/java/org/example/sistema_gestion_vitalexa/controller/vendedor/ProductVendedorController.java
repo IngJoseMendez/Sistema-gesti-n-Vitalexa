@@ -28,8 +28,15 @@ public class ProductVendedorController {
 
     @GetMapping
     public List<ProductResponse> findAllActive(Authentication authentication) {
+        // Usar Map para evitar duplicados si por alguna razón las queries retornan
+        // repetidos
+        java.util.Map<java.util.UUID, ProductResponse> uniqueProducts = new java.util.LinkedHashMap<>();
+
         // 1. Productos regulares
-        List<ProductResponse> result = new ArrayList<>(productService.findAllActive());
+        List<ProductResponse> regularProducts = productService.findAllActive();
+        for (ProductResponse p : regularProducts) {
+            uniqueProducts.put(p.id(), p);
+        }
 
         // 2. Productos especiales asignados al vendedor autenticado
         User vendor = userRepository.findByUsername(authentication.getName())
@@ -38,11 +45,14 @@ public class ProductVendedorController {
             List<SpecialProduct> specialProducts = specialProductRepository
                     .findActiveByVendorId(vendor.getId());
             for (SpecialProduct sp : specialProducts) {
-                result.add(toProductResponse(sp));
+                // Si ya existe (aunque IDs son UUIDs random, es buena práctica), se sobrescribe
+                // o ignora
+                // Aquí solo nos interesa que no aparezca dos veces el MISMO special product
+                uniqueProducts.put(sp.getId(), toProductResponse(sp));
             }
         }
 
-        return result;
+        return new ArrayList<>(uniqueProducts.values());
     }
 
     /**
