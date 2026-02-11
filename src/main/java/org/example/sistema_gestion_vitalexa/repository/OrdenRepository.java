@@ -54,6 +54,22 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
                         @Param("year") int year);
 
         /**
+         * Buscar órdenes completadas de MÚLTIPLES vendedores en un mes/año específico
+         * Útil para usuarios compartidos como NinaTorres/YicelaSandoval
+         */
+        @Query("""
+                        SELECT o FROM Order o
+                        WHERE o.vendedor.id IN :vendedorIds
+                        AND o.estado = 'COMPLETADO'
+                        AND MONTH(o.fecha) = :month
+                        AND YEAR(o.fecha) = :year
+                        """)
+        List<Order> findCompletedOrdersByVendedorIdsAndMonthYear(
+                        @Param("vendedorIds") List<UUID> vendedorIds,
+                        @Param("month") int month,
+                        @Param("year") int year);
+
+        /**
          * Para reportes: órdenes en un rango de fechas
          */
         @Query("SELECT o FROM Order o WHERE o.fecha BETWEEN :start AND :end")

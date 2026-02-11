@@ -110,9 +110,29 @@ public class SaleGoalServiceImpl implements SaleGoalService {
          */
         private BigDecimal calculateExistingSalesForMonth(UUID vendedorId, int month, int year) {
                 try {
-                        // Obtener todas las órdenes COMPLETADAS del vendedor en ese mes/año
-                        List<Order> orders = orderRepository.findCompletedOrdersByVendedorAndMonthYear(
-                                        vendedorId, month, year);
+                        List<Order> orders;
+
+                        // Check for shared user
+                        User vendedor = userRepository.findById(vendedorId).orElse(null);
+                        if (vendedor != null && UserUnificationUtil.isSharedUser(vendedor.getUsername())) {
+                                // Get all shared user IDs
+                                List<String> sharedUsernames = UserUnificationUtil
+                                                .getSharedUsernames(vendedor.getUsername());
+                                List<UUID> sharedIds = userRepository.findAll().stream()
+                                                .filter(u -> sharedUsernames.contains(u.getUsername()))
+                                                .map(User::getId)
+                                                .collect(Collectors.toList());
+
+                                log.info("Calculando ventas para usuarios compartidos {}: IDs {}", sharedUsernames,
+                                                sharedIds);
+
+                                orders = orderRepository.findCompletedOrdersByVendedorIdsAndMonthYear(
+                                                sharedIds, month, year);
+                        } else {
+                                // Standard single user calculation
+                                orders = orderRepository.findCompletedOrdersByVendedorAndMonthYear(
+                                                vendedorId, month, year);
+                        }
 
                         if (orders.isEmpty()) {
                                 log.debug("No hay ventas completadas para el vendedor {} en {}/{}",
