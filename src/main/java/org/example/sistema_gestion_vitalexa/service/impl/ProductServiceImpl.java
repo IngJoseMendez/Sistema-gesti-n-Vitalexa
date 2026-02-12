@@ -34,6 +34,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductTagService productTagService;
     private final ProductImageService imageService;
     private final InventoryMovementService movementService;
+    private final org.example.sistema_gestion_vitalexa.repository.SpecialProductRepository specialProductRepository;
 
     // Helper para decodificar y guardar imagen Base64
     private String handleBase64Image(String base64Image, String originalFilename) {
@@ -104,9 +105,20 @@ public class ProductServiceImpl implements ProductService {
         for (UpdateProductBulkRequest req : requests) {
             String productName = "ID: " + req.id();
             try {
-                Product product = repository.findById(req.id())
-                        .orElseThrow(() -> new BusinessExeption("Producto no encontrado: " + req.id()));
+                // 1. Intentar buscar en productos normales
+                java.util.Optional<Product> productOpt = repository.findById(req.id());
 
+                if (productOpt.isEmpty()) {
+                    // 2. Si no es normal, verificar si es Especial
+                    if (specialProductRepository.existsById(req.id())) {
+                        log.info("Saltando actualización masiva para Producto Especial ID: {}", req.id());
+                        continue; // SALTAR SILENCIOSAMENTE
+                    }
+                    // 3. Si no es ninguno, lanzar error
+                    throw new BusinessExeption("Producto no encontrado: " + req.id());
+                }
+
+                Product product = productOpt.get();
                 productName = product.getNombre();
 
                 // Capture old state for logging
