@@ -298,8 +298,13 @@ public class InvoiceServiceImpl implements InvoiceService {
 
                 addTableDataCell(table, productName);
                 addTableDataCell(table, String.valueOf(item.getCantidad()));
-                addTableDataCell(table, formatCurrency(item.getPrecioUnitario()));
-                addTableDataCell(table, formatCurrency(item.getSubTotal()));
+                if (Boolean.TRUE.equals(item.getIsPromotionItem())) {
+                        addTableDataCell(table, "");
+                        addTableDataCell(table, "");
+                } else {
+                        addTableDataCell(table, formatCurrency(item.getPrecioUnitario()));
+                        addTableDataCell(table, formatCurrency(item.getSubTotal()));
+                }
         }
 
         private void addFreeItemRow(Table table, OrderItem item) {
@@ -337,25 +342,12 @@ public class InvoiceServiceImpl implements InvoiceService {
                 DeviceRgb lightBg = LIGHT_GRAY;
 
                 // DETECTAR si es orden de promoción
-                boolean isPromoOrder = (order.getNotas() != null && order.getNotas().contains("[Promoción]")) ||
-                                (order.getItems() != null
-                                                && order.getItems().stream().anyMatch(i -> i.getPromotion() != null));
-
-                // Obtener precio de la promoción si existe
-                BigDecimal promotionPrice = BigDecimal.ZERO;
-                if (isPromoOrder && order.getItems() != null) {
-                        promotionPrice = order.getItems().stream()
-                                        .filter(i -> i.getPromotion() != null)
-                                        .map(i -> i.getPromotion().getPackPrice())
-                                        .filter(p -> p != null)
-                                        .findFirst()
-                                        .orElse(BigDecimal.ZERO);
-                }
-
-                // Subtotal: Para órdenes de promo, mostrar el precio de la promoción. Para otras, el total.
-                BigDecimal subtotalAmount = isPromoOrder && promotionPrice.compareTo(BigDecimal.ZERO) > 0
-                                ? promotionPrice
-                                : order.getTotal();
+                // Subtotal: Suma de todos los items que NO son flete
+                // Esto maneja correctamente múltiples promociones y productos sueltos
+                BigDecimal subtotalAmount = order.getItems().stream()
+                                .filter(item -> !Boolean.TRUE.equals(item.getIsFreightItem()))
+                                .map(OrderItem::getSubTotal)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
                 com.itextpdf.layout.element.Cell subtotalLabelCell = new com.itextpdf.layout.element.Cell()
                                 .add(new Paragraph("SUBTOTAL:").setBold())
@@ -371,7 +363,7 @@ public class InvoiceServiceImpl implements InvoiceService {
                                 .setPadding(5);
                 totalsTable.addCell(subtotalValueCell);
 
-                // Mostrar descuento si fue aplicado (basado en subtotal de promo si aplica)
+                // Mostrar descuento si fue aplicado
                 BigDecimal discountPercentage = order.getDiscountPercentage();
                 BigDecimal discountAmount = BigDecimal.ZERO;
                 if (discountPercentage != null && discountPercentage.compareTo(BigDecimal.ZERO) > 0) {
@@ -455,20 +447,7 @@ public class InvoiceServiceImpl implements InvoiceService {
                 }
 
                 // Total final = (Subtotal - Descuento) + Flete
-                // Para órdenes de promo, el subtotal es el precio de la promoción
-                // Para otras órdenes, es el total o el discountedTotal si aplica
-                BigDecimal baseTotal;
-
-                if (isPromoOrder && promotionPrice.compareTo(BigDecimal.ZERO) > 0) {
-                        // Para promo: usar el precio de la promoción menos el descuento si aplica
-                        baseTotal = promotionPrice.subtract(discountAmount);
-                } else {
-                        // Para no-promo: usar el discountedTotal si existe, sino el total
-                        baseTotal = order.getDiscountedTotal() != null
-                                        ? order.getDiscountedTotal()
-                                        : order.getTotal();
-                }
-
+                BigDecimal baseTotal = subtotalAmount.subtract(discountAmount);
                 BigDecimal finalTotal = baseTotal.add(freightAmount);
 
                 com.itextpdf.layout.element.Cell totalLabelCell = new com.itextpdf.layout.element.Cell()
@@ -528,7 +507,7 @@ public class InvoiceServiceImpl implements InvoiceService {
                                         .setFontColor(ColorConstants.BLACK);
                         document.add(footer);
 
-                        Paragraph contact = new Paragraph("Contacto: info@vitalexa.com | Tel: +57 300 123 4567")
+                        Paragraph contact = new Paragraph("Contacto: vitalexadistribuidora@gmail.com | Tel: 3122112815")
                                         .setFontSize(8)
                                         .setTextAlignment(TextAlignment.CENTER)
                                         .setFontColor(ColorConstants.GRAY);
