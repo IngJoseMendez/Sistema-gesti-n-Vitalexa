@@ -97,54 +97,67 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public List<ProductResponse> updateBulk(List<UpdateProductBulkRequest> requests) {
-        return requests.stream()
-                .map(req -> {
-                    Product product = repository.findById(req.id())
-                            .orElseThrow(() -> new BusinessExeption("Producto no encontrado: " + req.id()));
+    public BulkProductUpdateResult updateBulk(List<UpdateProductBulkRequest> requests) {
+        java.util.List<ProductResponse> successfulUpdates = new java.util.ArrayList<>();
+        java.util.List<BulkProductUpdateResult.BulkError> failures = new java.util.ArrayList<>();
 
-                    // Capture old state for logging
-                    Integer oldStock = product.getStock();
-                    boolean stockChanged = false;
+        for (UpdateProductBulkRequest req : requests) {
+            String productName = "ID: " + req.id();
+            try {
+                Product product = repository.findById(req.id())
+                        .orElseThrow(() -> new BusinessExeption("Producto no encontrado: " + req.id()));
 
-                    mapper.updateEntity(req, product);
+                productName = product.getNombre();
 
-                    if (req.stock() != null && !req.stock().equals(oldStock)) {
-                        stockChanged = true;
+                // Capture old state for logging
+                Integer oldStock = product.getStock();
+                boolean stockChanged = false;
+
+                mapper.updateEntity(req, product);
+
+                if (req.stock() != null && !req.stock().equals(oldStock)) {
+                    stockChanged = true;
+                }
+
+                // Procesar imagen Base64
+                if (req.imageBase64() != null && !req.imageBase64().isBlank()) {
+                    String savedUrl = handleBase64Image(req.imageBase64(), req.imageFileName());
+                    if (savedUrl != null) {
+                        product.setImageUrl(savedUrl);
                     }
+                }
 
-                    // Procesar imagen Base64
-                    if (req.imageBase64() != null && !req.imageBase64().isBlank()) {
-                        String savedUrl = handleBase64Image(req.imageBase64(), req.imageFileName());
-                        if (savedUrl != null) {
-                            product.setImageUrl(savedUrl);
-                        }
-                    }
+                if (req.tagId() != null) {
+                    product.setTag(productTagService.findEntityById(req.tagId()));
+                }
 
-                    if (req.tagId() != null) {
-                        product.setTag(productTagService.findEntityById(req.tagId()));
-                    }
+                checkStockLevels(product); // Verificar niveles de stock individualmente
 
-                    checkStockLevels(product); // Verificar niveles de stock individualmente
+                Product saved = repository.save(product);
 
-                    Product saved = repository.save(product);
+                // LOG MOVEMENT
+                if (stockChanged) {
+                    int diff = Math.abs(saved.getStock() - oldStock);
+                    movementService.logMovement(saved, InventoryMovementType.STOCK_ADJUSTMENT, diff, oldStock,
+                            saved.getStock(), "Ajuste masivo de stock", null);
+                } else {
+                    movementService.logMovement(saved, InventoryMovementType.UPDATE, 0, oldStock, saved.getStock(),
+                            "Actualización masiva de información", null);
+                }
 
-                    // LOG MOVEMENT
-                    if (stockChanged) {
-                        int diff = Math.abs(saved.getStock() - oldStock);
-                        movementService.logMovement(saved, InventoryMovementType.STOCK_ADJUSTMENT, diff, oldStock,
-                                saved.getStock(), "Ajuste masivo de stock", null);
-                    } else {
-                        movementService.logMovement(saved, InventoryMovementType.UPDATE, 0, oldStock, saved.getStock(),
-                                "Actualización masiva de información", null);
-                    }
+                successfulUpdates.add(mapper.toResponse(saved));
 
-                    // No individual notification for bulk to avoid spam, or maybe sending a bulk
-                    // event?
-                    // For now, keeping it simple as the PDF is the main audit.
-                    return mapper.toResponse(saved);
-                })
-                .toList();
+            } catch (BusinessExeption | jakarta.persistence.EntityNotFoundException e) {
+                log.warn("Error actualizando producto en bulk (ID: {}): {}", req.id(), e.getMessage());
+                failures.add(new BulkProductUpdateResult.BulkError(req.id(), productName, e.getMessage()));
+            } catch (Exception e) {
+                log.error("Error inesperado actualizando producto en bulk (ID: {})", req.id(), e);
+                failures.add(new BulkProductUpdateResult.BulkError(req.id(), productName,
+                        "Error inesperado: " + e.getMessage()));
+            }
+        }
+
+        return new BulkProductUpdateResult(successfulUpdates, failures);
     }
 
     @Override

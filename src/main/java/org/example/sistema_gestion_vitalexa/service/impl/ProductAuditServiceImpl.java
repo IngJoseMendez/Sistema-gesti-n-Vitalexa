@@ -37,6 +37,16 @@ public class ProductAuditServiceImpl implements ProductAuditService {
 
     @Override
     public byte[] generateProductAudit(List<ProductResponse> products, String username, String operationType) {
+        // Delegate to new method with empty failures
+        return generateProductAudit(
+                new org.example.sistema_gestion_vitalexa.dto.BulkProductUpdateResult(products, List.of()),
+                username,
+                operationType);
+    }
+
+    @Override
+    public byte[] generateProductAudit(org.example.sistema_gestion_vitalexa.dto.BulkProductUpdateResult result,
+            String username, String operationType) {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             PdfWriter writer = new PdfWriter(baos);
             PdfDocument pdf = new PdfDocument(writer);
@@ -46,12 +56,27 @@ public class ProductAuditServiceImpl implements ProductAuditService {
             addHeader(document, username, operationType);
 
             // 2. Summary
-            addSummary(document, products);
+            addSummary(document, result.successful().size(), result.failures().size());
 
-            // 3. Detailed Table
-            addProductsTable(document, products);
+            // 3. Table SUCCESS
+            if (!result.successful().isEmpty()) {
+                document.add(new Paragraph("PRODUCTOS PROCESADOS CORRECTAMENTE")
+                        .setFontSize(12).setBold().setMarginTop(10).setMarginBottom(5));
+                addProductsTable(document, result.successful());
+            } else if (result.failures().isEmpty()) {
+                document.add(new Paragraph("No se procesaron productos.")
+                        .setFontSize(10).setItalic().setMarginTop(10));
+            }
 
-            // 4. Footer
+            // 4. Table FAILURES
+            if (!result.failures().isEmpty()) {
+                document.add(new Paragraph("ERRORES DE PROCESAMIENTO")
+                        .setFontSize(12).setBold().setFontColor(ColorConstants.RED).setMarginTop(15)
+                        .setMarginBottom(5));
+                addFailuresTable(document, result.failures());
+            }
+
+            // 5. Footer
             addFooter(document);
 
             document.close();
@@ -60,6 +85,54 @@ public class ProductAuditServiceImpl implements ProductAuditService {
             log.error("Error generating product audit PDF", e);
             throw new RuntimeException("Error generating audit trail PDF", e);
         }
+    }
+
+    private void addFailuresTable(Document document,
+            List<org.example.sistema_gestion_vitalexa.dto.BulkProductUpdateResult.BulkError> failures) {
+        Table table = new Table(UnitValue.createPercentArray(new float[] { 1, 2, 3 }))
+                .useAllAvailableWidth()
+                .setFontSize(9);
+
+        // Header
+        table.addHeaderCell(
+                new Cell().add(new Paragraph("ID Producto").setBold()).setBackgroundColor(ColorConstants.LIGHT_GRAY));
+        table.addHeaderCell(
+                new Cell().add(new Paragraph("Producto").setBold()).setBackgroundColor(ColorConstants.LIGHT_GRAY));
+        table.addHeaderCell(
+                new Cell().add(new Paragraph("Error").setBold()).setBackgroundColor(ColorConstants.LIGHT_GRAY));
+
+        for (org.example.sistema_gestion_vitalexa.dto.BulkProductUpdateResult.BulkError error : failures) {
+            table.addCell(new Cell().add(new Paragraph(error.id() != null ? error.id().toString() : "N/A")));
+            table.addCell(
+                    new Cell().add(new Paragraph(error.productName() != null ? error.productName() : "Desconocido")));
+            table.addCell(new Cell().add(new Paragraph(error.message()).setFontColor(ColorConstants.RED)));
+        }
+
+        document.add(table);
+    }
+
+    private void addSummary(Document document, int successCount, int failureCount) {
+        Table table = new Table(UnitValue.createPercentArray(new float[] { 1, 1, 1 }))
+                .useAllAvailableWidth()
+                .setMarginBottom(20);
+
+        table.addCell(new Cell().add(new Paragraph("Total Procesados").setBold())
+                .setBackgroundColor(ColorConstants.LIGHT_GRAY));
+        table.addCell(
+                new Cell().add(new Paragraph("Exitosos").setBold()).setBackgroundColor(new DeviceRgb(200, 255, 200))); // Light
+                                                                                                                       // Green
+        table.addCell(
+                new Cell().add(new Paragraph("Fallidos").setBold()).setBackgroundColor(new DeviceRgb(255, 200, 200))); // Light
+                                                                                                                       // Red
+
+        table.addCell(new Cell().add(
+                new Paragraph(String.valueOf(successCount + failureCount)).setTextAlignment(TextAlignment.CENTER)));
+        table.addCell(
+                new Cell().add(new Paragraph(String.valueOf(successCount)).setTextAlignment(TextAlignment.CENTER)));
+        table.addCell(
+                new Cell().add(new Paragraph(String.valueOf(failureCount)).setTextAlignment(TextAlignment.CENTER)));
+
+        document.add(table);
     }
 
     private void addHeader(Document document, String username, String operationType) {

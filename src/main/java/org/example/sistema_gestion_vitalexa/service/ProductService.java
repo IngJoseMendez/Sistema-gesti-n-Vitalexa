@@ -22,7 +22,8 @@ public interface ProductService {
     /**
      * Actualiza múltiples productos en una sola transacción
      */
-    List<ProductResponse> updateBulk(List<UpdateProductBulkRequest> requests);
+    org.example.sistema_gestion_vitalexa.dto.BulkProductUpdateResult updateBulk(
+            List<UpdateProductBulkRequest> requests);
 
     ProductResponse update(UUID id, UpdateProductRequest request);
 

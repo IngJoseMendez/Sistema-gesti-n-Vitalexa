@@ -65,19 +65,27 @@ public class ProductAdminController {
     /**
      * Actualizar múltiples productos y descargar huella contable
      */
+    /**
+     * Actualizar múltiples productos y descargar huella contable (con reporte de
+     * errores)
+     */
     @PutMapping("/bulk")
     public ResponseEntity<byte[]> updateBulk(
             @RequestBody List<org.example.sistema_gestion_vitalexa.dto.UpdateProductBulkRequest> requests,
             org.springframework.security.core.Authentication authentication) {
 
-        // 1. Actualizar productos
-        List<ProductResponse> updatedProducts = productService.updateBulk(requests);
+        // 1. Actualizar productos (obteniendo éxitos y fallos)
+        org.example.sistema_gestion_vitalexa.dto.BulkProductUpdateResult result = productService.updateBulk(requests);
 
-        // 2. Generar PDF
+        // 2. Generar PDF (incluyendo tabla de errores si los hay)
         String username = authentication != null ? authentication.getName() : "Unknown";
-        byte[] pdfBytes = auditService.generateProductAudit(updatedProducts, username, "ACTUALIZACIÓN MASIVA");
+        byte[] pdfBytes = auditService.generateProductAudit(result, username, "ACTUALIZACIÓN MASIVA");
 
         // 3. Retornar PDF
+        // Si hay fallos pero también éxitos, retornamos 200 OK con el PDF que explica
+        // todo.
+        // Si TODO falló, también retornamos 200 OK con el PDF de errores, para que el
+        // usuario vea qué pasó.
         return ResponseEntity.ok()
                 .header("Content-Disposition",
                         "attachment; filename=huella_contable_actualizacion_" + System.currentTimeMillis() + ".pdf")
