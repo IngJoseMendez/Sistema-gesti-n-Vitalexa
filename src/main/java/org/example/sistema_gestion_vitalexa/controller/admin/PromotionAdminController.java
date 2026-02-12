@@ -99,9 +99,21 @@ public class PromotionAdminController {
     }
 
     /**
+     * GET /api/admin/promotions/valid - Listar solo promociones válidas (activas y
+     * vigentes)
+     * Endpoint útil para el panel de ventas del admin (simulando vendedor)
+     */
+    @GetMapping("/valid")
+    public ResponseEntity<List<PromotionResponse>> findValidPromotions() {
+        log.info("Admin listando promociones válidas para ventas");
+        List<PromotionResponse> promotions = promotionService.findValidPromotions();
+        return ResponseEntity.ok(promotions);
+    }
+
+    /**
      * GET /api/admin/promotions/{id} - Obtener promoción por ID
      */
-    @GetMapping("/{id}")
+    @GetMapping("/{id:[0-9a-fA-F-]{36}}")
     public ResponseEntity<PromotionResponse> findById(@PathVariable UUID id) {
         try {
             log.info("Admin obteniendo promoción ID: {}", id);
