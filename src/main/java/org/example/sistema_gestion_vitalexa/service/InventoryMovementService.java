@@ -13,7 +13,8 @@ import java.util.UUID;
 
 public interface InventoryMovementService {
 
-        void logMovement(Product product, InventoryMovementType type, Integer quantity, Integer previousStock,
+        org.example.sistema_gestion_vitalexa.entity.InventoryMovement logMovement(Product product,
+                        InventoryMovementType type, Integer quantity, Integer previousStock,
                         Integer newStock, String reason, String username);
 
         Page<InventoryMovementResponseDTO> getHistory(UUID productId, InventoryMovementType type,
@@ -21,6 +22,8 @@ public interface InventoryMovementService {
                         LocalDateTime endDate, Pageable pageable);
 
         byte[] generateHistoryPdf(List<InventoryMovement> movements, String username, String filterDescription);
+
+        byte[] generateStockEntryReport(List<InventoryMovement> movements, String username);
 
         // Para exportar todo (sin paginación)
         List<InventoryMovement> getAllHistory(UUID productId, InventoryMovementType type, LocalDateTime startDate,

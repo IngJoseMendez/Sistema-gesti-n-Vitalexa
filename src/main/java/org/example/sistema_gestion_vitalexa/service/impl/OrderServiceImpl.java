@@ -45,6 +45,7 @@ public class OrderServiceImpl implements OrdenService {
     private final org.example.sistema_gestion_vitalexa.repository.PaymentRepository paymentRepository;
     private final org.example.sistema_gestion_vitalexa.repository.ClientRepository clientRepository;
     private final SpecialProductService specialProductService;
+    private final InventoryMovementService movementService;
 
     // =========================
     // CREATE ORDER (VENDEDOR)
@@ -602,75 +603,58 @@ public class OrderServiceImpl implements OrdenService {
             boolean hasStock = currentStock >= requestedQuantity;
 
             // Validar stock solo si NO se permite venta sin stock
-            if (!allowOutOfStock && !hasStock) {
-                throw new BusinessExeption("Stock insuficiente para: " + productName);
+            // CAMBIO: Ahora SIEMPRE permitimos venta sin stock (generará stock negativo)
+            // if (!allowOutOfStock && !hasStock) {
+            // throw new BusinessExeption("Stock insuficiente para: " + productName);
+            // }
+
+            // LÓGICA SIMPLIFICADA: SIEMPRE VENDER, STOCK PUEDE SER NEGATIVO
+
+            // CASO UNICO: Todo se vende "de una"
+            OrderItem item = new OrderItem(product, requestedQuantity);
+
+            // Ajustar precio y vincular specialProduct
+            if (specialProduct != null) {
+                item.setPrecioUnitario(effectivePrice);
+                item.setSubTotal(effectivePrice.multiply(BigDecimal.valueOf(requestedQuantity)));
+                item.setSpecialProduct(specialProduct);
+                specialProduct.decreaseStock(requestedQuantity);
+            } else {
+                product.decreaseStock(requestedQuantity);
             }
 
-            // LÓGICA DE SPLIT DE INVENTARIO
-            if (!hasStock && currentStock > 0) {
-                // PARTE 1: Lo que sí hay en stock
-                OrderItem inStockItem = new OrderItem(product, currentStock);
-                // Ajustar precio si es especial (constructor usa precio de product por defecto)
-                if (specialProduct != null) {
-                    inStockItem.setPrecioUnitario(effectivePrice);
-                    inStockItem.setSubTotal(effectivePrice.multiply(BigDecimal.valueOf(currentStock)));
-                    inStockItem.setSpecialProduct(specialProduct);
-                    specialProduct.decreaseStock(currentStock);
-                } else {
-                    product.decreaseStock(currentStock);
-                }
-
-                inStockItem.setOutOfStock(false);
-                inStockItem.setCantidadDescontada(currentStock);
-                inStockItem.setCantidadPendiente(0);
-                order.addItem(inStockItem);
-
-                // PARTE 2: Lo que falta
-                int pendingQuantity = requestedQuantity - currentStock;
-                OrderItem outOfStockItem = new OrderItem(product, pendingQuantity);
-                // Ajustar precio
-                if (specialProduct != null) {
-                    outOfStockItem.setPrecioUnitario(effectivePrice);
-                    outOfStockItem.setSubTotal(effectivePrice.multiply(BigDecimal.valueOf(pendingQuantity)));
-                    outOfStockItem.setSpecialProduct(specialProduct);
-                }
-
-                outOfStockItem.setOutOfStock(true);
-                outOfStockItem.setCantidadDescontada(0);
-                outOfStockItem.setCantidadPendiente(pendingQuantity);
-                order.addItem(outOfStockItem);
-
-                log.info("Producto {} dividido: {} en stock, {} pendiente",
-                        productName, currentStock, pendingQuantity);
-
+            // Marcamos flags
+            if (hasStock) {
+                item.setOutOfStock(false);
             } else {
-                // CASO NORMAL
-                OrderItem item = new OrderItem(product, requestedQuantity);
+                // Aunque no haya stock, permitimos la venta y marcamos flag informativo
+                item.setOutOfStock(true);
+                log.info("Producto {} vendido sin stock suficiente via 'Negative Stock'. Stock actual (pre-venta): {}",
+                        productName, currentStock);
+            }
 
-                // Ajustar precio y vincular specialProduct
-                if (specialProduct != null) {
-                    item.setPrecioUnitario(effectivePrice);
-                    item.setSubTotal(effectivePrice.multiply(BigDecimal.valueOf(requestedQuantity)));
-                    item.setSpecialProduct(specialProduct);
+            // SIEMPRE descontamos todo para el sistema (porque ya bajamos el stock
+            // físico/lógico)
+            item.setCantidadDescontada(requestedQuantity);
+            item.setCantidadPendiente(0);
+
+            order.addItem(item);
+
+            // LOG INVENTORY MOVEMENT
+            try {
+                // Solo logueamos si el producto tiene stock gestionable
+                if (product.getStock() != null) {
+                    movementService.logMovement(
+                            product,
+                            org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.SALE,
+                            requestedQuantity,
+                            currentStock,
+                            product.getStock(),
+                            "Venta Orden",
+                            order.getVendedor() != null ? order.getVendedor().getUsername() : "System");
                 }
-
-                if (hasStock) {
-                    item.setOutOfStock(false);
-                    item.setCantidadDescontada(requestedQuantity);
-                    item.setCantidadPendiente(0);
-                    if (specialProduct != null) {
-                        specialProduct.decreaseStock(requestedQuantity);
-                    } else {
-                        product.decreaseStock(requestedQuantity);
-                    }
-                } else {
-                    item.setOutOfStock(true);
-                    item.setCantidadDescontada(0);
-                    item.setCantidadPendiente(requestedQuantity);
-                    log.warn("Producto agregado totalmente sin stock: {}", productName);
-                }
-
-                order.addItem(item);
+            } catch (Exception e) {
+                log.error("Error logging inventory movement: {}", e.getMessage());
             }
         });
     }
@@ -699,49 +683,29 @@ public class OrderServiceImpl implements OrdenService {
             // Pero si se quiere mantener consistencia con el inventario, usamos logica
             // básica.
 
-            if (!hasStock && currentStock > 0) {
-                // SPLIT básico: Parte con Stock
-                OrderItem inStockItem = new OrderItem(product, currentStock);
-                inStockItem.setOutOfStock(false);
-                inStockItem.setCantidadDescontada(currentStock);
-                inStockItem.setPrecioUnitario(BigDecimal.ZERO); // FLETE GRATIS/INCLUIDO
-                inStockItem.setSubTotal(BigDecimal.ZERO);
-                inStockItem.setIsFreightItem(true);
+            // CREAR ITEM DE FLETE (Siempre precio 0)
+            // LÓGICA SIMPLIFICADA: Sin split, stock negativo permitido
 
-                product.decreaseStock(currentStock);
-                order.addItem(inStockItem);
+            OrderItem item = new OrderItem(product, requestedQuantity);
+            item.setPrecioUnitario(BigDecimal.ZERO);
+            item.setSubTotal(BigDecimal.ZERO);
+            item.setIsFreightItem(true);
 
-                // Parte sin Stock
-                int pendingQuantity = requestedQuantity - currentStock;
-                OrderItem outOfStockItem = new OrderItem(product, pendingQuantity);
-                outOfStockItem.setOutOfStock(true);
-                outOfStockItem.setCantidadDescontada(0);
-                outOfStockItem.setCantidadPendiente(pendingQuantity);
-                outOfStockItem.setPrecioUnitario(BigDecimal.ZERO);
-                outOfStockItem.setSubTotal(BigDecimal.ZERO);
-                outOfStockItem.setIsFreightItem(true);
+            // Siempre descontamos stock
+            product.decreaseStock(requestedQuantity);
 
-                order.addItem(outOfStockItem);
-
-                log.info("Item de flete {} dividido", product.getNombre());
-
+            if (hasStock) {
+                item.setOutOfStock(false);
             } else {
-                OrderItem item = new OrderItem(product, requestedQuantity);
-                item.setPrecioUnitario(BigDecimal.ZERO);
-                item.setSubTotal(BigDecimal.ZERO);
-                item.setIsFreightItem(true);
-
-                if (hasStock) {
-                    item.setOutOfStock(false);
-                    item.setCantidadDescontada(requestedQuantity);
-                    product.decreaseStock(requestedQuantity);
-                } else {
-                    item.setOutOfStock(true);
-                    item.setCantidadPendiente(requestedQuantity);
-                    item.setCantidadDescontada(0);
-                }
-                order.addItem(item);
+                item.setOutOfStock(true);
+                log.info("Item de flete {} agregado sin stock suficiente.", product.getNombre());
             }
+
+            // Siempre "descontado" completo
+            item.setCantidadDescontada(requestedQuantity);
+            item.setCantidadPendiente(0);
+
+            order.addItem(item);
         });
     }
 
@@ -1127,48 +1091,23 @@ public class OrderServiceImpl implements OrdenService {
                 int currentStock = product.getStock();
                 boolean hasStock = currentStock >= requestedQuantity;
 
-                // LÓGICA DE SPLIT DE INVENTARIO (Idéntica a create)
-                if (!hasStock && currentStock > 0) {
-                    // PARTE 1: Stock disponible
-                    OrderItem inStockItem = new OrderItem(product, currentStock);
+                // LÓGICA UNIFICADA: SIEMPRE VENDER EN UNA SOLA LÍNEA (Stock negativo permitido)
+                OrderItem item = new OrderItem(product, requestedQuantity);
 
-                    inStockItem.setOutOfStock(false);
-                    inStockItem.setCantidadDescontada(currentStock);
-                    inStockItem.setCantidadPendiente(0);
-
-                    product.decreaseStock(currentStock);
-                    order.addItem(inStockItem);
-
-                    // PARTE 2: Pendiente
-                    int pendingQuantity = requestedQuantity - currentStock;
-                    OrderItem outOfStockItem = new OrderItem(product, pendingQuantity);
-
-                    outOfStockItem.setOutOfStock(true);
-                    outOfStockItem.setCantidadDescontada(0);
-                    outOfStockItem.setCantidadPendiente(pendingQuantity);
-
-                    order.addItem(outOfStockItem);
-                    log.info("Producto {} dividido en edición: {} stock, {} pendiente",
-                            product.getNombre(), currentStock, pendingQuantity);
-
+                if (hasStock) {
+                    item.setOutOfStock(false);
                 } else {
-                    // Todo o nada
-                    OrderItem item = new OrderItem(product, requestedQuantity);
-
-                    if (hasStock) {
-                        item.setOutOfStock(false);
-                        item.setCantidadDescontada(requestedQuantity);
-                        item.setCantidadPendiente(0);
-                        product.decreaseStock(requestedQuantity);
-                    } else {
-                        item.setOutOfStock(true);
-                        item.setCantidadDescontada(0);
-                        item.setCantidadPendiente(requestedQuantity);
-                        log.warn("Producto agregado sin stock en edición de orden {}: {}", orderId,
-                                product.getNombre());
-                    }
-                    order.addItem(item);
+                    item.setOutOfStock(true);
+                    log.info("Producto {} vendido sin stock suficiente en edición. Stock actual: {}, Solicitado: {}",
+                            product.getNombre(), currentStock, requestedQuantity);
                 }
+
+                // Siempre descontamos todo
+                item.setCantidadDescontada(requestedQuantity);
+                item.setCantidadPendiente(0);
+
+                product.decreaseStock(requestedQuantity);
+                order.addItem(item);
             });
         } else if (isPromoOrder && hasItems) {
             log.debug("Edición de orden de promo: Se ignoran items normales (solo se preservan regalos y flete)");

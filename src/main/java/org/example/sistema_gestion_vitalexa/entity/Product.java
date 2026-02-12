@@ -62,9 +62,7 @@ public class Product {
         if (cantidad <= 0) {
             throw new IllegalArgumentException("Cantidad inválida");
         }
-        if (this.stock < cantidad) {
-            throw new RuntimeException("Stock insuficiente para " + nombre);
-        }
+        // PERMITIMOS STOCK NEGATIVO - SE ELIMINA LA VALIDACIÓN DE STOCK INSUFICIENTE
         this.stock -= cantidad;
     }
 

@@ -117,8 +117,8 @@ public class SpecialProduct {
             if (cantidad <= 0) {
                 throw new IllegalArgumentException("Cantidad inválida");
             }
-            if (this.ownStock == null || this.ownStock < cantidad) {
-                throw new RuntimeException("Stock insuficiente para " + nombre);
+            if (this.ownStock == null) {
+                this.ownStock = 0;
             }
             this.ownStock -= cantidad;
         }

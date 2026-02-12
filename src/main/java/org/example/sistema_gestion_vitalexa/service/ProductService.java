@@ -57,4 +57,16 @@ public interface ProductService {
     Page<ProductResponse> searchByTag(String q, UUID tagId, Pageable pageable);
 
     Product getSystemProductSurtido();
+
+    /**
+     * Agrega stock a un producto (Llegada de mercancía)
+     */
+    org.example.sistema_gestion_vitalexa.entity.InventoryMovement addStock(UUID productId, int quantity, String reason,
+            String username);
+
+    /**
+     * Carga masiva de stock (Llegada de mercancía masiva)
+     */
+    List<org.example.sistema_gestion_vitalexa.entity.InventoryMovement> addStockBulk(
+            org.example.sistema_gestion_vitalexa.dto.BulkStockArrivalRequestDTO request, String username);
 }

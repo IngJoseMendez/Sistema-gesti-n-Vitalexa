@@ -4,6 +4,7 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.example.sistema_gestion_vitalexa.dto.*;
 import org.example.sistema_gestion_vitalexa.entity.Product;
+import org.example.sistema_gestion_vitalexa.entity.SpecialProduct;
 import org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption;
 import org.example.sistema_gestion_vitalexa.mapper.ProductMapper;
 import org.example.sistema_gestion_vitalexa.repository.ProductRepository;
@@ -372,4 +373,88 @@ public class ProductServiceImpl implements ProductService {
                 .orElseThrow(() -> new BusinessExeption(
                         "Error del sistema: Producto 'SURTIDO PROMOCIONAL' no configurado."));
     }
+
+    @Override
+    @Transactional
+    public org.example.sistema_gestion_vitalexa.entity.InventoryMovement addStock(UUID productId, int quantity,
+            String reason, String username) {
+        Product product;
+        String logReason = reason;
+
+        // 1. Intentar buscar producto normal
+        java.util.Optional<Product> productOpt = repository.findById(productId);
+
+        if (productOpt.isPresent()) {
+            product = productOpt.get();
+        } else {
+            // 2. Si no es normal, buscar si es Especial
+            SpecialProduct sp = specialProductRepository.findById(productId)
+                    .orElseThrow(() -> new BusinessExeption("Producto no encontrado (ni regular ni especial)"));
+
+            if (sp.isLinked()) {
+                // Es un producto especial vinculado -> Actualizamos el PADRE
+                product = sp.getParentProduct();
+                logReason = (reason != null ? reason : "") + " (Vía Especial: " + sp.getNombre() + ")";
+            } else {
+                throw new BusinessExeption(
+                        "No se puede agregar stock directamente a un producto especial independiente en este módulo. Use el producto padre o conviértalo.");
+            }
+        }
+
+        if (quantity <= 0) {
+            throw new BusinessExeption("La cantidad a agregar debe ser mayor a 0");
+        }
+
+        Integer oldStock = product.getStock();
+        if (oldStock == null)
+            oldStock = 0;
+
+        product.setStock(oldStock + quantity);
+        Product saved = repository.save(product);
+
+        // LOG MOVEMENT and RETURN
+        org.example.sistema_gestion_vitalexa.entity.InventoryMovement movement = movementService.logMovement(
+                saved,
+                InventoryMovementType.RESTOCK,
+                quantity,
+                oldStock,
+                saved.getStock(),
+                logReason != null && !logReason.isBlank() ? logReason : "Llegada de mercancía",
+                username);
+
+        // NOTIFICAR ACTUALIZACIÓN
+        notificationService.sendInventoryUpdate(saved.getId().toString(), "PRODUCT_UPDATED");
+
+        log.info("Stock agregado a producto {}: +{} (Nuevo stock: {}). Razón: {}",
+                product.getNombre(), quantity, saved.getStock(), logReason);
+
+        return movement;
+    }
+
+    @Override
+    @Transactional
+    public java.util.List<org.example.sistema_gestion_vitalexa.entity.InventoryMovement> addStockBulk(
+            org.example.sistema_gestion_vitalexa.dto.BulkStockArrivalRequestDTO request,
+            String username) {
+        if (request.items() == null || request.items().isEmpty()) {
+            throw new BusinessExeption("La lista de productos no puede estar vacía");
+        }
+
+        String reason = request.reason() != null && !request.reason().isBlank()
+                ? request.reason()
+                : "Carga Masiva de Llegadas";
+
+        java.util.List<org.example.sistema_gestion_vitalexa.entity.InventoryMovement> movements = new java.util.ArrayList<>();
+
+        for (org.example.sistema_gestion_vitalexa.dto.StockArrivalItemDTO item : request.items()) {
+            try {
+                movements.add(addStock(item.productId(), item.quantity(), reason, username));
+            } catch (Exception e) {
+                log.error("Error agregando stock a producto {} en carga masiva: {}", item.productId(), e.getMessage());
+                throw new BusinessExeption("Error al procesar producto ID " + item.productId() + ": " + e.getMessage());
+            }
+        }
+        return movements;
+    }
+
 }

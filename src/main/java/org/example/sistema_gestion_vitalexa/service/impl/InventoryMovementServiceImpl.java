@@ -46,7 +46,8 @@ public class InventoryMovementServiceImpl implements InventoryMovementService {
 
     @Override
     @Transactional
-    public void logMovement(Product product, InventoryMovementType type, Integer quantity, Integer previousStock,
+    public InventoryMovement logMovement(Product product, InventoryMovementType type, Integer quantity,
+            Integer previousStock,
             Integer newStock, String reason, String username) {
         try {
             InventoryMovement movement = InventoryMovement.builder()
@@ -60,14 +61,11 @@ public class InventoryMovementServiceImpl implements InventoryMovementService {
                     .username(username != null ? username : "System")
                     .build();
 
-            repository.save(movement);
+            InventoryMovement saved = repository.save(movement);
             log.info("Inventory movement logged: {} - Product: {} ({})", type, product.getNombre(), quantity);
+            return saved;
         } catch (Exception e) {
             log.error("Failed to log inventory movement", e);
-            // Don't throw exception to avoid rolling back the main transaction?
-            // Better to log error but let the transaction continue or fail?
-            // Usually audit should be critical, but strict requirement might vary.
-            // We'll let it fail if it can't save to ensure data consistency of audit.
             throw e;
         }
     }
@@ -261,6 +259,53 @@ public class InventoryMovementServiceImpl implements InventoryMovementService {
         }
 
         document.add(table);
+    }
+
+    @Override
+    public byte[] generateStockEntryReport(List<InventoryMovement> movements, String username) {
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            PdfWriter writer = new PdfWriter(baos);
+            PdfDocument pdf = new PdfDocument(writer);
+            Document document = new Document(pdf);
+
+            // Header simplificado para comprobante de ingreso
+            Paragraph title = new Paragraph("COMPROBANTE DE INGRESO DE MERCANCÍA")
+                    .setFontSize(14).setBold().setTextAlignment(TextAlignment.CENTER).setMarginBottom(10);
+            document.add(title);
+
+            document.add(new Paragraph("Fecha: " + LocalDateTime.now().format(DATE_FORMATTER))
+                    .setFontSize(10).setTextAlignment(TextAlignment.CENTER));
+            document.add(new Paragraph("Responsable: " + (username != null ? username : "N/A"))
+                    .setFontSize(10).setTextAlignment(TextAlignment.CENTER).setMarginBottom(20));
+
+            // Tabla de ingresos
+            Table table = new Table(UnitValue.createPercentArray(new float[] { 4, 1, 1, 1 }))
+                    .useAllAvailableWidth().setFontSize(9);
+
+            addHeaderCell(table, "Producto");
+            addHeaderCell(table, "Stock Anterior");
+            addHeaderCell(table, "Cant.");
+            addHeaderCell(table, "Stock Resultante");
+
+            for (InventoryMovement m : movements) {
+                if (m.getType() == InventoryMovementType.RESTOCK) {
+                    addCell(table, m.getProductName(), TextAlignment.LEFT);
+                    addCell(table, String.valueOf(m.getPreviousStock()), TextAlignment.CENTER);
+                    addCell(table, "+" + m.getQuantity(), TextAlignment.CENTER);
+                    addCell(table, String.valueOf(m.getNewStock()), TextAlignment.CENTER);
+                }
+            }
+            document.add(table);
+
+            // Footer
+            addFooter(document);
+
+            document.close();
+            return baos.toByteArray();
+        } catch (Exception e) {
+            log.error("Error generating stock entry PDF", e);
+            throw new RuntimeException("Error generating stock entry PDF", e);
+        }
     }
 
     private void addFooter(Document document) {

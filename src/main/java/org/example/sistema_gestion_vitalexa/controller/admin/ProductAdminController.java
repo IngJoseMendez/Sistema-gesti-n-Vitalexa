@@ -19,7 +19,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -38,6 +39,7 @@ public class ProductAdminController {
     private final ProductImageService imageService;
     private final ProductAuditService auditService;
     private final SpecialProductRepository specialProductRepository;
+    private final org.example.sistema_gestion_vitalexa.service.InventoryMovementService movementService;
 
     /**
      * Crear múltiples productos y descargar huella contable
@@ -511,5 +513,91 @@ public class ProductAdminController {
             Pageable pageable) {
         Page<ProductResponse> productos = productService.searchActive(q, pageable);
         return ResponseEntity.ok(productos);
+    }
+
+    /**
+     * POST /api/admin/products/{id}/stock/add
+     * Registrar llegada de mercancía (Stock Entry)
+     */
+    /**
+     * POST /api/admin/products/{id}/stock/add
+     * Registrar llegada de mercancía (Stock Entry) - Retorna PDF
+     */
+    @PostMapping("/{id}/stock/add")
+    public ResponseEntity<?> addStock(
+            @PathVariable UUID id,
+            @RequestParam Integer quantity,
+            @RequestParam(required = false) String reason,
+            org.springframework.security.core.Authentication authentication) {
+        try {
+            String username = authentication != null ? authentication.getName() : "Unknown";
+
+            // 1. Registrar movimiento
+            org.example.sistema_gestion_vitalexa.entity.InventoryMovement movement = productService.addStock(id,
+                    quantity, reason, username);
+
+            // 2. Generar PDF
+            byte[] pdfBytes = movementService.generateStockEntryReport(List.of(movement), username);
+
+            // 3. Retornar PDF
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=huella_ingreso_" + id + "_" + System.currentTimeMillis() + ".pdf")
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .body(pdfBytes);
+
+        } catch (BusinessExeption be) {
+            return ResponseEntity.badRequest().body(be.getMessage());
+        } catch (Exception e) {
+            log.error("Error adding stock to product {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error agregando stock");
+        }
+    }
+
+    /**
+     * POST /api/admin/products/stock/bulk-add
+     * Carga Masiva de Llegadas
+     */
+    /**
+     * POST /api/admin/products/stock/bulk-add
+     * Carga Masiva de Llegadas - Retorna PDF "Huella"
+     */
+    /**
+     * POST /api/admin/products/stock/bulk-add
+     * Carga Masiva de Llegadas - Retorna PDF "Huella"
+     */
+    @PostMapping("/stock/bulk-add")
+    public ResponseEntity<?> addStockBulk(
+            @RequestBody org.example.sistema_gestion_vitalexa.dto.BulkStockArrivalRequestDTO request,
+            org.springframework.security.core.Authentication authentication) {
+        try {
+            String username = authentication != null ? authentication.getName() : "Unknown";
+            log.info("Procesando carga masiva de stock para usuario: {}", username);
+
+            // 1. Procesar carga y obtener movimientos generados
+            java.util.List<org.example.sistema_gestion_vitalexa.entity.InventoryMovement> movements = productService
+                    .addStockBulk(request, username);
+
+            log.info("Movimientos generados en carga masiva: {}", movements.size());
+
+            // 2. Generar PDF
+            byte[] pdfBytes = movementService.generateStockEntryReport(movements, username);
+            log.info("PDF de carga masiva generado. Tamaño: {} bytes", pdfBytes.length);
+
+            // 3. Retornar PDF
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=huella_ingreso_masiva_" + System.currentTimeMillis() + ".pdf")
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .body(pdfBytes);
+
+        } catch (BusinessExeption be) {
+            log.warn("Error de negocio en carga masiva: {}", be.getMessage());
+            return ResponseEntity.badRequest().body(be.getMessage());
+        } catch (Exception e) {
+            log.error("Error en carga masiva de stock", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error en carga masiva: " + e.getMessage());
+        }
     }
 }
