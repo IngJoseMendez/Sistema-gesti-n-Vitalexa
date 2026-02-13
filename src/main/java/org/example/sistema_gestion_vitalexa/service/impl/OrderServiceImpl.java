@@ -1643,25 +1643,51 @@ public class OrderServiceImpl implements OrdenService {
 
         // Restaurar stock del producto
         Product product = itemToDelete.getProduct();
+
+        // ✅ CASO 1: Items normales (no promoción, no bonificado)
         if (!Boolean.TRUE.equals(itemToDelete.getIsFreeItem()) &&
                 !Boolean.TRUE.equals(itemToDelete.getIsPromotionItem())) {
-            // Restaurar stock completo para items normales
             product.increaseStock(itemToDelete.getCantidad());
-            log.info("✅ Stock restaurado para '{}': +{}", product.getNombre(), itemToDelete.getCantidad());
-        } else if (Boolean.TRUE.equals(itemToDelete.getIsBonified()) &&
+            log.info("✅ Stock restaurado para item normal '{}': +{}", product.getNombre(), itemToDelete.getCantidad());
+        }
+
+        // ✅ CASO 2: Bonificados puros (no son items de promoción)
+        else if (Boolean.TRUE.equals(itemToDelete.getIsBonified()) &&
+                !Boolean.TRUE.equals(itemToDelete.getIsPromotionItem()) &&
                 itemToDelete.getCantidadDescontada() != null &&
                 itemToDelete.getCantidadDescontada() > 0) {
-            // Restaurar stock de bonificados solo si se descontó
             product.increaseStock(itemToDelete.getCantidadDescontada());
             log.info("✅ Stock restaurado para bonificado '{}': +{}",
                     product.getNombre(),
                     itemToDelete.getCantidadDescontada());
-        } else if (Boolean.TRUE.equals(itemToDelete.getIsPromotionItem()) &&
-                !Boolean.TRUE.equals(itemToDelete.getIsFreeItem())) {
-            // Restaurar stock del item de compra de la promoción
+        }
+
+        // ✅ CASO 3: Items de promoción (mainProduct o giftItems)
+        else if (Boolean.TRUE.equals(itemToDelete.getIsPromotionItem())) {
             Integer qtyToRestore = itemToDelete.getCantidad();
             product.increaseStock(qtyToRestore);
-            log.info("✅ Stock restaurado para promo '{}': +{}", product.getNombre(), qtyToRestore);
+            log.info("✅ Stock restaurado para item de promoción '{}': +{}", product.getNombre(), qtyToRestore);
+
+            // ✅ CRÍTICO: Si es mainProduct de una promoción, también restaurar los giftItems
+            if (!Boolean.TRUE.equals(itemToDelete.getIsFreeItem()) &&
+                itemToDelete.getPromotion() != null &&
+                itemToDelete.getPromotion().getGiftItems() != null) {
+
+                log.info("🔄 Restaurando stock de {} regalos de la promoción '{}'",
+                        itemToDelete.getPromotion().getGiftItems().size(),
+                        itemToDelete.getPromotion().getNombre());
+
+                // Restaurar cada regalo de la promoción
+                for (org.example.sistema_gestion_vitalexa.entity.PromotionGiftItem gift :
+                     itemToDelete.getPromotion().getGiftItems()) {
+                    Product giftProduct = gift.getProduct();
+                    Integer giftQty = gift.getQuantity();
+
+                    giftProduct.increaseStock(giftQty);
+                    log.info("✅ Stock restaurado para regalo '{}': +{}",
+                            giftProduct.getNombre(), giftQty);
+                }
+            }
         }
 
         // Eliminar el item de la orden
