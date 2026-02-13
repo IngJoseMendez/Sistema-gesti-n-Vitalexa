@@ -34,7 +34,8 @@ public interface OrderMapper {
         java.util.Map<java.util.UUID, org.example.sistema_gestion_vitalexa.entity.OrderItem> uniqueInstances = new java.util.HashMap<>();
 
         order.getItems().stream()
-                .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem()) && i.getPromotion() != null)
+                .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem()) &&
+                        (i.getPromotion() != null || i.getSpecialPromotion() != null))
                 .forEach(i -> {
                     java.util.UUID key = i.getPromotionInstanceId() != null
                             ? i.getPromotionInstanceId()
@@ -43,7 +44,13 @@ public interface OrderMapper {
                 });
 
         return uniqueInstances.values().stream()
-                .map(i -> i.getPromotion().getId())
+                .map(i -> {
+                    // ✅ Priorizar SpecialPromotion sobre Promotion
+                    if (i.getSpecialPromotion() != null) {
+                        return i.getSpecialPromotion().getId();
+                    }
+                    return i.getPromotion().getId();
+                })
                 .sorted()
                 .collect(java.util.stream.Collectors.toList());
     }

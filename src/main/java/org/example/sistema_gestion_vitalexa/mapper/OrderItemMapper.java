@@ -12,8 +12,8 @@ public interface OrderItemMapper {
     @Mapping(source = "product.id", target = "productId")
     @Mapping(source = "product.nombre", target = "productName")
     @Mapping(target = "subtotal", expression = "java(item.getSubTotal())")
-    @Mapping(source = "promotion.id", target = "promotionId")
-    @Mapping(source = "promotion.nombre", target = "promotionName")
+    @Mapping(target = "promotionId", expression = "java(getPromotionId(item))")
+    @Mapping(target = "promotionName", expression = "java(getPromotionName(item))")
     @Mapping(source = "isBonified", target = "isBonified")
     @Mapping(source = "isFreightItem", target = "isFreightItem")
     // ✅ NUEVOS: Campos para instancias únicas de promociones y stock negativo
@@ -23,4 +23,26 @@ public interface OrderItemMapper {
     @Mapping(source = "cantidadDescontada", target = "cantidadDescontada")
     @Mapping(source = "cantidadPendiente", target = "cantidadPendiente")
     OrderItemResponse toResponse(OrderItem item);
+
+    // ✅ Obtener ID de la promoción correcta (especial o padre)
+    default java.util.UUID getPromotionId(OrderItem item) {
+        if (item.getSpecialPromotion() != null) {
+            return item.getSpecialPromotion().getId();
+        }
+        if (item.getPromotion() != null) {
+            return item.getPromotion().getId();
+        }
+        return null;
+    }
+
+    // ✅ Obtener nombre de la promoción correcta (especial o padre)
+    default String getPromotionName(OrderItem item) {
+        if (item.getSpecialPromotion() != null) {
+            return item.getSpecialPromotion().getNombre();
+        }
+        if (item.getPromotion() != null) {
+            return item.getPromotion().getNombre();
+        }
+        return null;
+    }
 }

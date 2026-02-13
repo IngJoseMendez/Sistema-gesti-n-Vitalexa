@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.sistema_gestion_vitalexa.entity.Order;
 import org.example.sistema_gestion_vitalexa.entity.OrderItem;
+import org.example.sistema_gestion_vitalexa.entity.SpecialPromotion;
 import org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption;
 import org.example.sistema_gestion_vitalexa.repository.OrdenRepository;
 import org.example.sistema_gestion_vitalexa.service.InvoiceService;
@@ -260,10 +261,23 @@ public class InvoiceServiceImpl implements InvoiceService {
                                 // misma promoción)
                                 var promo = promoItems.get(0).getPromotion();
 
+                                // ✅ NUEVO: Detectar si es una SpecialPromotion
+                                SpecialPromotion specialPromo = promoItems.stream()
+                                                .map(OrderItem::getSpecialPromotion)
+                                                .filter(Objects::nonNull)
+                                                .findFirst()
+                                                .orElse(null);
+
+                                String promoName = (specialPromo != null) ? specialPromo.getNombre()
+                                                : promo.getNombre();
+                                BigDecimal promoPrice = (specialPromo != null && specialPromo.getPackPrice() != null)
+                                                ? specialPromo.getPackPrice()
+                                                : promo.getPackPrice();
+
                                 // Construir encabezado con nombre y precio de la promoción
-                                String promoHeaderText = "PROMOCIÓN: " + promo.getNombre();
-                                if (promo.getPackPrice() != null) {
-                                        promoHeaderText += " - Precio: $" + promo.getPackPrice().toPlainString();
+                                String promoHeaderText = "PROMOCIÓN: " + promoName;
+                                if (promoPrice != null) {
+                                        promoHeaderText += " - Precio: $" + promoPrice.toPlainString();
                                 }
 
                                 // Separador de promoción

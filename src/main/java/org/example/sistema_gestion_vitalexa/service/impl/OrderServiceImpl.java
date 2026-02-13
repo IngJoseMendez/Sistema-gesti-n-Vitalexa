@@ -46,6 +46,8 @@ public class OrderServiceImpl implements OrdenService {
     private final org.example.sistema_gestion_vitalexa.repository.ClientRepository clientRepository;
     private final SpecialProductService specialProductService;
     private final InventoryMovementService movementService;
+    private final SpecialPromotionService specialPromotionService;
+    private final org.example.sistema_gestion_vitalexa.repository.SpecialPromotionRepository specialPromotionRepository;
 
     // =========================
     // CREATE ORDER (VENDEDOR)
@@ -722,11 +724,58 @@ public class OrderServiceImpl implements OrdenService {
         // Contar instancias de cada promoción para asignar índices
         java.util.Map<UUID, Integer> promoIndexCount = new java.util.HashMap<>();
 
-        promotionIds.forEach(promotionId -> {
-            log.info("Buscando promoción con ID: {}", promotionId);
-            // Obtener y validar promoción
-            Promotion promotion = promotionService.findEntityById(promotionId);
+        promotionIds.forEach(id -> {
+            log.info("Buscando promoción (Normal o Especial) con ID: {}", id);
 
+            // 1. INTENTAR COMO SPECIAL PROMOTION
+            // ✅ CRÍTICO: Usar repositorio directamente para evitar excepciones que marcan la transacción para rollback
+            SpecialPromotion specialPromotion = null;
+            Promotion promotion = null;
+            boolean isSpecial = false;
+
+            // ✅ Buscar primero en SpecialPromotion usando Optional (no lanza excepción)
+            java.util.Optional<SpecialPromotion> specialPromotionOpt = specialPromotionRepository.findById(id);
+
+            if (specialPromotionOpt.isPresent()) {
+                specialPromotion = specialPromotionOpt.get();
+                isSpecial = true;
+                log.info("✅ Encontrada como SpecialPromotion: {}", specialPromotion.getNombre());
+            } else {
+                log.info("No es SpecialPromotion, buscando como Promotion normal...");
+            }
+
+            if (isSpecial && specialPromotion != null) {
+                // ES UNA PROMOCIÓN ESPECIAL
+                if (!specialPromotion.isActive()) {
+                    throw new BusinessExeption(
+                            "La promoción especial '" + specialPromotion.getNombre() + "' no está activa");
+                }
+
+                // Determinar la Promoción "Lógica" (Padre o Standalone)
+                if (specialPromotion.isLinked()) {
+                    promotion = specialPromotion.getParentPromotion();
+                } else {
+                    // Standalone: Por ahora no soportado totalmente sin duplicar lógica.
+                    // Asumiremos que SpecialPromotion SIEMPRE está vinculada por ahora según
+                    // requerimiento.
+                    // Si no, necesitaríamos mapear SpecialPromotion a una estructura compatible.
+                    // FALLBACK: Usar lógica de Promotion si SpecialPromotion tiene los campos
+                    // necesarios mapeados.
+                    // Dado el tiempo, lanzaré error si no está vinculada para forzar el uso
+                    // correcto.
+                    throw new BusinessExeption(
+                            "Promociones especiales Standalone no implementadas totalmente en pedidos aun.");
+                }
+
+                log.info("✅ Usando SpecialPromotion: {} (Padre: {})", specialPromotion.getNombre(),
+                        promotion.getNombre());
+
+            } else {
+                // ES UNA PROMOCIÓN NORMAL
+                promotion = promotionService.findEntityById(id);
+            }
+
+            // Validaciones comunes de la promoción (Padre o Normal)
             // Validar vigencia
             if (!promotion.isValid()) {
                 throw new BusinessExeption("La promoción '" + promotion.getNombre() + "' no está vigente");
@@ -740,19 +789,30 @@ public class OrderServiceImpl implements OrdenService {
             UUID promotionInstanceId = java.util.UUID.randomUUID();
 
             // ✅ NUEVO: Calcular índice ordinal para promociones duplicadas
-            int groupIndex = promoIndexCount.getOrDefault(promotionId, 0) + 1;
-            promoIndexCount.put(promotionId, groupIndex);
+            int groupIndex = promoIndexCount.getOrDefault(id, 0) + 1;
+            promoIndexCount.put(id, groupIndex);
 
-            // ✅ NUEVO: Obtener precio efectivo de la promoción
-            BigDecimal effectivePrice = promotion.getPackPrice() != null
-                    ? promotion.getPackPrice()
-                    : (promotion.getMainProduct() != null
-                            ? promotion.getMainProduct().getPrecio()
-                                    .multiply(BigDecimal.valueOf(promotion.getBuyQuantity()))
-                            : BigDecimal.ZERO);
+            // ✅ NUEVO: Obtener precio efectivo
+            // Si es Special, tiene prioridad su precio si está definido
+            BigDecimal effectivePrice;
+            if (isSpecial && specialPromotion.getPackPrice() != null) {
+                effectivePrice = specialPromotion.getPackPrice();
+            } else {
+                effectivePrice = promotion.getPackPrice() != null
+                        ? promotion.getPackPrice()
+                        : (promotion.getMainProduct() != null
+                                ? promotion.getMainProduct().getPrecio()
+                                        .multiply(BigDecimal.valueOf(promotion.getBuyQuantity()))
+                                : BigDecimal.ZERO);
+            }
 
-            log.info("📍 Promoción '{}' - Instancia: {} (grupo #{}), Precio: ${}",
-                    promotion.getNombre(), promotionInstanceId, groupIndex, effectivePrice);
+            log.info("📍 Promoción '{}' - Instancia: {} (grupo #{}), Precio Efectivo: ${}",
+                    isSpecial ? specialPromotion.getNombre() : promotion.getNombre(),
+                    promotionInstanceId, groupIndex, effectivePrice);
+
+            // Variables finales para usar en lambdas/builders
+            final SpecialPromotion finalSpecialPromotion = specialPromotion;
+            final Promotion finalPromotion = promotion;
 
             // ==========================================
             // Lógica Diferenciada: SURTIDA vs PREDEFINIDA
@@ -782,8 +842,9 @@ public class OrderServiceImpl implements OrdenService {
                             .isPromotionItem(true)
                             .isFreeItem(false)
                             .promotionInstanceId(promotionInstanceId)
-                            .promotionPackPrice(BigDecimal.ZERO) // Surtida sin precio fijo
+                            .promotionPackPrice(null) // Surtida: null para usar subTotal
                             .promotionGroupIndex(groupIndex)
+                            .specialPromotion(finalSpecialPromotion) // ✅ Link Special Promotion
                             .build();
 
                     // ✅ Descontar stock del mainProduct
@@ -818,8 +879,9 @@ public class OrderServiceImpl implements OrdenService {
                                 .isPromotionItem(true)
                                 .isFreeItem(true)
                                 .promotionInstanceId(promotionInstanceId)
-                                .promotionPackPrice(BigDecimal.ZERO) // Regalos siempre $0
+                                .promotionPackPrice(null) // Regalos surtidos: null para no afectar recalculo
                                 .promotionGroupIndex(groupIndex)
+                                .specialPromotion(finalSpecialPromotion) // ✅ Link Special Promotion
                                 .build();
 
                         // ✅ DESCUENTO DE STOCK: Permitir stock negativo (sin restricción)
@@ -854,8 +916,9 @@ public class OrderServiceImpl implements OrdenService {
                             .isPromotionItem(true)
                             .isFreeItem(false)
                             .promotionInstanceId(promotionInstanceId)
-                            .promotionPackPrice(effectivePrice) // ✅ GUARDAR PRECIO FIJO
+                            .promotionPackPrice(effectivePrice) // ✅ PRECIO EFECTIVO (override o normal)
                             .promotionGroupIndex(groupIndex)
+                            .specialPromotion(finalSpecialPromotion) // ✅ Link Special Promotion
                             .build();
 
                     // ✅ DESCUENTO DE STOCK: Permitir stock negativo
@@ -891,6 +954,7 @@ public class OrderServiceImpl implements OrdenService {
                                 .promotionInstanceId(promotionInstanceId)
                                 .promotionPackPrice(BigDecimal.ZERO) // Regalos siempre $0
                                 .promotionGroupIndex(groupIndex)
+                                .specialPromotion(finalSpecialPromotion) // ✅ Link Special Promotion
                                 .build();
 
                         // ✅ DESCUENTO DE STOCK: Permitir stock negativo
@@ -1061,7 +1125,7 @@ public class OrderServiceImpl implements OrdenService {
                 });
 
         java.util.List<UUID> currentPromotionIds = uniqueInstances.values().stream()
-                .map(i -> i.getPromotion().getId())
+                .map(i -> i.getSpecialPromotion() != null ? i.getSpecialPromotion().getId() : i.getPromotion().getId())
                 .sorted()
                 .collect(java.util.stream.Collectors.toList());
 
@@ -1502,8 +1566,22 @@ public class OrderServiceImpl implements OrdenService {
 
                     // 4B. ✅ También restaurar los regalos vinculados en giftItems
                     // (por si existen como referencia)
-                    if (item.getPromotion() != null && item.getPromotion().getGiftItems() != null) {
-                        for (org.example.sistema_gestion_vitalexa.entity.PromotionGiftItem gift : item.getPromotion()
+                    // ✅ IMPORTANTE: Obtener la promoción correcta (padre si es SpecialPromotion)
+                    org.example.sistema_gestion_vitalexa.entity.Promotion promoForGifts = null;
+
+                    try {
+                        if (item.getSpecialPromotion() != null && item.getSpecialPromotion().getParentPromotion() != null) {
+                            promoForGifts = item.getSpecialPromotion().getParentPromotion();
+                        } else if (item.getPromotion() != null) {
+                            promoForGifts = item.getPromotion();
+                        }
+                    } catch (Exception e) {
+                        log.warn("⚠️ No se pudo cargar la promoción para restaurar gifts del item {}: {}",
+                                item.getId(), e.getMessage());
+                    }
+
+                    if (promoForGifts != null && promoForGifts.getGiftItems() != null) {
+                        for (org.example.sistema_gestion_vitalexa.entity.PromotionGiftItem gift : promoForGifts
                                 .getGiftItems()) {
 
                             Product giftProduct = gift.getProduct();

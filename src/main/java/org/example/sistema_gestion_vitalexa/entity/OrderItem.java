@@ -87,7 +87,8 @@ public class OrderItem {
     private BigDecimal promotionPackPrice;
 
     // ✅ NUEVO: Índice ordinal para promociones duplicadas
-    // Sirve para ordenar y diferenciar múltiples del mismo tipo (Promo A #1, Promo A #2)
+    // Sirve para ordenar y diferenciar múltiples del mismo tipo (Promo A #1, Promo
+    // A #2)
     @Column(name = "promotion_group_index")
     private Integer promotionGroupIndex;
 
@@ -124,6 +125,13 @@ public class OrderItem {
             this.subTotal = precioUnitario.multiply(BigDecimal.valueOf(cantidad));
         }
     }
+
+    // ==========================================
+    // CAMPOS PARA PROMOCIONES ESPECIALES (Vinculadas o Standalone)
+    // ==========================================
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "special_promotion_id")
+    private SpecialPromotion specialPromotion;
 
     public OrderItem(Product product, Integer cantidad) {
         this.product = product;
