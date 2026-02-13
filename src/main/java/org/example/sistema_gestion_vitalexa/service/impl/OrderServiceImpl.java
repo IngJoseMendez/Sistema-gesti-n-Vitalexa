@@ -796,13 +796,15 @@ public class OrderServiceImpl implements OrdenService {
                                 .promotionGroupIndex(groupIndex)
                                 .build();
 
-                        // Validar stock del regalo (si aplica)
-                        if (freeProduct.getStock() < qty) {
-                            log.warn("Stock insuficiente para regalo '{}'. Disponible: {}, Requerido: {}",
-                                    freeProduct.getNombre(), freeProduct.getStock(), qty);
+                        // ✅ DESCUENTO DE STOCK: Permitir stock negativo (sin restricción)
+                        freeProduct.decreaseStock(qty);
+                        log.info("⬇️ Stock descontado para regalo surtido '{}': -{} (stock actual: {})",
+                                freeProduct.getNombre(), qty, freeProduct.getStock());
+
+                        if (freeProduct.getStock() < 0) {
                             placeholderItem.setOutOfStock(true);
-                        } else {
-                            freeProduct.decreaseStock(qty);
+                            log.warn("⚠️ Stock NEGATIVO para regalo surtido '{}': {}",
+                                    freeProduct.getNombre(), freeProduct.getStock());
                         }
 
                         order.addItem(placeholderItem);
@@ -830,18 +832,21 @@ public class OrderServiceImpl implements OrdenService {
                             .promotionGroupIndex(groupIndex)
                             .build();
 
-                    if (mainProduct.getStock() < promotion.getBuyQuantity()) {
-                        log.warn("Stock insuficiente para promoción '{}'. Disponible: {}, Requerido: {}",
-                                promotion.getNombre(), mainProduct.getStock(), promotion.getBuyQuantity());
+                    // ✅ DESCUENTO DE STOCK: Permitir stock negativo
+                    mainProduct.decreaseStock(promotion.getBuyQuantity());
+                    log.info("⬇️ Stock descontado para producto principal '{}': -{} (stock actual: {})",
+                            mainProduct.getNombre(), promotion.getBuyQuantity(), mainProduct.getStock());
+
+                    if (mainProduct.getStock() < 0) {
                         buyItem.setOutOfStock(true);
-                    } else {
-                        mainProduct.decreaseStock(promotion.getBuyQuantity());
+                        log.warn("⚠️ Stock NEGATIVO para producto principal '{}': {}",
+                                mainProduct.getNombre(), mainProduct.getStock());
                     }
 
                     order.addItem(buyItem);
                 }
 
-                // Agregar items de regalo fijos
+                // ✅ CRÍTICO: Descontar stock de todos los productos en giftItems
                 if (promotion.getGiftItems() != null) {
                     for (org.example.sistema_gestion_vitalexa.entity.PromotionGiftItem gift : promotion
                             .getGiftItems()) {
@@ -862,12 +867,18 @@ public class OrderServiceImpl implements OrdenService {
                                 .promotionGroupIndex(groupIndex)
                                 .build();
 
-                        if (freeProduct.getStock() < qty) {
-                            log.warn("Stock insuficiente para regalo fijo '{}'. Disponible: {}, Requerido: {}",
-                                    freeProduct.getNombre(), freeProduct.getStock(), qty);
+                        // ✅ DESCUENTO DE STOCK: Permitir stock negativo
+                        freeProduct.decreaseStock(qty);
+                        log.info("⬇️ Stock descontado para regalo '{}': -{} (stock actual: {})",
+                                freeProduct.getNombre(), qty, freeProduct.getStock());
+
+                        if (freeProduct.getStock() < 0) {
                             freeItem.setOutOfStock(true);
-                        } else {
-                            freeProduct.decreaseStock(qty);
+                            log.warn("⚠️ Stock NEGATIVO para regalo '{}': {}",
+                                    freeProduct.getNombre(), freeProduct.getStock());
+                        } else if (freeProduct.getStock() < qty) {
+                            log.warn("⚠️ Stock insuficiente para regalo fijo '{}'. Disponible: {}, Requerido: {}",
+                                    freeProduct.getNombre(), freeProduct.getStock() + qty, qty);
                         }
 
                         order.addItem(freeItem);
