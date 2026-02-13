@@ -6,6 +6,8 @@ import org.example.sistema_gestion_vitalexa.dto.ReembolsoResponse;
 import org.example.sistema_gestion_vitalexa.entity.Product;
 import org.example.sistema_gestion_vitalexa.repository.ProductRepository;
 import org.example.sistema_gestion_vitalexa.service.ReembolsoService;
+import org.example.sistema_gestion_vitalexa.mapper.ProductMapper;
+import org.example.sistema_gestion_vitalexa.dto.ProductResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -20,14 +22,15 @@ public class EmpacadorController {
 
     private final ProductRepository productRepository;
     private final ReembolsoService reembolsoService;
+    private final ProductMapper productMapper;
 
     @GetMapping("/products")
-    public ResponseEntity<List<Product>> getProductosDisponibles() {
+    public ResponseEntity<List<ProductResponse>> getProductosDisponibles() {
         List<Product> productos = productRepository.findByActiveTrue()
                 .stream()
                 .filter(p -> p.getStock() > 0)
                 .toList();
-        return ResponseEntity.ok(productos);
+        return ResponseEntity.ok(productMapper.toResponseList(productos));
     }
 
     @PostMapping("/reembolsos")
