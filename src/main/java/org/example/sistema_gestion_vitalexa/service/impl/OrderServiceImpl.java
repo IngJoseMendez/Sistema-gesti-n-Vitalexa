@@ -1208,37 +1208,45 @@ public class OrderServiceImpl implements OrdenService {
         }
 
         // PROCESAR PROMOCIONES - Solo si están cambiando
-        // Si la orden YA es orden promocional y los IDs no cambiaron, NO re-procesar
-        if (hasPromotions) {
-            // Usar los IDs capturados ANTES de limpiar items (línea 846)
-            // NO capturarlos aquí porque ya re-agregamos los items y la comparación no
-            // funcionaría
+        // 1. Obtener IDs solicitados (puede ser lista vacía si se borraron todas)
+        java.util.List<UUID> requestedPromotionIds = request.promotionIds() != null
+                ? request.promotionIds().stream().sorted().collect(java.util.stream.Collectors.toList())
+                : new java.util.ArrayList<>();
 
-            java.util.List<UUID> requestedPromotionIds = request.promotionIds().stream()
-                    .sorted()
-                    .collect(java.util.stream.Collectors.toList());
+        // 2. Verificar si hubo cambios
+        if (!currentPromotionIds.equals(requestedPromotionIds)) {
+            log.info("Promociones cambiaron en orden {}: {} -> {}", orderId, currentPromotionIds,
+                    requestedPromotionIds);
 
-            // Solo re-procesar si las promociones están cambiando
-            if (!currentPromotionIds.equals(requestedPromotionIds)) {
-                // Las promociones cambiaron - necesitamos limpiar las viejas y aplicar las
-                // nuevas
-                log.info("Promociones cambiaron en orden {}: {} -> {}", orderId, currentPromotionIds,
-                        requestedPromotionIds);
+            // 3. Identificar items de promoción actuales para REMOVER y RESTAURAR STOCK
+            List<OrderItem> promoItemsToRemove = order.getItems().stream()
+                    .filter(item -> Boolean.TRUE.equals(item.getIsPromotionItem()))
+                    .toList();
 
-                // Remover items de promoción viejos
-                order.getItems().removeIf(item -> Boolean.TRUE.equals(item.getIsPromotionItem()));
+            // 4. ✅ RESTAURAR STOCK de las promociones que se van a eliminar
+            if (!promoItemsToRemove.isEmpty()) {
+                restoreStockForItems(promoItemsToRemove, order.getItems());
+                log.info("Stock restaurado para {} items de promoción eliminados", promoItemsToRemove.size());
+            }
 
+            // 5. Eliminar items de la orden
+            // Usar removeAll para borrar la colección exacta
+            order.getItems().removeAll(promoItemsToRemove);
+
+            // 6. Agregar nuevas promociones (si hay)
+            if (!requestedPromotionIds.isEmpty()) {
                 int totalNormalItemsCount = order.getItems().stream()
                         .filter(i -> !Boolean.TRUE.equals(i.getIsPromotionItem()))
                         .mapToInt(OrderItem::getCantidad)
                         .sum();
-                processPromotions(order, request.promotionIds(), totalNormalItemsCount);
+                processPromotions(order, requestedPromotionIds, totalNormalItemsCount);
                 log.info("Promociones actualizadas en edición de orden {}: {} items de promo creados",
-                        orderId, request.promotionIds().size());
-            } else {
-                log.info("Promociones sin cambios en edición de orden {}: {} - Items preservados (no re-procesados)",
-                        orderId, currentPromotionIds);
+                        orderId, requestedPromotionIds.size());
             }
+
+        } else {
+            log.info("Promociones sin cambios en edición de orden {}: {} - Items preservados (no re-procesados)",
+                    orderId, currentPromotionIds);
         }
 
         // Actualizar notas - PRESERVAR SUFIJOS DE TIPO DE ORDEN
@@ -1420,14 +1428,31 @@ public class OrderServiceImpl implements OrdenService {
             throw new BusinessExeption("La orden ya está anulada");
         }
 
-        // ✅ Restaurar Stock de TODOS los items
-        // IMPORTANTE: Procesar TODOS los items, incluyendo regalos (isFreeItem)
+        // ✅ Restaurar Stock de TODOS los items usando método reutilizable
+        restoreStockForItems(order.getItems(), order.getItems());
 
-        for (OrderItem item : order.getItems()) {
+        order.setEstado(OrdenStatus.ANULADA);
+        order.setCancellationReason(reason);
+        ordenRepository.save(order);
+
+        log.info("✅ Orden {} anulada completamente. Stock restaurado.", orderId);
+    }
+
+    /**
+     * Restaura el stock de una lista de items.
+     * Útil para anulación de órdenes y para edición (cuando se eliminan
+     * productos/promos).
+     * 
+     * @param itemsToRestore Lista de items cuyo stock se debe restaurar
+     * @param contextItems   Lista completa de items de la orden (contexto para
+     *                       buscar items relacionados, como regalos separados)
+     */
+    private void restoreStockForItems(List<OrderItem> itemsToRestore, List<OrderItem> contextItems) {
+        for (OrderItem item : itemsToRestore) {
             if (item.getProduct() != null) {
                 Product product = item.getProduct();
 
-                // Ignorar sistema product y ocultos
+                // Ignorar sistema product y ocultos (si aplica)
                 if ("SURTIDO PROMOCIONAL".equals(product.getNombre()) || product.isHidden()) {
                     continue;
                 }
@@ -1437,17 +1462,17 @@ public class OrderServiceImpl implements OrdenService {
 
                 // ✅ CASO 1: Items normales (no promo, no bonificado, no flete)
                 if (!Boolean.TRUE.equals(item.getIsPromotionItem()) &&
-                    !Boolean.TRUE.equals(item.getIsBonified()) &&
-                    !Boolean.TRUE.equals(item.getIsFreightItem())) {
+                        !Boolean.TRUE.equals(item.getIsBonified()) &&
+                        !Boolean.TRUE.equals(item.getIsFreightItem())) {
                     product.increaseStock(item.getCantidad());
                     log.info("✅ Stock restaurado (NORMAL) para '{}': +{}", product.getNombre(), item.getCantidad());
                 }
 
                 // ✅ CASO 2: Bonificados puros (restaurar solo lo que se descontó)
                 else if (Boolean.TRUE.equals(item.getIsBonified()) &&
-                         !Boolean.TRUE.equals(item.getIsPromotionItem())) {
-                    Integer cantidadDescontada = item.getCantidadDescontada() != null ?
-                        item.getCantidadDescontada() : item.getCantidad();
+                        !Boolean.TRUE.equals(item.getIsPromotionItem())) {
+                    Integer cantidadDescontada = item.getCantidadDescontada() != null ? item.getCantidadDescontada()
+                            : item.getCantidad();
                     product.increaseStock(cantidadDescontada);
                     log.info("✅ Stock restaurado (BONIFICADO) para '{}': +{}", product.getNombre(), cantidadDescontada);
                 }
@@ -1455,7 +1480,7 @@ public class OrderServiceImpl implements OrdenService {
                 // ✅ CASO 3: Items de regalo de promoción (isFreeItem=true)
                 // ✅ NUEVO: Restaurar TODOS los items que son regalos
                 else if (Boolean.TRUE.equals(item.getIsPromotionItem()) &&
-                         Boolean.TRUE.equals(item.getIsFreeItem())) {
+                        Boolean.TRUE.equals(item.getIsFreeItem())) {
                     // Los regalos siempre se venden a precio 0, restaurar cantidad completa
                     product.increaseStock(item.getCantidad());
                     log.info("✅ Stock restaurado (PROMO GIFT - Instancia {}) para '{}': +{}",
@@ -1464,7 +1489,7 @@ public class OrderServiceImpl implements OrdenService {
 
                 // ✅ CASO 4: Items de promoción mainProduct
                 else if (Boolean.TRUE.equals(item.getIsPromotionItem()) &&
-                         !Boolean.TRUE.equals(item.getIsFreeItem())) {
+                        !Boolean.TRUE.equals(item.getIsFreeItem())) {
 
                     // 4A. Restaurar mainProduct de ESTA instancia
                     product.increaseStock(item.getCantidad());
@@ -1474,22 +1499,22 @@ public class OrderServiceImpl implements OrdenService {
                     // 4B. ✅ También restaurar los regalos vinculados en giftItems
                     // (por si existen como referencia)
                     if (item.getPromotion() != null && item.getPromotion().getGiftItems() != null) {
-                        for (org.example.sistema_gestion_vitalexa.entity.PromotionGiftItem gift :
-                             item.getPromotion().getGiftItems()) {
+                        for (org.example.sistema_gestion_vitalexa.entity.PromotionGiftItem gift : item.getPromotion()
+                                .getGiftItems()) {
 
                             Product giftProduct = gift.getProduct();
                             Integer giftQty = gift.getQuantity();
 
                             // ✅ Restaurar solo si NO hay un item separado isFreeItem
-                            // (para evitar doble restauración)
-                            boolean hasSepaateGiftItem = order.getItems().stream()
-                                .anyMatch(i -> i.getIsPromotionItem() &&
-                                             i.getIsFreeItem() &&
-                                             i.getProduct().getId().equals(giftProduct.getId()) &&
-                                             i.getPromotionInstanceId() != null &&
-                                             i.getPromotionInstanceId().equals(item.getPromotionInstanceId()));
+                            // (para evitar doble restauración). Buscamos en el CONTEXTO (toda la orden).
+                            boolean hasSeparateGiftItem = contextItems.stream()
+                                    .anyMatch(i -> Boolean.TRUE.equals(i.getIsPromotionItem()) &&
+                                            Boolean.TRUE.equals(i.getIsFreeItem()) &&
+                                            i.getProduct().getId().equals(giftProduct.getId()) &&
+                                            i.getPromotionInstanceId() != null &&
+                                            i.getPromotionInstanceId().equals(item.getPromotionInstanceId()));
 
-                            if (!hasSepaateGiftItem) {
+                            if (!hasSeparateGiftItem) {
                                 giftProduct.increaseStock(giftQty);
                                 log.info("✅ Stock restaurado (PROMO GIFT ref - Instancia {}) para '{}': +{}",
                                         item.getPromotionInstanceId(), giftProduct.getNombre(), giftQty);
@@ -1505,12 +1530,6 @@ public class OrderServiceImpl implements OrdenService {
                 // NO restaurar aquí - son items especiales que se manejan diferente
             }
         }
-
-        order.setEstado(OrdenStatus.ANULADA);
-        order.setCancellationReason(reason);
-        ordenRepository.save(order);
-
-        log.info("✅ Orden {} anulada completamente. Stock restaurado.", orderId);
     }
 
     /**
@@ -1773,18 +1792,19 @@ public class OrderServiceImpl implements OrdenService {
             product.increaseStock(qtyToRestore);
             log.info("✅ Stock restaurado para item de promoción '{}': +{}", product.getNombre(), qtyToRestore);
 
-            // ✅ CRÍTICO: Si es mainProduct de una promoción, también restaurar los giftItems
+            // ✅ CRÍTICO: Si es mainProduct de una promoción, también restaurar los
+            // giftItems
             if (!Boolean.TRUE.equals(itemToDelete.getIsFreeItem()) &&
-                itemToDelete.getPromotion() != null &&
-                itemToDelete.getPromotion().getGiftItems() != null) {
+                    itemToDelete.getPromotion() != null &&
+                    itemToDelete.getPromotion().getGiftItems() != null) {
 
                 log.info("🔄 Restaurando stock de {} regalos de la promoción '{}'",
                         itemToDelete.getPromotion().getGiftItems().size(),
                         itemToDelete.getPromotion().getNombre());
 
                 // Restaurar cada regalo de la promoción
-                for (org.example.sistema_gestion_vitalexa.entity.PromotionGiftItem gift :
-                     itemToDelete.getPromotion().getGiftItems()) {
+                for (org.example.sistema_gestion_vitalexa.entity.PromotionGiftItem gift : itemToDelete.getPromotion()
+                        .getGiftItems()) {
                     Product giftProduct = gift.getProduct();
                     Integer giftQty = gift.getQuantity();
 
@@ -1804,8 +1824,8 @@ public class OrderServiceImpl implements OrdenService {
                     product,
                     org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.ORDER_ITEM_REMOVAL,
                     itemToDelete.getCantidad(),
-                    stockAnterior,  // ✅ Stock ANTES de restaurar
-                    product.getStock(),  // Stock DESPUÉS de restaurar
+                    stockAnterior, // ✅ Stock ANTES de restaurar
+                    product.getStock(), // Stock DESPUÉS de restaurar
                     "Eliminación de item/promoción de orden: " + orderId,
                     "System");
         } catch (Exception e) {
