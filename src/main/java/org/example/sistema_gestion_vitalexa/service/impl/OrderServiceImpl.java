@@ -711,12 +711,17 @@ public class OrderServiceImpl implements OrdenService {
 
     /**
      * Procesar promociones de una orden
+     * ✅ ACTUALIZADO: Genera IDs únicos para cada instancia de promoción
      *
      * @param contextTotalNormalItems Cantidad total de items normales en la
      *                                transacción (para validar surtidos globales)
      */
     private void processPromotions(Order order, List<UUID> promotionIds, int contextTotalNormalItems) {
         log.info("Procesando promociones. IDs recibidos del request: {}", promotionIds);
+
+        // Contar instancias de cada promoción para asignar índices
+        java.util.Map<UUID, Integer> promoIndexCount = new java.util.HashMap<>();
+
         promotionIds.forEach(promotionId -> {
             log.info("Buscando promoción con ID: {}", promotionId);
             // Obtener y validar promoción
@@ -730,6 +735,24 @@ public class OrderServiceImpl implements OrdenService {
             if (!Boolean.TRUE.equals(promotion.getActive())) {
                 throw new BusinessExeption("La promoción '" + promotion.getNombre() + "' no está activa");
             }
+
+            // ✅ NUEVO: Generar UUID único para esta instancia de promoción
+            UUID promotionInstanceId = java.util.UUID.randomUUID();
+
+            // ✅ NUEVO: Calcular índice ordinal para promociones duplicadas
+            int groupIndex = promoIndexCount.getOrDefault(promotionId, 0) + 1;
+            promoIndexCount.put(promotionId, groupIndex);
+
+            // ✅ NUEVO: Obtener precio efectivo de la promoción
+            BigDecimal effectivePrice = promotion.getPackPrice() != null
+                    ? promotion.getPackPrice()
+                    : (promotion.getMainProduct() != null
+                            ? promotion.getMainProduct().getPrecio()
+                                    .multiply(BigDecimal.valueOf(promotion.getBuyQuantity()))
+                            : BigDecimal.ZERO);
+
+            log.info("📍 Promoción '{}' - Instancia: {} (grupo #{}), Precio: ${}",
+                    promotion.getNombre(), promotionInstanceId, groupIndex, effectivePrice);
 
             // ==========================================
             // Lógica Diferenciada: SURTIDA vs PREDEFINIDA
@@ -759,7 +782,7 @@ public class OrderServiceImpl implements OrdenService {
                         Product freeProduct = gift.getProduct();
                         Integer qty = gift.getQuantity();
 
-                        // Crear item con precio 0 explicitamente
+                        // ✅ NUEVO: Crear item con identificadores únicos de promoción
                         OrderItem placeholderItem = OrderItem.builder()
                                 .product(freeProduct)
                                 .cantidad(qty)
@@ -768,6 +791,9 @@ public class OrderServiceImpl implements OrdenService {
                                 .promotion(promotion)
                                 .isPromotionItem(true)
                                 .isFreeItem(true)
+                                .promotionInstanceId(promotionInstanceId)
+                                .promotionPackPrice(BigDecimal.ZERO) // Regalos siempre $0
+                                .promotionGroupIndex(groupIndex)
                                 .build();
 
                         // Validar stock del regalo (si aplica)
@@ -790,17 +816,18 @@ public class OrderServiceImpl implements OrdenService {
                 Product mainProduct = promotion.getMainProduct();
 
                 if (mainProduct != null) {
-                    // Agregar el producto principal (Pack)
+                    // ✅ NUEVO: Agregar el producto principal (Pack) con precio fijo guardado
                     OrderItem buyItem = OrderItem.builder()
                             .product(mainProduct)
                             .cantidad(promotion.getBuyQuantity())
                             .precioUnitario(mainProduct.getPrecio())
-                            .subTotal(promotion.getPackPrice() != null
-                                    ? promotion.getPackPrice()
-                                    : mainProduct.getPrecio().multiply(BigDecimal.valueOf(promotion.getBuyQuantity())))
+                            .subTotal(effectivePrice)
                             .promotion(promotion)
                             .isPromotionItem(true)
                             .isFreeItem(false)
+                            .promotionInstanceId(promotionInstanceId)
+                            .promotionPackPrice(effectivePrice) // ✅ GUARDAR PRECIO FIJO
+                            .promotionGroupIndex(groupIndex)
                             .build();
 
                     if (mainProduct.getStock() < promotion.getBuyQuantity()) {
@@ -821,6 +848,7 @@ public class OrderServiceImpl implements OrdenService {
                         Product freeProduct = gift.getProduct();
                         Integer qty = gift.getQuantity();
 
+                        // ✅ NUEVO: Crear item con identificadores únicos de promoción
                         OrderItem freeItem = OrderItem.builder()
                                 .product(freeProduct)
                                 .cantidad(qty)
@@ -829,6 +857,9 @@ public class OrderServiceImpl implements OrdenService {
                                 .promotion(promotion)
                                 .isPromotionItem(true)
                                 .isFreeItem(true)
+                                .promotionInstanceId(promotionInstanceId)
+                                .promotionPackPrice(BigDecimal.ZERO) // Regalos siempre $0
+                                .promotionGroupIndex(groupIndex)
                                 .build();
 
                         if (freeProduct.getStock() < qty) {
@@ -844,7 +875,8 @@ public class OrderServiceImpl implements OrdenService {
                 }
             }
 
-            log.info("Promoción '{}' aplicada correctamente.", promotion.getNombre());
+            log.info("✅ Promoción '{}' aplicada correctamente con instancia {}", promotion.getNombre(),
+                    promotionInstanceId);
         });
     }
 
@@ -969,11 +1001,28 @@ public class OrderServiceImpl implements OrdenService {
 
         // CAPTURAR IDs DE PROMOCIONES ACTUALES **ANTES** DE LIMPIAR ITEMS
         // Esto es CRÍTICO para comparar correctamente si las promociones cambiaron
-        java.util.Set<UUID> currentPromotionIds = order.getItems().stream()
-                .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem()))
-                .map(i -> i.getPromotion() != null ? i.getPromotion().getId() : null)
-                .filter(java.util.Objects::nonNull)
-                .collect(java.util.stream.Collectors.toSet());
+        // ✅ CORRECCIÓN: Usar List y agrupar por InstanceId para soportar múltiples
+        // instancias de la misma promo
+        // Nota: Si una promoción antigua no tiene InstanceId, se agrupará aparte (UUID
+        // random).
+        // En la práctica, esto forzará una actualización la primera vez, migrando a
+        // items con InstanceId.
+        java.util.Map<UUID, OrderItem> uniqueInstances = new java.util.HashMap<>();
+
+        order.getItems().stream()
+                .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem()) && i.getPromotion() != null)
+                .forEach(i -> {
+                    UUID key = i.getPromotionInstanceId() != null
+                            ? i.getPromotionInstanceId()
+                            : java.util.UUID.randomUUID(); // Force distinct instance for legacy items to ensure they
+                                                           // are counted
+                    uniqueInstances.putIfAbsent(key, i);
+                });
+
+        java.util.List<UUID> currentPromotionIds = uniqueInstances.values().stream()
+                .map(i -> i.getPromotion().getId())
+                .sorted()
+                .collect(java.util.stream.Collectors.toList());
 
         // RESTAURAR STOCK de items anteriores (solo los que no son items de promoción)
         order.getItems().forEach(item -> {
@@ -1023,9 +1072,12 @@ public class OrderServiceImpl implements OrdenService {
         }
         order.clearItems();
 
-        // Re-agregar items de promoción para preservar precios
+        // ✅ ACTUALIZADO: Re-agregar items de promoción preservando precios y IDs únicos
         for (OrderItem promoItem : promotionItems) {
+            // Los promocionPackPrice y promotionInstanceId ya están guardados en el item
             order.addItem(promoItem);
+            log.info("✅ Item de promoción re-agregado - Instancia: {} - Precio: ${}",
+                    promoItem.getPromotionInstanceId(), promoItem.getPromotionPackPrice());
         }
 
         // Re-agregar items de flete para preservar configuración (solo si NO hay
@@ -1125,7 +1177,9 @@ public class OrderServiceImpl implements OrdenService {
             // NO capturarlos aquí porque ya re-agregamos los items y la comparación no
             // funcionaría
 
-            java.util.Set<UUID> requestedPromotionIds = new java.util.HashSet<>(request.promotionIds());
+            java.util.List<UUID> requestedPromotionIds = request.promotionIds().stream()
+                    .sorted()
+                    .collect(java.util.stream.Collectors.toList());
 
             // Solo re-procesar si las promociones están cambiando
             if (!currentPromotionIds.equals(requestedPromotionIds)) {
@@ -1348,6 +1402,8 @@ public class OrderServiceImpl implements OrdenService {
 
     /**
      * Procesar productos bonificados (regalos) de una orden
+     * ✅ ACTUALIZADO: Mantiene una sola línea por producto, con stock negativo si
+     * aplica
      * Los bonificados siempre tienen precio 0 y pueden estar sin stock
      */
     private void processBonifiedItems(Order order, List<BonifiedItemRequestDTO> bonifiedItems) {
@@ -1359,59 +1415,267 @@ public class OrderServiceImpl implements OrdenService {
             Product product = productService.findEntityById(itemReq.productId());
             int requestedQuantity = itemReq.cantidad();
             int currentStock = product.getStock();
-            boolean hasStock = currentStock >= requestedQuantity;
 
-            // Para bonificados: permitimos out of stock sin restricción
-            // Dividir en stock/sin stock si hay stock parcial
-            if (!hasStock && currentStock > 0) {
-                // PARTE 1: Lo que sí hay en stock
-                OrderItem inStockItem = new OrderItem(product, currentStock);
-                inStockItem.setIsBonified(true);
-                inStockItem.setPrecioUnitario(BigDecimal.ZERO);
-                inStockItem.setSubTotal(BigDecimal.ZERO);
-                inStockItem.setOutOfStock(false);
-                inStockItem.setCantidadDescontada(currentStock);
-                inStockItem.setCantidadPendiente(0);
+            // ✅ NUEVO: Crear una SOLA línea (no dividir en 2)
+            OrderItem item = new OrderItem(product, requestedQuantity);
+            item.setIsBonified(true);
+            item.setPrecioUnitario(BigDecimal.ZERO);
+            item.setSubTotal(BigDecimal.ZERO);
 
-                product.decreaseStock(currentStock);
-                order.addItem(inStockItem);
+            // ✅ NUEVO: Calcular cantidad descontada vs pendiente
+            int cantidadDescontada = Math.min(currentStock, requestedQuantity);
+            int cantidadPendiente = Math.max(0, requestedQuantity - currentStock);
 
-                // PARTE 2: Lo que falta (pendiente)
-                int pendingQuantity = requestedQuantity - currentStock;
-                OrderItem outOfStockItem = new OrderItem(product, pendingQuantity);
-                outOfStockItem.setIsBonified(true);
-                outOfStockItem.setPrecioUnitario(BigDecimal.ZERO);
-                outOfStockItem.setSubTotal(BigDecimal.ZERO);
-                outOfStockItem.setOutOfStock(true);
-                outOfStockItem.setCantidadDescontada(0);
-                outOfStockItem.setCantidadPendiente(pendingQuantity);
+            item.setCantidadDescontada(cantidadDescontada);
+            item.setCantidadPendiente(cantidadPendiente);
 
-                order.addItem(outOfStockItem);
-                log.info("Producto bonificado {} dividido: {} en stock, {} pendiente",
-                        product.getNombre(), currentStock, pendingQuantity);
+            // Solo hay "outOfStock" si no tenemos TODO lo solicitado
+            item.setOutOfStock(cantidadPendiente > 0);
 
+            // Decrementar SOLO lo que hay disponible
+            if (cantidadDescontada > 0) {
+                product.decreaseStock(cantidadDescontada);
+            }
+
+            order.addItem(item);
+
+            if (cantidadPendiente > 0) {
+                log.warn(
+                        "⚠️ Producto bonificado {} con stock insuficiente. Solicitado: {}, Disponible: {}, Pendiente: {}",
+                        product.getNombre(), requestedQuantity, cantidadDescontada, cantidadPendiente);
             } else {
-                // Todo con stock o todo sin stock
-                OrderItem item = new OrderItem(product, requestedQuantity);
-                item.setIsBonified(true);
-                item.setPrecioUnitario(BigDecimal.ZERO);
-                item.setSubTotal(BigDecimal.ZERO);
-
-                if (hasStock) {
-                    item.setOutOfStock(false);
-                    item.setCantidadDescontada(requestedQuantity);
-                    item.setCantidadPendiente(0);
-                    product.decreaseStock(requestedQuantity);
-                } else {
-                    item.setOutOfStock(true);
-                    item.setCantidadDescontada(0);
-                    item.setCantidadPendiente(requestedQuantity);
-                    log.warn("Producto bonificado agregado sin stock: {}", product.getNombre());
-                }
-
-                order.addItem(item);
+                log.info("✅ Producto bonificado {} agregado en cantidad completa: {}",
+                        product.getNombre(), requestedQuantity);
             }
         });
+    }
+
+    // ...existing code...
+
+    @Override
+    @Transactional
+    public OrderResponse updateHistoricalInvoice(UUID orderId, CreateHistoricalInvoiceRequest request,
+            String username) {
+        // Validar permisos (Owner o Admin)
+        User currentUser = userRepository.findByUsername(username)
+                .orElseThrow(() -> new BusinessExeption("Usuario no encontrado"));
+
+        if (currentUser.getRole() != org.example.sistema_gestion_vitalexa.enums.Role.OWNER &&
+                currentUser.getRole() != org.example.sistema_gestion_vitalexa.enums.Role.ADMIN) {
+            throw new BusinessExeption("Solo Owner o Admin pueden editar facturas históricas");
+        }
+
+        Order order = ordenRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessExeption("Orden no encontrada"));
+
+        // Validar unicidad de número de factura si cambió
+        if (order.getInvoiceNumber() != null && !order.getInvoiceNumber().equals(request.invoiceNumber())) {
+            if (ordenRepository.findByInvoiceNumber(request.invoiceNumber()).isPresent()) {
+                throw new BusinessExeption("Ya existe una factura con el número: " + request.invoiceNumber());
+            }
+        } else if (order.getInvoiceNumber() == null) {
+            // Caso raro, pero posible
+            if (ordenRepository.findByInvoiceNumber(request.invoiceNumber()).isPresent()) {
+                throw new BusinessExeption("Ya existe una factura con el número: " + request.invoiceNumber());
+            }
+        }
+
+        // Validar montos
+        if (request.amountPaid().compareTo(request.totalValue()) > 0) {
+            throw new BusinessExeption("El monto pagado no puede ser mayor al valor total");
+        }
+
+        // Actualizar datos básicos
+        order.setFecha(request.fecha());
+        order.setTotal(request.totalValue());
+        order.setInvoiceNumber(request.invoiceNumber());
+        // Estado sigue siendo COMPLETADO (o lo forzamos por si acaso)
+        order.setEstado(OrdenStatus.COMPLETADO);
+
+        // Actualizar Cliente y Vendedor
+        Client client = null;
+        if (request.clientId() != null) {
+            client = clientService.findEntityById(request.clientId());
+        }
+
+        // Lógica de asignación de vendedor (igual que en create)
+        User owner = userRepository.findAll().stream()
+                .filter(u -> u.getRole() == org.example.sistema_gestion_vitalexa.enums.Role.OWNER)
+                .findFirst()
+                .orElse(currentUser); // Fallback al usuario actual si no halla owner explicito
+
+        User vendedor = owner;
+        if (client != null && client.getVendedorAsignado() != null) {
+            vendedor = client.getVendedorAsignado();
+        } else if (client != null) {
+            // Cliente sin vendedor -> Owner
+        }
+
+        // Actualizar cliente y vendedor en orden
+        order.setCliente(client);
+        order.setVendedor(vendedor);
+
+        // Reconstruir Notas
+        BigDecimal amountDue = request.totalValue().subtract(request.amountPaid());
+        StringBuilder notes = new StringBuilder("[HISTÓRICA] [EDITADA] ");
+        notes.append("Tipo: ").append(request.invoiceType().getLabel()).append(" | ");
+        notes.append("Vendedor: ").append(vendedor.getUsername()).append(" | ");
+
+        if (request.clientName() != null)
+            notes.append("Cliente: ").append(request.clientName()).append(" | ");
+        if (request.clientPhone() != null)
+            notes.append("Tel: ").append(request.clientPhone()).append(" | ");
+        if (request.clientEmail() != null)
+            notes.append("Email: ").append(request.clientEmail()).append(" | ");
+        if (request.clientAddress() != null)
+            notes.append("Dir: ").append(request.clientAddress()).append(" | ");
+
+        notes.append("Pagado: $").append(request.amountPaid())
+                .append(" | Debe: $").append(amountDue);
+
+        // NO agregamos request.notes() aquí para evitar duplicación
+        // El usuario maneja la nota completa en el frontend
+        notes.append(" ").append(request.invoiceType().getSuffix());
+
+        order.setNotas(notes.toString());
+
+        // Actualizar compras del cliente (restar anterior, sumar nueva??)
+        // La lógica de `registerPurchase` SUMA. Deberíamos recalcular?
+        // Es complejo recalcular el acumulado exacto.
+        // Opción: No tocar el acumulado aquí, asumiendo que el "Total Compras" dinámico
+        // lo arregla.
+        // COMO IMPLEMENTAMOS "Total Compras" dinámico en la sesión anterior,
+        // NO necesitamos actualizar manualmente `client.totalCompras`.
+        // El nuevo mapper calcula SUM(Orders Completed). Al guardar esta orden con
+        // nuevo total,
+        // el cálculo dinámico se arregla solo. ¡Excelente!
+
+        Order savedOrder = ordenRepository.save(order);
+
+        // Actualizar Pagos
+        // Estrategia: Borrar pagos anteriores y crear uno nuevo con el nuevo monto
+        // (Simplificación válida para facturas históricas manuales)
+        paymentRepository.deleteByOrder(savedOrder);
+        paymentRepository.flush(); // Forzar borrado inmediato
+
+        if (request.amountPaid().compareTo(BigDecimal.ZERO) > 0) {
+            org.example.sistema_gestion_vitalexa.entity.Payment payment = org.example.sistema_gestion_vitalexa.entity.Payment
+                    .builder()
+                    .order(savedOrder)
+                    .amount(request.amountPaid())
+                    .paymentDate(request.fecha())
+                    .withinDeadline(true)
+                    .discountApplied(BigDecimal.ZERO)
+                    .registeredBy(currentUser)
+                    .notes("[HISTÓRICA-EDIT] Pago actualizado")
+                    .build();
+            paymentRepository.save(payment);
+        }
+
+        // 📊 RECALCULAR METAS AFECTADAS
+        // Dado que puede haber cambiado el vendedor, fecha o monto,
+        // recalculamos completamente las metas afectadas
+
+        // Si el vendedor cambió, necesitamos recalcular la meta del vendedor ANTERIOR
+        // también
+        // Pero no tenemos tracking del vendedor anterior aquí, así que recalcularemos
+        // solo la meta del vendedor actual. Si cambió el vendedor, el admin debe
+        // verificar manualmente.
+
+        LocalDate invoiceDate = request.fecha().toLocalDate();
+
+        // Recalcular meta del vendedor actual para el mes/año de la factura
+        saleGoalService.recalculateGoalForVendorMonth(
+                vendedor.getId(),
+                invoiceDate.getMonthValue(),
+                invoiceDate.getYear());
+
+        log.info("Meta recalculada para vendedor {} en {}/{} tras editar factura histórica {}",
+                vendedor.getUsername(), invoiceDate.getMonthValue(), invoiceDate.getYear(),
+                request.invoiceNumber());
+
+        log.info("Factura histórica actualizada: {}", request.invoiceNumber());
+        return orderMapper.toResponse(savedOrder);
+    }
+
+    // =========================
+    // ELIMINAR ITEMS / PROMOCIONES
+    // =========================
+
+    /**
+     * ✅ NUEVO: Eliminar un item (promoción/bonificado) de una orden
+     * Permite eliminar promociones individuales sin afectar el resto
+     */
+    @Override
+    @Transactional
+    public OrderResponse deleteOrderItem(UUID orderId, UUID itemId) {
+        log.info("🗑️  Eliminando item {} de orden {}", itemId, orderId);
+
+        Order order = ordenRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessExeption("Orden no encontrada"));
+
+        if (order.getEstado() == OrdenStatus.COMPLETADO ||
+                order.getEstado() == OrdenStatus.CANCELADO) {
+            throw new BusinessExeption("No se puede editar una orden completada o cancelada");
+        }
+
+        // Buscar el item a eliminar
+        OrderItem itemToDelete = order.getItems().stream()
+                .filter(item -> item.getId().equals(itemId))
+                .findFirst()
+                .orElseThrow(() -> new BusinessExeption("Item no encontrado en la orden"));
+
+        log.info("📍 Item encontrado: producto={}, cantidad={}, isPromo={}",
+                itemToDelete.getProduct().getNombre(),
+                itemToDelete.getCantidad(),
+                itemToDelete.getIsPromotionItem());
+
+        // Restaurar stock del producto
+        Product product = itemToDelete.getProduct();
+        if (!Boolean.TRUE.equals(itemToDelete.getIsFreeItem()) &&
+                !Boolean.TRUE.equals(itemToDelete.getIsPromotionItem())) {
+            // Restaurar stock completo para items normales
+            product.increaseStock(itemToDelete.getCantidad());
+            log.info("✅ Stock restaurado para '{}': +{}", product.getNombre(), itemToDelete.getCantidad());
+        } else if (Boolean.TRUE.equals(itemToDelete.getIsBonified()) &&
+                itemToDelete.getCantidadDescontada() != null &&
+                itemToDelete.getCantidadDescontada() > 0) {
+            // Restaurar stock de bonificados solo si se descontó
+            product.increaseStock(itemToDelete.getCantidadDescontada());
+            log.info("✅ Stock restaurado para bonificado '{}': +{}",
+                    product.getNombre(),
+                    itemToDelete.getCantidadDescontada());
+        } else if (Boolean.TRUE.equals(itemToDelete.getIsPromotionItem()) &&
+                !Boolean.TRUE.equals(itemToDelete.getIsFreeItem())) {
+            // Restaurar stock del item de compra de la promoción
+            Integer qtyToRestore = itemToDelete.getCantidad();
+            product.increaseStock(qtyToRestore);
+            log.info("✅ Stock restaurado para promo '{}': +{}", product.getNombre(), qtyToRestore);
+        }
+
+        // Eliminar el item de la orden
+        order.removeItem(itemToDelete);
+
+        // Registrar movimiento de inventario (reversión)
+        try {
+            movementService.logMovement(
+                    product,
+                    org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.ORDER_ITEM_REMOVAL,
+                    itemToDelete.getCantidad(),
+                    product.getStock() - itemToDelete.getCantidad(),
+                    product.getStock(),
+                    "Eliminación de item/promoción de orden: " + orderId,
+                    "System");
+        } catch (Exception e) {
+            log.warn("Error registrando movimiento de inventario: {}", e.getMessage());
+        }
+
+        // Guardar orden actualizada
+        Order updatedOrder = ordenRepository.save(order);
+
+        log.info("✅ Item {} eliminado correctamente. Total actualizado: ${}", itemId, updatedOrder.getTotal());
+
+        return orderMapper.toResponse(updatedOrder);
     }
 
     /**
@@ -1563,152 +1827,6 @@ public class OrderServiceImpl implements OrdenService {
                 vendedor.getUsername(),
                 ownerUsername);
 
-        return orderMapper.toResponse(savedOrder);
-    }
-
-    @Override
-    @Transactional
-    public OrderResponse updateHistoricalInvoice(UUID orderId, CreateHistoricalInvoiceRequest request,
-            String username) {
-        // Validar permisos (Owner o Admin)
-        User currentUser = userRepository.findByUsername(username)
-                .orElseThrow(() -> new BusinessExeption("Usuario no encontrado"));
-
-        if (currentUser.getRole() != org.example.sistema_gestion_vitalexa.enums.Role.OWNER &&
-                currentUser.getRole() != org.example.sistema_gestion_vitalexa.enums.Role.ADMIN) {
-            throw new BusinessExeption("Solo Owner o Admin pueden editar facturas históricas");
-        }
-
-        Order order = ordenRepository.findById(orderId)
-                .orElseThrow(() -> new BusinessExeption("Orden no encontrada"));
-
-        // Validar unicidad de número de factura si cambió
-        if (order.getInvoiceNumber() != null && !order.getInvoiceNumber().equals(request.invoiceNumber())) {
-            if (ordenRepository.findByInvoiceNumber(request.invoiceNumber()).isPresent()) {
-                throw new BusinessExeption("Ya existe una factura con el número: " + request.invoiceNumber());
-            }
-        } else if (order.getInvoiceNumber() == null) {
-            // Caso raro, pero posible
-            if (ordenRepository.findByInvoiceNumber(request.invoiceNumber()).isPresent()) {
-                throw new BusinessExeption("Ya existe una factura con el número: " + request.invoiceNumber());
-            }
-        }
-
-        // Validar montos
-        if (request.amountPaid().compareTo(request.totalValue()) > 0) {
-            throw new BusinessExeption("El monto pagado no puede ser mayor al valor total");
-        }
-
-        // Actualizar datos básicos
-        order.setFecha(request.fecha());
-        order.setTotal(request.totalValue());
-        order.setInvoiceNumber(request.invoiceNumber());
-        // Estado sigue siendo COMPLETADO (o lo forzamos por si acaso)
-        order.setEstado(OrdenStatus.COMPLETADO);
-
-        // Actualizar Cliente y Vendedor
-        Client client = null;
-        if (request.clientId() != null) {
-            client = clientService.findEntityById(request.clientId());
-        }
-
-        // Lógica de asignación de vendedor (igual que en create)
-        User owner = userRepository.findAll().stream()
-                .filter(u -> u.getRole() == org.example.sistema_gestion_vitalexa.enums.Role.OWNER)
-                .findFirst()
-                .orElse(currentUser); // Fallback al usuario actual si no halla owner explicito
-
-        User vendedor = owner;
-        if (client != null && client.getVendedorAsignado() != null) {
-            vendedor = client.getVendedorAsignado();
-        } else if (client != null) {
-            // Cliente sin vendedor -> Owner
-        }
-
-        // Actualizar cliente y vendedor en orden
-        order.setCliente(client);
-        order.setVendedor(vendedor);
-
-        // Reconstruir Notas
-        BigDecimal amountDue = request.totalValue().subtract(request.amountPaid());
-        StringBuilder notes = new StringBuilder("[HISTÓRICA] [EDITADA] ");
-        notes.append("Tipo: ").append(request.invoiceType().getLabel()).append(" | ");
-        notes.append("Vendedor: ").append(vendedor.getUsername()).append(" | ");
-
-        if (request.clientName() != null)
-            notes.append("Cliente: ").append(request.clientName()).append(" | ");
-        if (request.clientPhone() != null)
-            notes.append("Tel: ").append(request.clientPhone()).append(" | ");
-        if (request.clientEmail() != null)
-            notes.append("Email: ").append(request.clientEmail()).append(" | ");
-        if (request.clientAddress() != null)
-            notes.append("Dir: ").append(request.clientAddress()).append(" | ");
-
-        notes.append("Pagado: $").append(request.amountPaid())
-                .append(" | Debe: $").append(amountDue);
-
-        // NO agregamos request.notes() aquí para evitar duplicación
-        // El usuario maneja la nota completa en el frontend
-        notes.append(" ").append(request.invoiceType().getSuffix());
-
-        order.setNotas(notes.toString());
-
-        // Actualizar compras del cliente (restar anterior, sumar nueva??)
-        // La lógica de `registerPurchase` SUMA. Deberíamos recalcular?
-        // Es complejo recalcular el acumulado exacto.
-        // Opción: No tocar el acumulado aquí, asumiendo que el "Total Compras" dinámico
-        // lo arregla.
-        // COMO IMPLEMENTAMOS "Total Compras" dinámico en la sesión anterior,
-        // NO necesitamos actualizar manualmente `client.totalCompras`.
-        // El nuevo mapper calcula SUM(Orders Completed). Al guardar esta orden con
-        // nuevo total,
-        // el cálculo dinámico se arregla solo. ¡Excelente!
-
-        Order savedOrder = ordenRepository.save(order);
-
-        // Actualizar Pagos
-        // Estrategia: Borrar pagos anteriores y crear uno nuevo con el nuevo monto
-        // (Simplificación válida para facturas históricas manuales)
-        paymentRepository.deleteByOrder(savedOrder);
-        paymentRepository.flush(); // Forzar borrado inmediato
-
-        if (request.amountPaid().compareTo(BigDecimal.ZERO) > 0) {
-            org.example.sistema_gestion_vitalexa.entity.Payment payment = org.example.sistema_gestion_vitalexa.entity.Payment
-                    .builder()
-                    .order(savedOrder)
-                    .amount(request.amountPaid())
-                    .paymentDate(request.fecha())
-                    .withinDeadline(true)
-                    .discountApplied(BigDecimal.ZERO)
-                    .registeredBy(currentUser)
-                    .notes("[HISTÓRICA-EDIT] Pago actualizado")
-                    .build();
-            paymentRepository.save(payment);
-        }
-
-        // 📊 RECALCULAR METAS AFECTADAS
-        // Dado que puede haber cambiado el vendedor, fecha o monto,
-        // recalculamos completamente las metas afectadas
-
-        // Si el vendedor cambió, necesitamos recalcular la meta del vendedor ANTERIOR
-        // también
-        // Pero no tenemos tracking del vendedor anterior aquí, así que recalcularemos
-        // solo la meta del vendedor actual. Si cambió el vendedor, el admin debe
-        // verificar manualmente.
-
-        LocalDate invoiceDate = request.fecha().toLocalDate();
-
-        // Recalcular meta del vendedor actual para el mes/año de la factura
-        saleGoalService.recalculateGoalForVendorMonth(
-                vendedor.getId(),
-                invoiceDate.getMonthValue(),
-                invoiceDate.getYear());
-
-        log.info("Meta recalculada para vendedor {} en {}/{} tras editar factura histórica {}",
-                vendedor.getUsername(), invoiceDate.getMonthValue(), invoiceDate.getYear(),
-                request.invoiceNumber());
-
-        log.info("Factura histórica actualizada: {}", request.invoiceNumber());
         return orderMapper.toResponse(savedOrder);
     }
 }

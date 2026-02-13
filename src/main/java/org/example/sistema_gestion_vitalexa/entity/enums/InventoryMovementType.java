@@ -8,5 +8,6 @@ public enum InventoryMovementType {
     SALE, // Venta (Orden)
     RESTOCK, // Reabastecimiento
     DELETION, // Eliminación de producto
-    RETURN // Devolución/Reembolso
+    RETURN, // Devolución/Reembolso
+    ORDER_ITEM_REMOVAL // Eliminación de item/promoción de una orden
 }

@@ -14,6 +14,9 @@ public record OrderItemResponse(UUID id, // ID único del OrderItem para actuali
                 // Campos para promociones
                 UUID promotionId, String promotionName, Boolean isPromotionItem, Boolean isFreeItem,
 
+                // ✅ NUEVOS: Identificadores únicos de promociones y precios fijos
+                UUID promotionInstanceId, BigDecimal promotionPackPrice, Integer promotionGroupIndex,
+
                 // Nuevos campos
                 Boolean isBonified, Boolean isFreightItem) {
 }

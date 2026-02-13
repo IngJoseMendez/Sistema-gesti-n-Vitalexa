@@ -76,6 +76,21 @@ public class OrderItem {
     @Builder.Default
     private Boolean isFreeItem = false;
 
+    // ✅ NUEVO: Identificador único para instancia de promoción
+    // Permite diferenciar múltiples instancias de la misma promoción
+    @Column(name = "promotion_instance_id")
+    private UUID promotionInstanceId;
+
+    // ✅ NUEVO: Precio fijo de la promoción guardado en el item
+    // Evita que al editar se recalcule la promo como suma de productos
+    @Column(name = "promotion_pack_price", precision = 12, scale = 2)
+    private BigDecimal promotionPackPrice;
+
+    // ✅ NUEVO: Índice ordinal para promociones duplicadas
+    // Sirve para ordenar y diferenciar múltiples del mismo tipo (Promo A #1, Promo A #2)
+    @Column(name = "promotion_group_index")
+    private Integer promotionGroupIndex;
+
     // ==========================================
     // CAMPOS PARA BONIFICADOS Y FLETE
     // ==========================================
@@ -97,8 +112,14 @@ public class OrderItem {
     @PrePersist
     @PreUpdate
     public void calcularSubTotal() {
-        // Solo calcular si subTotal no está establecido
-        // Esto permite que las promociones establezcan su propio subTotal
+        // ✅ CRÍTICO: Si es item de promoción con precio fijo, NO recalcular
+        // Esto preserva el packPrice definido en la promoción
+        if (Boolean.TRUE.equals(isPromotionItem) && promotionPackPrice != null) {
+            this.subTotal = promotionPackPrice;
+            return;
+        }
+
+        // Para items normales o si no hay promocionPackPrice: calcular normalmente
         if (subTotal == null && precioUnitario != null && cantidad != null) {
             this.subTotal = precioUnitario.multiply(BigDecimal.valueOf(cantidad));
         }

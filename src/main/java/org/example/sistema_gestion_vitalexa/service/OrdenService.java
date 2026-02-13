@@ -46,6 +46,12 @@ public interface OrdenService {
     void updateItemEta(UUID orderId, UUID itemId, java.time.LocalDate eta, String note);
 
     /**
+     * NUEVO: Eliminar un item/promoción de una orden
+     * Usado para eliminar promociones individuales (por promotionInstanceId)
+     */
+    OrderResponse deleteOrderItem(UUID orderId, UUID itemId);
+
+    /**
      * Crear factura histórica para cuadre de caja
      * (Solo Owner - para facturas anteriores al sistema)
      */

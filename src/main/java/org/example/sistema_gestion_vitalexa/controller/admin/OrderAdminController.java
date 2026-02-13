@@ -113,6 +113,18 @@ public class OrderAdminController {
     }
 
     /**
+     * DELETE /api/admin/orders/{orderId}/items/{itemId}
+     * Eliminar un item (promoción/bonificado) de una orden
+     */
+    @DeleteMapping("/{orderId}/items/{itemId}")
+    public ResponseEntity<OrderResponse> deleteOrderItem(
+            @PathVariable UUID orderId,
+            @PathVariable UUID itemId) {
+        OrderResponse response = ordenService.deleteOrderItem(orderId, itemId);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * POST /api/admin/orders
      * Crear orden (Admin/Owner puede especificar sellerId en el body)
      */

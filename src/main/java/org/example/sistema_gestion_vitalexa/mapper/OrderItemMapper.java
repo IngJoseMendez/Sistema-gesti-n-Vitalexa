@@ -16,5 +16,11 @@ public interface OrderItemMapper {
     @Mapping(source = "promotion.nombre", target = "promotionName")
     @Mapping(source = "isBonified", target = "isBonified")
     @Mapping(source = "isFreightItem", target = "isFreightItem")
+    // ✅ NUEVOS: Campos para instancias únicas de promociones y stock negativo
+    @Mapping(source = "promotionInstanceId", target = "promotionInstanceId")
+    @Mapping(source = "promotionPackPrice", target = "promotionPackPrice")
+    @Mapping(source = "promotionGroupIndex", target = "promotionGroupIndex")
+    @Mapping(source = "cantidadDescontada", target = "cantidadDescontada")
+    @Mapping(source = "cantidadPendiente", target = "cantidadPendiente")
     OrderItemResponse toResponse(OrderItem item);
 }

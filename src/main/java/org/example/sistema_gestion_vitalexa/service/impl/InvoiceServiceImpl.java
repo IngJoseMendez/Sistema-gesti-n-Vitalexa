@@ -215,6 +215,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 
                 // 1. Separar items: Sin promoción vs Con promoción
                 List<OrderItem> regularItems = new ArrayList<>();
+                // ✅ ACTUALIZADO: Agrupar por promotionInstanceId (no promotion.id)
+                // Esto permite tener múltiples instancias de la misma promoción como grupos separados
                 Map<String, List<OrderItem>> itemsByPromotion = new java.util.HashMap<>();
 
                 for (OrderItem item : order.getItems()) {
@@ -226,8 +228,11 @@ public class InvoiceServiceImpl implements InvoiceService {
                         if (item.getPromotion() == null) {
                                 regularItems.add(item);
                         } else {
-                                String promoId = item.getPromotion().getId().toString();
-                                itemsByPromotion.computeIfAbsent(promoId, k -> new ArrayList<>()).add(item);
+                                // ✅ NUEVO: Usar promotionInstanceId si está disponible, fallback a promotion.id
+                                String promoKey = item.getPromotionInstanceId() != null
+                                    ? item.getPromotionInstanceId().toString()
+                                    : item.getPromotion().getId().toString();
+                                itemsByPromotion.computeIfAbsent(promoKey, k -> new ArrayList<>()).add(item);
                         }
                 }
 

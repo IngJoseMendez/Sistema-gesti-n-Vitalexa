@@ -118,11 +118,30 @@ public class Order {
         recalculateTotal();
     }
 
-    // Recalcular total
+    // Recalcular total respetando precios fijos de promociones
     public void recalculateTotal() {
-        this.total = items.stream()
-                .map(OrderItem::getSubTotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        java.util.Set<UUID> processedPromoInstances = new java.util.HashSet<>();
+        BigDecimal total = BigDecimal.ZERO;
+
+        for (OrderItem item : items) {
+            // ✅ CRÍTICO: Si es item de promoción con instancia ID y precio fijo,
+            // solo agregarlo una vez (evitar duplicación de precios)
+            if (Boolean.TRUE.equals(item.getIsPromotionItem()) &&
+                item.getPromotionInstanceId() != null &&
+                item.getPromotionPackPrice() != null) {
+
+                // Si ya procesamos esta instancia de promoción, no agregar de nuevo
+                if (!processedPromoInstances.contains(item.getPromotionInstanceId())) {
+                    total = total.add(item.getPromotionPackPrice());
+                    processedPromoInstances.add(item.getPromotionInstanceId());
+                }
+            } else {
+                // Items normales o items de regalo sin precio fijo: suma normal
+                total = total.add(item.getSubTotal());
+            }
+        }
+
+        this.total = total;
     }
 
     // Limpiar items (para edición)

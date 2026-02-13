@@ -24,7 +24,29 @@ public interface OrderMapper {
     @Mapping(source = "cliente.direccion", target = "clienteAddress")
     @Mapping(source = "cliente.nit", target = "clienteNit")
     @Mapping(source = "cliente.email", target = "clienteEmail")
+    @Mapping(target = "promotionIds", expression = "java(mapPromotionIds(order))")
     OrderResponse toResponse(Order order);
+
+    default java.util.List<java.util.UUID> mapPromotionIds(Order order) {
+        if (order.getItems() == null)
+            return java.util.Collections.emptyList();
+
+        java.util.Map<java.util.UUID, org.example.sistema_gestion_vitalexa.entity.OrderItem> uniqueInstances = new java.util.HashMap<>();
+
+        order.getItems().stream()
+                .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem()) && i.getPromotion() != null)
+                .forEach(i -> {
+                    java.util.UUID key = i.getPromotionInstanceId() != null
+                            ? i.getPromotionInstanceId()
+                            : java.util.UUID.randomUUID();
+                    uniqueInstances.putIfAbsent(key, i);
+                });
+
+        return uniqueInstances.values().stream()
+                .map(i -> i.getPromotion().getId())
+                .sorted()
+                .collect(java.util.stream.Collectors.toList());
+    }
 
     List<OrderResponse> toResponseList(List<Order> orders);
 
