@@ -47,6 +47,9 @@ public class Order {
     @Column(name = "cancellation_reason", columnDefinition = "TEXT")
     private String cancellationReason;
 
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
+
     @Column(name = "is_freight_bonified")
     @Builder.Default
     private Boolean isFreightBonified = false;
@@ -127,8 +130,8 @@ public class Order {
             // ✅ CRÍTICO: Si es item de promoción con instancia ID y precio fijo,
             // solo agregarlo una vez (evitar duplicación de precios)
             if (Boolean.TRUE.equals(item.getIsPromotionItem()) &&
-                item.getPromotionInstanceId() != null &&
-                item.getPromotionPackPrice() != null) {
+                    item.getPromotionInstanceId() != null &&
+                    item.getPromotionPackPrice() != null) {
 
                 // Si ya procesamos esta instancia de promoción, no agregar de nuevo
                 if (!processedPromoInstances.contains(item.getPromotionInstanceId())) {

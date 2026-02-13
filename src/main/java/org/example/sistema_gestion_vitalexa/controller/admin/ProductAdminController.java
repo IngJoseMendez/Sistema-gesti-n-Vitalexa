@@ -600,4 +600,45 @@ public class ProductAdminController {
                     .body("Error en carga masiva: " + e.getMessage());
         }
     }
+
+    /**
+     * GET /api/admin/products/inventory/export
+     * Descargar inventario actual en Excel
+     */
+    @GetMapping("/inventory/export")
+    public ResponseEntity<byte[]> downloadInventoryExcel() {
+        try {
+            byte[] excelContent = productService.exportInventoryToExcel();
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=inventario_vitalexa_" + System.currentTimeMillis() + ".xlsx")
+                    .header(HttpHeaders.CONTENT_TYPE,
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    .body(excelContent);
+        } catch (Exception e) {
+            log.error("Error exportando inventario Excel", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * GET /api/admin/products/inventory/export/pdf
+     * Descargar inventario actual en PDF
+     */
+    @GetMapping("/inventory/export/pdf")
+    public ResponseEntity<byte[]> downloadInventoryPdf() {
+        try {
+            byte[] pdfContent = productService.exportInventoryToPdf();
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=inventario_vitalexa_" + System.currentTimeMillis() + ".pdf")
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .body(pdfContent);
+        } catch (Exception e) {
+            log.error("Error exportando inventario PDF", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
 }

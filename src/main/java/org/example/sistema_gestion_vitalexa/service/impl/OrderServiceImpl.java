@@ -967,6 +967,10 @@ public class OrderServiceImpl implements OrdenService {
 
             // Notificación de orden completada (una sola vez)
             notificationService.sendOrderCompletedNotification(order.getId().toString());
+
+            // Set completion date
+            order.setCompletedAt(java.time.LocalDateTime.now());
+
             log.info("Orden {} completada (invoiceNumber={})", order.getId(), order.getInvoiceNumber());
         } else {
             // Otros estados

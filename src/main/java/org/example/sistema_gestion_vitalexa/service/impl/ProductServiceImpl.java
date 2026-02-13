@@ -457,4 +457,227 @@ public class ProductServiceImpl implements ProductService {
         return movements;
     }
 
+    @Override
+    public byte[] exportInventoryToExcel() {
+        try (org.apache.poi.ss.usermodel.Workbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+
+            org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("Inventario");
+
+            // Header Style
+            org.apache.poi.ss.usermodel.CellStyle headerStyle = workbook.createCellStyle();
+            org.apache.poi.ss.usermodel.Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
+
+            // Group Layout Style (Centered, Large, Bold)
+            org.apache.poi.ss.usermodel.CellStyle groupStyle = workbook.createCellStyle();
+            org.apache.poi.ss.usermodel.Font groupFont = workbook.createFont();
+            groupFont.setBold(true);
+            groupFont.setFontHeightInPoints((short) 14);
+            groupStyle.setFont(groupFont);
+            groupStyle.setAlignment(org.apache.poi.ss.usermodel.HorizontalAlignment.CENTER);
+            groupStyle.setVerticalAlignment(org.apache.poi.ss.usermodel.VerticalAlignment.CENTER);
+
+            // Headers
+            org.apache.poi.ss.usermodel.Row headerRow = sheet.createRow(0);
+            String[] columns = { "Letra", "ID", "Nombre", "Descripción", "Precio", "Stock Actual", "Punto de Reorden",
+                    "Activo",
+                    "Etiqueta" };
+
+            for (int i = 0; i < columns.length; i++) {
+                org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
+                cell.setCellValue(columns[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            // Data
+            List<ProductResponse> products = new java.util.ArrayList<>(findAllAdmin());
+            // Sort alphabetically by name
+            products.sort((p1, p2) -> {
+                String n1 = p1.nombre() != null ? p1.nombre() : "";
+                String n2 = p2.nombre() != null ? p2.nombre() : "";
+                return n1.compareToIgnoreCase(n2);
+            });
+
+            int rowIdx = 1;
+            int startRow = 1;
+            char currentLetter = '\0';
+
+            for (int i = 0; i < products.size(); i++) {
+                ProductResponse product = products.get(i);
+                org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowIdx);
+                int colIdx = 0;
+
+                // Determine grouping letter
+                String name = product.nombre() != null ? product.nombre().trim() : "";
+                char firstChar = name.isEmpty() ? '#' : Character.toUpperCase(name.charAt(0));
+
+                if (i == 0) {
+                    currentLetter = firstChar;
+                    org.apache.poi.ss.usermodel.Cell cell = row.createCell(colIdx);
+                    cell.setCellValue(String.valueOf(currentLetter));
+                    cell.setCellStyle(groupStyle);
+                } else if (firstChar != currentLetter) {
+                    // New group started, merge previous if necessary
+                    if (rowIdx - 1 > startRow) {
+                        sheet.addMergedRegion(
+                                new org.apache.poi.ss.util.CellRangeAddress(startRow, rowIdx - 1, 0, 0));
+                    }
+                    currentLetter = firstChar;
+                    startRow = rowIdx;
+                    org.apache.poi.ss.usermodel.Cell cell = row.createCell(colIdx);
+                    cell.setCellValue(String.valueOf(currentLetter));
+                    cell.setCellStyle(groupStyle);
+                } else {
+                    row.createCell(colIdx).setCellValue("");
+                }
+                colIdx++;
+
+                row.createCell(colIdx++).setCellValue(product.id().toString());
+                row.createCell(colIdx++).setCellValue(product.nombre());
+                row.createCell(colIdx++).setCellValue(product.descripcion() != null ? product.descripcion() : "");
+                row.createCell(colIdx++).setCellValue(
+                        product.precio() != null ? product.precio().doubleValue() : 0.0);
+                row.createCell(colIdx++).setCellValue(product.stock() != null ? product.stock() : 0);
+                row.createCell(colIdx++)
+                        .setCellValue(product.reorderPoint() != null ? product.reorderPoint() : 0);
+                row.createCell(colIdx++).setCellValue(product.active() ? "Sí" : "No");
+                row.createCell(colIdx++).setCellValue(product.tagName() != null ? product.tagName() : "-");
+
+                rowIdx++;
+            }
+
+            // Merge last group
+            if (rowIdx - 1 > startRow) {
+                sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(startRow, rowIdx - 1, 0, 0));
+            }
+
+            // Auto-size columns
+            for (int i = 0; i < columns.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            workbook.write(out);
+            return out.toByteArray();
+        } catch (java.io.IOException e) {
+            log.error("Error generando Excel de inventario", e);
+            throw new BusinessExeption("Error generando el archivo de inventario: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public byte[] exportInventoryToPdf() {
+        try (java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            com.itextpdf.kernel.pdf.PdfWriter writer = new com.itextpdf.kernel.pdf.PdfWriter(out);
+            com.itextpdf.kernel.pdf.PdfDocument pdf = new com.itextpdf.kernel.pdf.PdfDocument(writer);
+            com.itextpdf.layout.Document document = new com.itextpdf.layout.Document(pdf,
+                    com.itextpdf.kernel.geom.PageSize.A4.rotate());
+            document.setMargins(20, 20, 20, 20);
+
+            // Title
+            com.itextpdf.layout.element.Paragraph title = new com.itextpdf.layout.element.Paragraph(
+                    "Reporte de Inventario - Vitalexa")
+                    .setFontSize(18)
+                    .setBold()
+                    .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER)
+                    .setMarginBottom(10);
+            document.add(title);
+
+            // Date
+            document.add(new com.itextpdf.layout.element.Paragraph(
+                    "Fecha: " + java.time.LocalDateTime.now()
+                            .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss")))
+                    .setFontSize(10)
+                    .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.RIGHT)
+                    .setMarginBottom(20));
+
+            // Table
+            float[] columnWidths = { 1, 2, 4, 2, 2, 2, 2, 3 }; // Adjusted widths
+            com.itextpdf.layout.element.Table table = new com.itextpdf.layout.element.Table(
+                    com.itextpdf.layout.properties.UnitValue.createPercentArray(columnWidths));
+            table.setWidth(com.itextpdf.layout.properties.UnitValue.createPercentValue(100));
+
+            // Headers
+            String[] headers = { "#", "ID (Corto)", "Nombre", "Precio", "Stock", "Reorden", "Activo", "Etiqueta" };
+            for (String header : headers) {
+                table.addHeaderCell(new com.itextpdf.layout.element.Cell()
+                        .add(new com.itextpdf.layout.element.Paragraph(header).setBold())
+                        .setBackgroundColor(com.itextpdf.kernel.colors.ColorConstants.LIGHT_GRAY)
+                        .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER));
+            }
+
+            // Data
+            List<ProductResponse> products = new java.util.ArrayList<>(findAllAdmin());
+            // Sort alphabetically by name
+            products.sort((p1, p2) -> {
+                String n1 = p1.nombre() != null ? p1.nombre() : "";
+                String n2 = p2.nombre() != null ? p2.nombre() : "";
+                return n1.compareToIgnoreCase(n2);
+            });
+
+            // Count occurrences for rowspan
+            java.util.Map<Character, Integer> groupCounts = new java.util.HashMap<>();
+            for (ProductResponse product : products) {
+                String name = product.nombre() != null ? product.nombre().trim() : "";
+                char firstChar = name.isEmpty() ? '#' : Character.toUpperCase(name.charAt(0));
+                groupCounts.put(firstChar, groupCounts.getOrDefault(firstChar, 0) + 1);
+            }
+
+            char currentLetter = '\0';
+
+            for (ProductResponse product : products) {
+                // Determine group letter
+                String name = product.nombre() != null ? product.nombre().trim() : "";
+                char firstChar = name.isEmpty() ? '#' : Character.toUpperCase(name.charAt(0));
+
+                if (firstChar != currentLetter) {
+                    currentLetter = firstChar;
+                    int rowSpan = groupCounts.getOrDefault(currentLetter, 1);
+
+                    // Merged Group Cell
+                    table.addCell(new com.itextpdf.layout.element.Cell(rowSpan, 1)
+                            .add(new com.itextpdf.layout.element.Paragraph(String.valueOf(currentLetter))
+                                    .setBold()
+                                    .setFontSize(14)) // Larger font
+                            .setVerticalAlignment(com.itextpdf.layout.properties.VerticalAlignment.MIDDLE)
+                            .setHorizontalAlignment(com.itextpdf.layout.properties.HorizontalAlignment.CENTER)
+                            .setBackgroundColor(com.itextpdf.kernel.colors.ColorConstants.LIGHT_GRAY));
+                }
+
+                // Short ID
+                String shortId = product.id().toString().substring(0, 8);
+
+                table.addCell(new com.itextpdf.layout.element.Paragraph(shortId).setFontSize(9));
+                table.addCell(new com.itextpdf.layout.element.Paragraph(product.nombre()).setFontSize(9));
+                table.addCell(new com.itextpdf.layout.element.Paragraph(
+                        String.format("$%.2f", product.precio() != null ? product.precio() : 0.0)).setFontSize(9));
+                table.addCell(new com.itextpdf.layout.element.Paragraph(
+                        product.stock() != null ? product.stock().toString() : "0").setFontSize(9)
+                        .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER));
+                table.addCell(new com.itextpdf.layout.element.Paragraph(
+                        product.reorderPoint() != null ? product.reorderPoint().toString() : "0").setFontSize(9)
+                        .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER));
+                table.addCell(new com.itextpdf.layout.element.Paragraph(product.active() ? "Sí" : "No").setFontSize(9)
+                        .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER));
+                table.addCell(new com.itextpdf.layout.element.Paragraph(
+                        product.tagName() != null ? product.tagName() : "-").setFontSize(9));
+            }
+
+            document.add(table);
+
+            // Summary
+            document.add(new com.itextpdf.layout.element.Paragraph(
+                    "\nTotal de productos: " + products.size())
+                    .setFontSize(10)
+                    .setBold());
+
+            document.close();
+            return out.toByteArray();
+        } catch (Exception e) {
+            log.error("Error generando PDF de inventario", e);
+            throw new BusinessExeption("Error generando el PDF de inventario: " + e.getMessage());
+        }
+    }
+
 }

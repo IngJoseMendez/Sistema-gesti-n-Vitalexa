@@ -12,61 +12,72 @@ import java.util.List;
 import java.util.UUID;
 
 public interface ProductService {
-    ProductResponse create(CreateProductRequest request);
+        ProductResponse create(CreateProductRequest request);
 
-    /**
-     * Crea múltiples productos en una sola transacción
-     */
-    List<ProductResponse> createBulk(List<CreateProductRequest> requests);
+        /**
+         * Crea múltiples productos en una sola transacción
+         */
+        List<ProductResponse> createBulk(List<CreateProductRequest> requests);
 
-    /**
-     * Actualiza múltiples productos en una sola transacción
-     */
-    org.example.sistema_gestion_vitalexa.dto.BulkProductUpdateResult updateBulk(
-            List<UpdateProductBulkRequest> requests);
+        /**
+         * Actualiza múltiples productos en una sola transacción
+         */
+        org.example.sistema_gestion_vitalexa.dto.BulkProductUpdateResult updateBulk(
+                        List<UpdateProductBulkRequest> requests);
 
-    ProductResponse update(UUID id, UpdateProductRequest request);
+        ProductResponse update(UUID id, UpdateProductRequest request);
 
-    void softDelete(UUID id);
+        void softDelete(UUID id);
 
-    void hardDelete(UUID id);
+        void hardDelete(UUID id);
 
-    List<ProductResponse> findAllAdmin();
+        List<ProductResponse> findAllAdmin();
 
-    // legacy
-    List<ProductResponse> findAllActive();
+        // legacy
+        List<ProductResponse> findAllActive();
 
-    // paginación pro
-    Page<ProductResponse> findAllActive(Pageable pageable);
+        // paginación pro
+        Page<ProductResponse> findAllActive(Pageable pageable);
 
-    Page<ProductResponse> findAllActiveInStock(Pageable pageable);
+        Page<ProductResponse> findAllActiveInStock(Pageable pageable);
 
-    Page<ProductResponse> searchActive(String q, Pageable pageable);
+        Page<ProductResponse> searchActive(String q, Pageable pageable);
 
-    Product findEntityById(UUID id);
+        Product findEntityById(UUID id);
 
-    ProductResponse findById(UUID id);
+        ProductResponse findById(UUID id);
 
-    void changeStatus(UUID id, boolean status);
+        void changeStatus(UUID id, boolean status);
 
-    List<ProductResponse> findLowStock(int threshold);
+        List<ProductResponse> findLowStock(int threshold);
 
-    // Tag filtering
-    Page<ProductResponse> findByTag(UUID tagId, Pageable pageable);
+        // Tag filtering
+        Page<ProductResponse> findByTag(UUID tagId, Pageable pageable);
 
-    Page<ProductResponse> searchByTag(String q, UUID tagId, Pageable pageable);
+        Page<ProductResponse> searchByTag(String q, UUID tagId, Pageable pageable);
 
-    Product getSystemProductSurtido();
+        Product getSystemProductSurtido();
 
-    /**
-     * Agrega stock a un producto (Llegada de mercancía)
-     */
-    org.example.sistema_gestion_vitalexa.entity.InventoryMovement addStock(UUID productId, int quantity, String reason,
-            String username);
+        /**
+         * Agrega stock a un producto (Llegada de mercancía)
+         */
+        org.example.sistema_gestion_vitalexa.entity.InventoryMovement addStock(UUID productId, int quantity,
+                        String reason,
+                        String username);
 
-    /**
-     * Carga masiva de stock (Llegada de mercancía masiva)
-     */
-    List<org.example.sistema_gestion_vitalexa.entity.InventoryMovement> addStockBulk(
-            org.example.sistema_gestion_vitalexa.dto.BulkStockArrivalRequestDTO request, String username);
+        /**
+         * Carga masiva de stock (Llegada de mercancía masiva)
+         */
+        List<org.example.sistema_gestion_vitalexa.entity.InventoryMovement> addStockBulk(
+                        org.example.sistema_gestion_vitalexa.dto.BulkStockArrivalRequestDTO request, String username);
+
+        /**
+         * Exportar inventario actual a Excel
+         */
+        byte[] exportInventoryToExcel();
+
+        /**
+         * Exportar inventario actual a PDF
+         */
+        byte[] exportInventoryToPdf();
 }

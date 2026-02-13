@@ -143,7 +143,9 @@ public class InvoiceServiceImpl implements InvoiceService {
                 addInfoCell(infoTable, "N° Factura:",
                                 order.getInvoiceNumber() != null ? order.getInvoiceNumber().toString() : "---", true,
                                 backgroundColor);
-                addInfoCell(infoTable, "Fecha:", order.getFecha().format(DATE_FORMATTER), true, backgroundColor);
+                java.time.LocalDateTime displayDate = order.getCompletedAt() != null ? order.getCompletedAt()
+                                : order.getFecha();
+                addInfoCell(infoTable, "Fecha:", displayDate.format(DATE_FORMATTER), true, backgroundColor);
                 addInfoCell(infoTable, "Estado:", order.getEstado().toString(), true, backgroundColor);
                 addInfoCell(infoTable, "Vendedor:", order.getVendedor().getUsername(), true, backgroundColor);
 
@@ -216,7 +218,8 @@ public class InvoiceServiceImpl implements InvoiceService {
                 // 1. Separar items: Sin promoción vs Con promoción
                 List<OrderItem> regularItems = new ArrayList<>();
                 // ✅ ACTUALIZADO: Agrupar por promotionInstanceId (no promotion.id)
-                // Esto permite tener múltiples instancias de la misma promoción como grupos separados
+                // Esto permite tener múltiples instancias de la misma promoción como grupos
+                // separados
                 Map<String, List<OrderItem>> itemsByPromotion = new java.util.HashMap<>();
 
                 for (OrderItem item : order.getItems()) {
@@ -230,8 +233,8 @@ public class InvoiceServiceImpl implements InvoiceService {
                         } else {
                                 // ✅ NUEVO: Usar promotionInstanceId si está disponible, fallback a promotion.id
                                 String promoKey = item.getPromotionInstanceId() != null
-                                    ? item.getPromotionInstanceId().toString()
-                                    : item.getPromotion().getId().toString();
+                                                ? item.getPromotionInstanceId().toString()
+                                                : item.getPromotion().getId().toString();
                                 itemsByPromotion.computeIfAbsent(promoKey, k -> new ArrayList<>()).add(item);
                         }
                 }
