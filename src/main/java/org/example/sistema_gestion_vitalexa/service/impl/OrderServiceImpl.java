@@ -1394,22 +1394,76 @@ public class OrderServiceImpl implements OrdenService {
             throw new BusinessExeption("La orden ya está anulada");
         }
 
-        // Restaurar Stock
+        // ✅ Restaurar Stock de TODOS los items
+        // NO usar Set para evitar doble restauración porque cada INSTANCIA de promoción
+        // debe restaurar SUS PROPIOS regalos
+
         for (OrderItem item : order.getItems()) {
             if (item.getProduct() != null) {
                 Product product = item.getProduct();
+
                 // Ignorar sistema product y ocultos
-                if (!"SURTIDO PROMOCIONAL".equals(product.getNombre()) && !product.isHidden()) {
-                    product.increaseStock(item.getCantidad());
-                    log.info("Stock restaurado para '{}': +{}", product.getNombre(), item.getCantidad());
+                if ("SURTIDO PROMOCIONAL".equals(product.getNombre()) || product.isHidden()) {
+                    continue;
                 }
+
+                log.info("🔄 Procesando restauración de item: {}, isPromo={}, isFree={}, isBonified={}",
+                        product.getNombre(), item.getIsPromotionItem(), item.getIsFreeItem(), item.getIsBonified());
+
+                // ✅ CASO 1: Items normales (no promo, no bonificado)
+                if (!Boolean.TRUE.equals(item.getIsPromotionItem()) &&
+                    !Boolean.TRUE.equals(item.getIsBonified()) &&
+                    !Boolean.TRUE.equals(item.getIsFreightItem())) {
+                    product.increaseStock(item.getCantidad());
+                    log.info("✅ Stock restaurado (NORMAL) para '{}': +{}", product.getNombre(), item.getCantidad());
+                }
+
+                // ✅ CASO 2: Bonificados puros (restaurar solo lo que se descontó)
+                else if (Boolean.TRUE.equals(item.getIsBonified()) &&
+                         !Boolean.TRUE.equals(item.getIsPromotionItem())) {
+                    Integer cantidadDescontada = item.getCantidadDescontada() != null ?
+                        item.getCantidadDescontada() : item.getCantidad();
+                    product.increaseStock(cantidadDescontada);
+                    log.info("✅ Stock restaurado (BONIFICADO) para '{}': +{}", product.getNombre(), cantidadDescontada);
+                }
+
+                // ✅ CASO 3: Items de promoción (mainProduct + sus regalos)
+                // ✅ IMPORTANTE: Procesar POR CADA INSTANCIA, no evitar duplicados
+                else if (Boolean.TRUE.equals(item.getIsPromotionItem()) &&
+                         !Boolean.TRUE.equals(item.getIsFreeItem())) {
+
+                    // 3A. Restaurar mainProduct de ESTA instancia
+                    product.increaseStock(item.getCantidad());
+                    log.info("✅ Stock restaurado (PROMO MAIN - Instancia {}) para '{}': +{}",
+                            item.getPromotionInstanceId(), product.getNombre(), item.getCantidad());
+
+                    // 3B. ✅ CRÍTICO: Restaurar TODOS los regalos de ESTA instancia
+                    if (item.getPromotion() != null && item.getPromotion().getGiftItems() != null) {
+                        for (org.example.sistema_gestion_vitalexa.entity.PromotionGiftItem gift :
+                             item.getPromotion().getGiftItems()) {
+
+                            Product giftProduct = gift.getProduct();
+                            Integer giftQty = gift.getQuantity();
+
+                            // ✅ RESTAURAR SIEMPRE: Cada instancia tiene sus propios regalos
+                            giftProduct.increaseStock(giftQty);
+                            log.info("✅ Stock restaurado (PROMO GIFT - Instancia {}) para '{}': +{}",
+                                    item.getPromotionInstanceId(), giftProduct.getNombre(), giftQty);
+                        }
+                    }
+                }
+
+                // ✅ CASO 4: Items de regalo de promoción (isFreeItem)
+                // NO restaurar aquí porque ya se restauraron en CASO 3
+                // Los regalos se restauran junto con el mainProduct de CADA instancia
             }
         }
 
         order.setEstado(OrdenStatus.ANULADA);
         order.setCancellationReason(reason);
         ordenRepository.save(order);
-    }
+
+        log.info("✅ Orden {} anulada completamente. Stock restaurado.",orderId);
 
     /**
      * Procesar productos bonificados (regalos) de una orden
