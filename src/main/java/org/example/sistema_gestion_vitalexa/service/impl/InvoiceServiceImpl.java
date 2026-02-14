@@ -164,13 +164,23 @@ public class InvoiceServiceImpl implements InvoiceService {
                         String email = order.getCliente().getEmail() != null ? order.getCliente().getEmail() : "---";
                         String direccion = order.getCliente().getDireccion() != null ? order.getCliente().getDireccion()
                                         : "---";
+                        String nit = order.getCliente().getNit() != null ? order.getCliente().getNit() : "---";
 
                         addInfoCell(clientTable, "Cliente:", order.getCliente().getNombre(), true, backgroundColor);
+                        addInfoCell(clientTable, "NIT:", nit, true, backgroundColor);
                         addInfoCell(clientTable, "Teléfono:", telefono, true, backgroundColor);
                         addInfoCell(clientTable, "Email:", email, true, backgroundColor);
-                        addInfoCell(clientTable, "Dirección:", direccion, true, backgroundColor);
 
                         document.add(clientTable);
+
+                        // Tercera línea: Dirección (ocupa toda la fila)
+                        Table addressTable = new Table(UnitValue.createPercentArray(new float[] { 1f }))
+                                        .useAllAvailableWidth()
+                                        .setMarginBottom(15);
+
+                        addInfoCell(addressTable, "Dirección:", direccion, true, backgroundColor);
+
+                        document.add(addressTable);
                 }
         }
 
