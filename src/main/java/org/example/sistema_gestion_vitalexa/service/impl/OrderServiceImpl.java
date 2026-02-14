@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -56,12 +57,13 @@ public class OrderServiceImpl implements OrdenService {
     // =========================
     @Override
     public OrderResponse createOrder(OrderRequestDto request, String username) {
-        // Validar que haya al menos items O promociones
+        // Validar que haya al menos items O promociones O bonificados
         boolean hasItems = request.items() != null && !request.items().isEmpty();
         boolean hasPromotions = request.promotionIds() != null && !request.promotionIds().isEmpty();
+        boolean hasBonifiedItems = request.bonifiedItems() != null && !request.bonifiedItems().isEmpty();
 
-        if (!hasItems && !hasPromotions) {
-            throw new BusinessExeption("La venta debe tener al menos un producto o una promoción");
+        if (!hasItems && !hasPromotions && !hasBonifiedItems) {
+            throw new BusinessExeption("La venta debe tener al menos un producto, una promoción o productos bonificados");
         }
 
         User currentUser = userRepository.findByUsername(username)
@@ -244,6 +246,7 @@ public class OrderServiceImpl implements OrdenService {
                     freightDesc,
                     request.freightQuantity(),
                     freightItems, // Pasar lista de items de flete
+                    request.bonifiedItems(), // Pasar lista de bonificados
                     username);
         }
     }
@@ -264,6 +267,7 @@ public class OrderServiceImpl implements OrdenService {
             String freightCustomText,
             Integer freightQuantity,
             List<OrderItemRequestDTO> freightItems,
+            List<BonifiedItemRequestDTO> bonifiedItems,
             String username) {
 
         OrderResponse response = null;
@@ -307,6 +311,11 @@ public class OrderServiceImpl implements OrdenService {
             }
 
             processOrderItems(standardOrder, normalItems);
+
+            // Procesar bonificados si existen
+            if (bonifiedItems != null && !bonifiedItems.isEmpty()) {
+                processBonifiedItems(standardOrder, bonifiedItems);
+            }
 
             Order saved = ordenRepository.save(standardOrder);
 
@@ -531,6 +540,11 @@ public class OrderServiceImpl implements OrdenService {
             processPromotions(order, request.promotionIds(), totalNormalItemsCount);
         }
 
+        // Procesar productos bonificados si existen
+        if (request.bonifiedItems() != null && !request.bonifiedItems().isEmpty()) {
+            processBonifiedItems(order, request.bonifiedItems());
+        }
+
         Order savedOrder = ordenRepository.save(order);
 
         notificationService.sendNewOrderNotification(
@@ -665,49 +679,33 @@ public class OrderServiceImpl implements OrdenService {
      * Procesar items DE FLETE (stock igual que items normales, precio 0, flag
      * activado)
      */
+    /**
+     * Procesar items de flete (productos enviados como flete personalizado)
+     * ✅ Los items de flete siempre tienen precio 0 y permiten stock negativo
+     */
     private void processFreightItems(Order order, List<OrderItemRequestDTO> items) {
         items.forEach(itemReq -> {
             Product product = productService.findEntityById(itemReq.productId());
-
-            boolean allowOutOfStock = Boolean.TRUE.equals(itemReq.allowOutOfStock());
             int requestedQuantity = itemReq.cantidad();
-            int currentStock = product.getStock();
-            boolean hasStock = currentStock >= requestedQuantity;
 
-            // Validar stock (mismo criterio que items normales)
-            if (!allowOutOfStock && !hasStock) {
-                throw new BusinessExeption("Stock insuficiente para item de flete: " + product.getNombre());
-            }
-
-            // CREAR ITEM DE FLETE (Siempre precio 0)
-            // Nota: Para simplificar, los items de flete NO harán split de stock complejo
-            // (se asume que si se envía por flete se gestiona directo).
-            // Pero si se quiere mantener consistencia con el inventario, usamos logica
-            // básica.
-
-            // CREAR ITEM DE FLETE (Siempre precio 0)
-            // LÓGICA SIMPLIFICADA: Sin split, stock negativo permitido
-
+            // Crear item de flete
             OrderItem item = new OrderItem(product, requestedQuantity);
             item.setPrecioUnitario(BigDecimal.ZERO);
             item.setSubTotal(BigDecimal.ZERO);
             item.setIsFreightItem(true);
 
-            // Siempre descontamos stock
-            product.decreaseStock(requestedQuantity);
-
-            if (hasStock) {
-                item.setOutOfStock(false);
-            } else {
-                item.setOutOfStock(true);
-                log.info("Item de flete {} agregado sin stock suficiente.", product.getNombre());
-            }
-
-            // Siempre "descontado" completo
+            // ✅ IGUAL QUE PRODUCTOS NORMALES: Siempre descontar la cantidad completa (permite stock negativo)
             item.setCantidadDescontada(requestedQuantity);
             item.setCantidadPendiente(0);
+            item.setOutOfStock(false);
+
+            // Descontar stock (permite negativo)
+            product.decreaseStock(requestedQuantity);
 
             order.addItem(item);
+
+            log.info("✅ Item de flete {} agregado: cantidad={}, stock resultante={}",
+                    product.getNombre(), requestedQuantity, product.getStock());
         });
     }
 
@@ -1096,12 +1094,13 @@ public class OrderServiceImpl implements OrdenService {
             throw new BusinessExeption("No se puede editar una orden completada o cancelada");
         }
 
-        // VALIDAR QUE HAYA ITEMS O PROMOCIONES
+        // VALIDAR QUE HAYA ITEMS O PROMOCIONES O BONIFICADOS
         boolean hasItems = request.items() != null && !request.items().isEmpty();
         boolean hasPromotions = request.promotionIds() != null && !request.promotionIds().isEmpty();
+        boolean hasBonifiedItems = request.bonifiedItems() != null && !request.bonifiedItems().isEmpty();
 
-        if (!hasItems && !hasPromotions) {
-            throw new BusinessExeption("La orden debe tener al menos un producto o una promoción");
+        if (!hasItems && !hasPromotions && !hasBonifiedItems) {
+            throw new BusinessExeption("La orden debe tener al menos un producto, una promoción o productos bonificados");
         }
 
         // CAPTURAR IDs DE PROMOCIONES ACTUALES **ANTES** DE LIMPIAR ITEMS
@@ -1129,21 +1128,44 @@ public class OrderServiceImpl implements OrdenService {
                 .sorted()
                 .collect(java.util.stream.Collectors.toList());
 
-        // RESTAURAR STOCK de items anteriores (solo los que no son items de promoción)
+        // CAPTURAR items que se van a PRESERVAR (para NO restaurar su stock)
+        boolean hasNewFreightItems = request.items() != null &&
+                request.items().stream().anyMatch(i -> Boolean.TRUE.equals(i.isFreightItem()));
+
+        Set<UUID> idsToPreserve = new java.util.HashSet<>();
+
+        for (OrderItem item : order.getItems()) {
+            // Preservar items de promoción
+            if (Boolean.TRUE.equals(item.getIsPromotionItem())) {
+                idsToPreserve.add(item.getId());
+            }
+            // Preservar items de flete si NO hay nuevos
+            if (Boolean.TRUE.equals(item.getIsFreightItem()) && !hasNewFreightItems) {
+                idsToPreserve.add(item.getId());
+            }
+        }
+
+        // RESTAURAR STOCK de items anteriores (normales, bonificados, flete que se reemplazan)
+        // NO restaurar items de promoción ni items de flete que se van a preservar
         order.getItems().forEach(item -> {
             Product product = item.getProduct();
+
+            // No restaurar items que se van a preservar
+            if (idsToPreserve.contains(item.getId())) {
+                log.info("Item preservado (no restaura stock): {} - tipo: {}",
+                    product.getNombre(),
+                    Boolean.TRUE.equals(item.getIsPromotionItem()) ? "PROMO" :
+                    Boolean.TRUE.equals(item.getIsFreightItem()) ? "FLETE" : "OTRO");
+                return;
+            }
+
             // No restaurar stock de items regalados (isFreeItem=true) - estos son de promo
             if (Boolean.TRUE.equals(item.getIsFreeItem())) {
                 log.info("Item de regalo no restaura stock: {}", product.getNombre());
                 return;
             }
 
-            // No restaurar stock de items de promoción
-            if (Boolean.TRUE.equals(item.getIsPromotionItem())) {
-                log.info("Item de promoción no restaura stock en edición: {}", product.getNombre());
-                return;
-            }
-
+            // ✅ RESTAURAR items normales, bonificados y de flete que se van a reemplazar
             int stockToRestore = 0;
             if (item.getCantidadDescontada() != null) {
                 stockToRestore = item.getCantidadDescontada();
@@ -1157,6 +1179,14 @@ public class OrderServiceImpl implements OrdenService {
 
             if (stockToRestore > 0) {
                 product.increaseStock(stockToRestore);
+
+                if (Boolean.TRUE.equals(item.getIsBonified())) {
+                    log.info("✅ Stock restaurado (BONIFICADO) en edición para '{}': +{}", product.getNombre(), stockToRestore);
+                } else if (Boolean.TRUE.equals(item.getIsFreightItem())) {
+                    log.info("✅ Stock restaurado (FLETE-REEMPLAZADO) en edición para '{}': +{}", product.getNombre(), stockToRestore);
+                } else {
+                    log.info("✅ Stock restaurado (NORMAL) en edición para '{}': +{}", product.getNombre(), stockToRestore);
+                }
             }
         });
 
@@ -1608,17 +1638,25 @@ public class OrderServiceImpl implements OrdenService {
                     }
                 }
 
-                // ✅ CASO 5: Items de flete (isFreightItem)
-                // NO restaurar aquí - son items especiales que se manejan diferente
+                // ✅ CASO 5: Items de flete (restaurar solo lo que se descontó)
+                else if (Boolean.TRUE.equals(item.getIsFreightItem())) {
+                    Integer cantidadDescontada = item.getCantidadDescontada() != null
+                        ? item.getCantidadDescontada()
+                        : item.getCantidad();
+
+                    if (cantidadDescontada > 0) {
+                        product.increaseStock(cantidadDescontada);
+                        log.info("✅ Stock restaurado (FLETE) para '{}': +{}",
+                            product.getNombre(), cantidadDescontada);
+                    }
+                }
             }
         }
     }
 
     /**
      * Procesar productos bonificados (regalos) de una orden
-     * ✅ ACTUALIZADO: Mantiene una sola línea por producto, con stock negativo si
-     * aplica
-     * Los bonificados siempre tienen precio 0 y pueden estar sin stock
+     * ✅ Los bonificados siempre tienen precio 0 y permiten stock negativo
      */
     private void processBonifiedItems(Order order, List<BonifiedItemRequestDTO> bonifiedItems) {
         if (bonifiedItems == null || bonifiedItems.isEmpty()) {
@@ -1628,39 +1666,25 @@ public class OrderServiceImpl implements OrdenService {
         bonifiedItems.forEach(itemReq -> {
             Product product = productService.findEntityById(itemReq.productId());
             int requestedQuantity = itemReq.cantidad();
-            int currentStock = product.getStock();
 
-            // ✅ NUEVO: Crear una SOLA línea (no dividir en 2)
+            // Crear item bonificado
             OrderItem item = new OrderItem(product, requestedQuantity);
             item.setIsBonified(true);
             item.setPrecioUnitario(BigDecimal.ZERO);
             item.setSubTotal(BigDecimal.ZERO);
 
-            // ✅ NUEVO: Calcular cantidad descontada vs pendiente
-            int cantidadDescontada = Math.min(currentStock, requestedQuantity);
-            int cantidadPendiente = Math.max(0, requestedQuantity - currentStock);
+            // ✅ IGUAL QUE PRODUCTOS NORMALES: Siempre descontar la cantidad completa (permite stock negativo)
+            item.setCantidadDescontada(requestedQuantity);
+            item.setCantidadPendiente(0);
+            item.setOutOfStock(false);
 
-            item.setCantidadDescontada(cantidadDescontada);
-            item.setCantidadPendiente(cantidadPendiente);
-
-            // Solo hay "outOfStock" si no tenemos TODO lo solicitado
-            item.setOutOfStock(cantidadPendiente > 0);
-
-            // Decrementar SOLO lo que hay disponible
-            if (cantidadDescontada > 0) {
-                product.decreaseStock(cantidadDescontada);
-            }
+            // Descontar stock (permite negativo)
+            product.decreaseStock(requestedQuantity);
 
             order.addItem(item);
 
-            if (cantidadPendiente > 0) {
-                log.warn(
-                        "⚠️ Producto bonificado {} con stock insuficiente. Solicitado: {}, Disponible: {}, Pendiente: {}",
-                        product.getNombre(), requestedQuantity, cantidadDescontada, cantidadPendiente);
-            } else {
-                log.info("✅ Producto bonificado {} agregado en cantidad completa: {}",
-                        product.getNombre(), requestedQuantity);
-            }
+            log.info("✅ Producto bonificado {} agregado: cantidad={}, stock resultante={}",
+                    product.getNombre(), requestedQuantity, product.getStock());
         });
     }
 
