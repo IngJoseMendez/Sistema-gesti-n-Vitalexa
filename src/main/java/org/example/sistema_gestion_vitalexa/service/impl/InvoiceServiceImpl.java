@@ -290,7 +290,7 @@ public class InvoiceServiceImpl implements InvoiceService {
                                         promoHeaderText += " - Precio: $" + promoPrice.toPlainString();
                                 }
 
-                                // Separador de promoción
+                                // Separador de promoción - SOLO TÍTULO SIN DESGLOSE
                                 com.itextpdf.layout.element.Cell promoHeader = new com.itextpdf.layout.element.Cell(1,
                                                 4)
                                                 .add(new Paragraph(promoHeaderText)
@@ -302,16 +302,8 @@ public class InvoiceServiceImpl implements InvoiceService {
                                                                 .setTextAlignment(TextAlignment.LEFT));
                                 table.addCell(promoHeader);
 
-                                // Listar items de la promoción
-                                // Primero los pagados/principales
-                                promoItems.stream()
-                                                .filter(i -> !Boolean.TRUE.equals(i.getIsFreeItem()))
-                                                .forEach(item -> addItemRow(table, item));
-
-                                // Luego los gratis/bonificados
-                                promoItems.stream()
-                                                .filter(i -> Boolean.TRUE.equals(i.getIsFreeItem()))
-                                                .forEach(item -> addFreeItemRow(table, item));
+                                // ✅ CAMBIO: Ya NO se listan los items individuales de la promoción
+                                // Solo se muestra el título azul con el nombre y precio total
                         }
                 }
 
