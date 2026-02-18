@@ -18,6 +18,7 @@ import org.example.sistema_gestion_vitalexa.service.PaymentService;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -58,15 +59,23 @@ public class PaymentServiceImpl implements PaymentService {
                     ") excede el saldo pendiente ($" + pendingBalance + ")");
         }
 
+        // Si no se especifica fecha real, usar hoy
+        LocalDate actualDate = request.actualPaymentDate() != null
+            ? request.actualPaymentDate()
+            : LocalDate.now();
+
         // Crear el pago
         Payment payment = Payment.builder()
                 .order(order)
                 .amount(request.amount())
-                .paymentDate(LocalDateTime.now())
+                .paymentDate(LocalDateTime.now()) // Timestamp de registro
+                .actualPaymentDate(actualDate) // Fecha real del pago
+                .paymentMethod(request.paymentMethod())
                 .withinDeadline(request.withinDeadline() != null ? request.withinDeadline() : false)
                 .discountApplied(request.discountApplied() != null ? request.discountApplied() : BigDecimal.ZERO)
                 .registeredBy(owner)
                 .notes(request.notes())
+                .isCancelled(false)
                 .build();
 
         Payment savedPayment = paymentRepository.save(payment);
@@ -74,8 +83,8 @@ public class PaymentServiceImpl implements PaymentService {
         // Actualizar estado de pago de la orden
         updateOrderPaymentStatus(order);
 
-        log.info("Pago registrado: ${} para orden {} por {}",
-                request.amount(), order.getId(), ownerUsername);
+        log.info("Pago registrado: ${} para orden {} por {} (fecha real: {})",
+                request.amount(), order.getId(), ownerUsername, actualDate);
 
         return toPaymentResponse(savedPayment);
     }
@@ -86,6 +95,21 @@ public class PaymentServiceImpl implements PaymentService {
                 .stream()
                 .map(this::toPaymentResponse)
                 .toList();
+    }
+
+    @Override
+    public List<PaymentResponse> getActivePaymentsByOrderId(UUID orderId) {
+        return paymentRepository.findActiveByOrderIdOrderByPaymentDateDesc(orderId)
+                .stream()
+                .map(this::toPaymentResponse)
+                .toList();
+    }
+
+    @Override
+    public PaymentResponse getPaymentById(UUID paymentId) {
+        Payment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new BusinessExeption("Pago no encontrado"));
+        return toPaymentResponse(payment);
     }
 
     @Override
@@ -107,6 +131,64 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
+    public PaymentResponse cancelPayment(UUID paymentId, String reason, String ownerUsername) {
+        User owner = userRepository.findByUsername(ownerUsername)
+                .orElseThrow(() -> new BusinessExeption("Usuario no encontrado"));
+
+        Payment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new BusinessExeption("Pago no encontrado"));
+
+        if (Boolean.TRUE.equals(payment.getIsCancelled())) {
+            throw new BusinessExeption("El pago ya está anulado");
+        }
+
+        Order order = payment.getOrder();
+
+        // Marcar como anulado (soft delete)
+        payment.setIsCancelled(true);
+        payment.setCancelledAt(LocalDateTime.now());
+        payment.setCancelledBy(owner);
+        payment.setCancellationReason(reason != null ? reason : "Sin razón especificada");
+
+        Payment updated = paymentRepository.save(payment);
+
+        // Actualizar estado de pago de la orden
+        updateOrderPaymentStatus(order);
+
+        log.info("Pago {} anulado por {} - Razón: {}", paymentId, ownerUsername, reason);
+
+        return toPaymentResponse(updated);
+    }
+
+    @Override
+    public PaymentResponse restorePayment(UUID paymentId, String ownerUsername) {
+        Payment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new BusinessExeption("Pago no encontrado"));
+
+        if (Boolean.FALSE.equals(payment.getIsCancelled())) {
+            throw new BusinessExeption("El pago no está anulado");
+        }
+
+        Order order = payment.getOrder();
+
+        // Restaurar
+        payment.setIsCancelled(false);
+        payment.setCancelledAt(null);
+        payment.setCancelledBy(null);
+        payment.setCancellationReason(null);
+
+        Payment updated = paymentRepository.save(payment);
+
+        // Actualizar estado de pago de la orden
+        updateOrderPaymentStatus(order);
+
+        log.info("Pago {} restaurado por {}", paymentId, ownerUsername);
+
+        return toPaymentResponse(updated);
+    }
+
+    @Override
+    @Deprecated
     public void deletePayment(UUID paymentId, String ownerUsername) {
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new BusinessExeption("Pago no encontrado"));
@@ -148,10 +230,16 @@ public class PaymentServiceImpl implements PaymentService {
                 payment.getOrder().getId(),
                 payment.getAmount(),
                 payment.getPaymentDate(),
+                payment.getActualPaymentDate(),
+                payment.getPaymentMethod(),
                 payment.getWithinDeadline(),
                 payment.getDiscountApplied(),
                 payment.getRegisteredBy().getUsername(),
                 payment.getCreatedAt(),
-                payment.getNotes());
+                payment.getNotes(),
+                payment.getIsCancelled(),
+                payment.getCancelledAt(),
+                payment.getCancelledBy() != null ? payment.getCancelledBy().getUsername() : null,
+                payment.getCancellationReason());
     }
 }

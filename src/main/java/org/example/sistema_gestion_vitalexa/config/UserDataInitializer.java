@@ -34,6 +34,7 @@ public class UserDataInitializer implements CommandLineRunner {
         createOrUpdate("YicelaSandoval", "giselaV123R", Role.VENDEDOR);
         createOrUpdate("SergioVentas", "sergioV123", Role.VENDEDOR);
         createOrUpdate("BodegaMaicao", "BodegaMaicao123", Role.VENDEDOR);
+        createOrUpdate("BodegaValledupar", "BodegaValledupar123", Role.VENDEDOR);
 
     }
 

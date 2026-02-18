@@ -18,12 +18,22 @@ public interface PaymentService {
     PaymentResponse registerPayment(CreatePaymentRequest request, String ownerUsername);
 
     /**
-     * Obtiene los pagos de una orden
+     * Obtiene todos los pagos de una orden (incluyendo anulados)
      */
     List<PaymentResponse> getPaymentsByOrderId(UUID orderId);
 
     /**
-     * Obtiene el total pagado de una orden
+     * Obtiene solo pagos activos de una orden (excluye anulados)
+     */
+    List<PaymentResponse> getActivePaymentsByOrderId(UUID orderId);
+
+    /**
+     * Obtiene un pago específico por ID
+     */
+    PaymentResponse getPaymentById(UUID paymentId);
+
+    /**
+     * Obtiene el total pagado de una orden (solo pagos activos)
      */
     BigDecimal getTotalPaidForOrder(UUID orderId);
 
@@ -33,7 +43,18 @@ public interface PaymentService {
     BigDecimal getPendingBalanceForOrder(UUID orderId);
 
     /**
-     * Elimina un pago (anulación)
+     * Anula un pago (soft delete con auditoría)
      */
+    PaymentResponse cancelPayment(UUID paymentId, String reason, String ownerUsername);
+
+    /**
+     * Restaura un pago anulado
+     */
+    PaymentResponse restorePayment(UUID paymentId, String ownerUsername);
+
+    /**
+     * @deprecated Usar cancelPayment en su lugar
+     */
+    @Deprecated
     void deletePayment(UUID paymentId, String ownerUsername);
 }

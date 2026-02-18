@@ -2,9 +2,11 @@ package org.example.sistema_gestion_vitalexa.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.example.sistema_gestion_vitalexa.enums.PaymentMethod;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -35,6 +37,14 @@ public class Payment {
     @Column(name = "payment_date", nullable = false)
     private LocalDateTime paymentDate;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_method", length = 50)
+    @Builder.Default
+    private PaymentMethod paymentMethod = PaymentMethod.EFECTIVO;
+
+    @Column(name = "actual_payment_date")
+    private LocalDate actualPaymentDate;
+
     @Column(name = "within_deadline")
     @Builder.Default
     private Boolean withinDeadline = false;
@@ -53,4 +63,18 @@ public class Payment {
 
     @Column(columnDefinition = "TEXT")
     private String notes;
+
+    @Column(name = "is_cancelled")
+    @Builder.Default
+    private Boolean isCancelled = false;
+
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cancelled_by")
+    private User cancelledBy;
+
+    @Column(name = "cancellation_reason", columnDefinition = "TEXT")
+    private String cancellationReason;
 }

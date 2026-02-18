@@ -1,8 +1,11 @@
 package org.example.sistema_gestion_vitalexa.service;
 
 import org.example.sistema_gestion_vitalexa.dto.ClientBalanceDTO;
+import org.example.sistema_gestion_vitalexa.dto.OrderPendingDTO;
 
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -50,4 +53,43 @@ public interface ClientBalanceService {
      * Agregar Saldo a Favor a un cliente
      */
     void addBalanceFavor(UUID clientId, BigDecimal amount, String ownerUsername);
+
+    /**
+     * Exportar cartera a Excel con filtros
+     */
+    byte[] exportBalanceToExcel(
+            UUID vendedorId,
+            LocalDate startDate,
+            LocalDate endDate,
+            Boolean onlyWithDebt,
+            String requestingUsername
+    ) throws IOException;
+
+    /**
+     * Obtener facturas pendientes de un cliente con filtros de fecha
+     */
+    List<OrderPendingDTO> getPendingInvoicesByClient(
+            UUID clientId,
+            LocalDate startDate,
+            LocalDate endDate
+    );
+
+    /**
+     * Obtener TODAS las facturas de un cliente (pagadas y pendientes) con historial completo de pagos
+     */
+    List<OrderPendingDTO> getAllInvoicesByClient(
+            UUID clientId,
+            LocalDate startDate,
+            LocalDate endDate
+    );
+
+    /**
+     * Calcular días de mora de un cliente
+     */
+    Integer calculateDaysOverdue(UUID clientId);
+
+    /**
+     * Obtener última fecha de pago de un cliente
+     */
+    LocalDate getLastPaymentDate(UUID clientId);
 }

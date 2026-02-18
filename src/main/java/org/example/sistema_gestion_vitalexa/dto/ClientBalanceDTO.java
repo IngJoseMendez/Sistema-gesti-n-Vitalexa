@@ -1,6 +1,7 @@
 package org.example.sistema_gestion_vitalexa.dto;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -20,6 +21,8 @@ public record ClientBalanceDTO(
                 BigDecimal pendingBalance, // Saldo pendiente
                 BigDecimal balanceFavor, // Saldo a Favor
                 Integer pendingOrdersCount, // Cantidad de órdenes pendientes de pago
-                List<OrderPendingDTO> pendingOrders // Detalle de órdenes pendientes
+                List<OrderPendingDTO> pendingOrders, // Detalle de órdenes pendientes
+                LocalDate lastPaymentDate, // Última fecha de pago
+                Integer daysOverdue // Días de mora
 ) {
 }
