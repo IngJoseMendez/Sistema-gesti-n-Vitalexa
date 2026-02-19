@@ -5,18 +5,21 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 public record OrderItemResponse(UUID id, // ID único del OrderItem para actualizaciones (ETA, etc)
-                UUID productId, String productName, Integer cantidad, BigDecimal precioUnitario, BigDecimal subtotal,
+        UUID productId, String productName, Integer cantidad, BigDecimal precioUnitario, BigDecimal subtotal,
 
-                // Campos para productos sin stock
-                Boolean outOfStock, LocalDate estimatedArrivalDate, String estimatedArrivalNote,
-                Integer cantidadDescontada, Integer cantidadPendiente,
+        // Campos para productos sin stock
+        Boolean outOfStock, LocalDate estimatedArrivalDate, String estimatedArrivalNote,
+        Integer cantidadDescontada, Integer cantidadPendiente,
 
-                // Campos para promociones
-                UUID promotionId, String promotionName, Boolean isPromotionItem, Boolean isFreeItem,
+        // Campos para promociones
+        UUID promotionId, String promotionName, Boolean isPromotionItem, Boolean isFreeItem,
 
-                // ✅ NUEVOS: Identificadores únicos de promociones y precios fijos
-                UUID promotionInstanceId, BigDecimal promotionPackPrice, Integer promotionGroupIndex,
+        // ✅ NUEVOS: Identificadores únicos de promociones y precios fijos
+        UUID promotionInstanceId, BigDecimal promotionPackPrice, Integer promotionGroupIndex,
 
-                // Nuevos campos
-                Boolean isBonified, Boolean isFreightItem) {
+        // Nuevos campos
+        Boolean isBonified, Boolean isFreightItem,
+
+        // ✅ Campos para productos especiales y promociones especiales
+        UUID specialProductId, UUID specialPromotionId) {
 }

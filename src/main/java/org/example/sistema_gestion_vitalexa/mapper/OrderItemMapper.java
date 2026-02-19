@@ -10,7 +10,7 @@ public interface OrderItemMapper {
 
     @Mapping(source = "id", target = "id")
     @Mapping(source = "product.id", target = "productId")
-    @Mapping(source = "product.nombre", target = "productName")
+    @Mapping(target = "productName", expression = "java(getProductName(item))")
     @Mapping(target = "subtotal", expression = "java(item.getSubTotal())")
     @Mapping(target = "promotionId", expression = "java(getPromotionId(item))")
     @Mapping(target = "promotionName", expression = "java(getPromotionName(item))")
@@ -22,7 +22,21 @@ public interface OrderItemMapper {
     @Mapping(source = "promotionGroupIndex", target = "promotionGroupIndex")
     @Mapping(source = "cantidadDescontada", target = "cantidadDescontada")
     @Mapping(source = "cantidadPendiente", target = "cantidadPendiente")
+    // ✅ Campos para productos y promociones especiales
+    @Mapping(target = "specialProductId", expression = "java(getSpecialProductId(item))")
+    @Mapping(target = "specialPromotionId", expression = "java(getSpecialPromotionId(item))")
     OrderItemResponse toResponse(OrderItem item);
+
+    // ✅ Obtener nombre del producto correcto (especial si existe, sino padre)
+    default String getProductName(OrderItem item) {
+        if (item.getSpecialProduct() != null) {
+            return item.getSpecialProduct().getNombre();
+        }
+        if (item.getProduct() != null) {
+            return item.getProduct().getNombre();
+        }
+        return "Producto desconocido";
+    }
 
     // ✅ Obtener ID de la promoción correcta (especial o padre)
     default java.util.UUID getPromotionId(OrderItem item) {
@@ -42,6 +56,22 @@ public interface OrderItemMapper {
         }
         if (item.getPromotion() != null) {
             return item.getPromotion().getNombre();
+        }
+        return null;
+    }
+
+    // ✅ Obtener ID del producto especial vinculado (si existe)
+    default java.util.UUID getSpecialProductId(OrderItem item) {
+        if (item.getSpecialProduct() != null) {
+            return item.getSpecialProduct().getId();
+        }
+        return null;
+    }
+
+    // ✅ Obtener ID de la promoción especial vinculada (si existe)
+    default java.util.UUID getSpecialPromotionId(OrderItem item) {
+        if (item.getSpecialPromotion() != null) {
+            return item.getSpecialPromotion().getId();
         }
         return null;
     }

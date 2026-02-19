@@ -63,7 +63,8 @@ public class OrderServiceImpl implements OrdenService {
         boolean hasBonifiedItems = request.bonifiedItems() != null && !request.bonifiedItems().isEmpty();
 
         if (!hasItems && !hasPromotions && !hasBonifiedItems) {
-            throw new BusinessExeption("La venta debe tener al menos un producto, una promoción o productos bonificados");
+            throw new BusinessExeption(
+                    "La venta debe tener al menos un producto, una promoción o productos bonificados");
         }
 
         User currentUser = userRepository.findByUsername(username)
@@ -694,7 +695,8 @@ public class OrderServiceImpl implements OrdenService {
             item.setSubTotal(BigDecimal.ZERO);
             item.setIsFreightItem(true);
 
-            // ✅ IGUAL QUE PRODUCTOS NORMALES: Siempre descontar la cantidad completa (permite stock negativo)
+            // ✅ IGUAL QUE PRODUCTOS NORMALES: Siempre descontar la cantidad completa
+            // (permite stock negativo)
             item.setCantidadDescontada(requestedQuantity);
             item.setCantidadPendiente(0);
             item.setOutOfStock(false);
@@ -726,7 +728,8 @@ public class OrderServiceImpl implements OrdenService {
             log.info("Buscando promoción (Normal o Especial) con ID: {}", id);
 
             // 1. INTENTAR COMO SPECIAL PROMOTION
-            // ✅ CRÍTICO: Usar repositorio directamente para evitar excepciones que marcan la transacción para rollback
+            // ✅ CRÍTICO: Usar repositorio directamente para evitar excepciones que marcan
+            // la transacción para rollback
             SpecialPromotion specialPromotion = null;
             Promotion promotion = null;
             boolean isSpecial = false;
@@ -1100,7 +1103,8 @@ public class OrderServiceImpl implements OrdenService {
         boolean hasBonifiedItems = request.bonifiedItems() != null && !request.bonifiedItems().isEmpty();
 
         if (!hasItems && !hasPromotions && !hasBonifiedItems) {
-            throw new BusinessExeption("La orden debe tener al menos un producto, una promoción o productos bonificados");
+            throw new BusinessExeption(
+                    "La orden debe tener al menos un producto, una promoción o productos bonificados");
         }
 
         // CAPTURAR IDs DE PROMOCIONES ACTUALES **ANTES** DE LIMPIAR ITEMS
@@ -1145,7 +1149,8 @@ public class OrderServiceImpl implements OrdenService {
             }
         }
 
-        // RESTAURAR STOCK de items anteriores (normales, bonificados, flete que se reemplazan)
+        // RESTAURAR STOCK de items anteriores (normales, bonificados, flete que se
+        // reemplazan)
         // NO restaurar items de promoción ni items de flete que se van a preservar
         order.getItems().forEach(item -> {
             Product product = item.getProduct();
@@ -1153,9 +1158,9 @@ public class OrderServiceImpl implements OrdenService {
             // No restaurar items que se van a preservar
             if (idsToPreserve.contains(item.getId())) {
                 log.info("Item preservado (no restaura stock): {} - tipo: {}",
-                    product.getNombre(),
-                    Boolean.TRUE.equals(item.getIsPromotionItem()) ? "PROMO" :
-                    Boolean.TRUE.equals(item.getIsFreightItem()) ? "FLETE" : "OTRO");
+                        product.getNombre(),
+                        Boolean.TRUE.equals(item.getIsPromotionItem()) ? "PROMO"
+                                : Boolean.TRUE.equals(item.getIsFreightItem()) ? "FLETE" : "OTRO");
                 return;
             }
 
@@ -1181,11 +1186,14 @@ public class OrderServiceImpl implements OrdenService {
                 product.increaseStock(stockToRestore);
 
                 if (Boolean.TRUE.equals(item.getIsBonified())) {
-                    log.info("✅ Stock restaurado (BONIFICADO) en edición para '{}': +{}", product.getNombre(), stockToRestore);
+                    log.info("✅ Stock restaurado (BONIFICADO) en edición para '{}': +{}", product.getNombre(),
+                            stockToRestore);
                 } else if (Boolean.TRUE.equals(item.getIsFreightItem())) {
-                    log.info("✅ Stock restaurado (FLETE-REEMPLAZADO) en edición para '{}': +{}", product.getNombre(), stockToRestore);
+                    log.info("✅ Stock restaurado (FLETE-REEMPLAZADO) en edición para '{}': +{}", product.getNombre(),
+                            stockToRestore);
                 } else {
-                    log.info("✅ Stock restaurado (NORMAL) en edición para '{}': +{}", product.getNombre(), stockToRestore);
+                    log.info("✅ Stock restaurado (NORMAL) en edición para '{}': +{}", product.getNombre(),
+                            stockToRestore);
                 }
             }
         });
@@ -1269,17 +1277,58 @@ public class OrderServiceImpl implements OrdenService {
                     return;
                 }
 
-                Product product = productService.findEntityById(itemReq.productId());
+                // ✅ SOPORTE PRODUCTOS ESPECIALES (mismo patrón que processOrderItems)
+                boolean isSpecial = itemReq.specialProductId() != null;
+                SpecialProduct specialProduct = null;
 
-                // En edición (Admin), SIEMPRE permitimos out of stock implícitamente si se
-                // desea, pero mantenemos coherencia de inventario
+                if (isSpecial) {
+                    specialProduct = specialProductService.findEntityById(itemReq.specialProductId());
+                }
+
+                Product product = null;
+                if (itemReq.productId() != null) {
+                    product = productService.findEntityById(itemReq.productId());
+                } else if (specialProduct != null && specialProduct.getParentProduct() != null) {
+                    product = specialProduct.getParentProduct();
+                } else {
+                    if (specialProduct != null) {
+                        throw new BusinessExeption(
+                                "Error interno: Producto especial sin producto base no soportado en edición de orden.");
+                    } else {
+                        log.warn("Item ignorado en updateOrder por falta de ID: {}", itemReq);
+                        return;
+                    }
+                }
+
+                // Datos efectivos (Stock, Nombre, Precio)
+                int currentStock;
+                BigDecimal effectivePrice;
+
+                if (isSpecial && specialProduct != null) {
+                    currentStock = specialProduct.getEffectiveStock();
+                    effectivePrice = specialProduct.getPrecio();
+                } else {
+                    currentStock = product.getStock();
+                    effectivePrice = product.getPrecio();
+                }
 
                 int requestedQuantity = itemReq.cantidad();
-                int currentStock = product.getStock();
                 boolean hasStock = currentStock >= requestedQuantity;
 
                 // LÓGICA UNIFICADA: SIEMPRE VENDER EN UNA SOLA LÍNEA (Stock negativo permitido)
                 OrderItem item = new OrderItem(product, requestedQuantity);
+
+                // Ajustar precio y vincular specialProduct
+                if (specialProduct != null) {
+                    item.setPrecioUnitario(effectivePrice);
+                    item.setSubTotal(effectivePrice.multiply(BigDecimal.valueOf(requestedQuantity)));
+                    item.setSpecialProduct(specialProduct);
+                    specialProduct.decreaseStock(requestedQuantity);
+                    log.info("✅ Producto especial procesado en edición: {} (precio: {}, cantidad: {})",
+                            specialProduct.getNombre(), effectivePrice, requestedQuantity);
+                } else {
+                    product.decreaseStock(requestedQuantity);
+                }
 
                 if (hasStock) {
                     item.setOutOfStock(false);
@@ -1293,7 +1342,18 @@ public class OrderServiceImpl implements OrdenService {
                 item.setCantidadDescontada(requestedQuantity);
                 item.setCantidadPendiente(0);
 
-                product.decreaseStock(requestedQuantity);
+                // Vincular specialPromotionId si viene en el request
+                if (itemReq.specialPromotionId() != null) {
+                    try {
+                        org.example.sistema_gestion_vitalexa.entity.SpecialPromotion specialPromo = specialPromotionService
+                                .findEntityById(itemReq.specialPromotionId());
+                        item.setSpecialPromotion(specialPromo);
+                    } catch (Exception e) {
+                        log.warn("⚠️ No se pudo vincular specialPromotionId {} al item: {}",
+                                itemReq.specialPromotionId(), e.getMessage());
+                    }
+                }
+
                 order.addItem(item);
             });
         } else if (isPromoOrder && hasItems) {
@@ -1600,7 +1660,8 @@ public class OrderServiceImpl implements OrdenService {
                     org.example.sistema_gestion_vitalexa.entity.Promotion promoForGifts = null;
 
                     try {
-                        if (item.getSpecialPromotion() != null && item.getSpecialPromotion().getParentPromotion() != null) {
+                        if (item.getSpecialPromotion() != null
+                                && item.getSpecialPromotion().getParentPromotion() != null) {
                             promoForGifts = item.getSpecialPromotion().getParentPromotion();
                         } else if (item.getPromotion() != null) {
                             promoForGifts = item.getPromotion();
@@ -1641,13 +1702,13 @@ public class OrderServiceImpl implements OrdenService {
                 // ✅ CASO 5: Items de flete (restaurar solo lo que se descontó)
                 else if (Boolean.TRUE.equals(item.getIsFreightItem())) {
                     Integer cantidadDescontada = item.getCantidadDescontada() != null
-                        ? item.getCantidadDescontada()
-                        : item.getCantidad();
+                            ? item.getCantidadDescontada()
+                            : item.getCantidad();
 
                     if (cantidadDescontada > 0) {
                         product.increaseStock(cantidadDescontada);
                         log.info("✅ Stock restaurado (FLETE) para '{}': +{}",
-                            product.getNombre(), cantidadDescontada);
+                                product.getNombre(), cantidadDescontada);
                     }
                 }
             }
@@ -1673,7 +1734,8 @@ public class OrderServiceImpl implements OrdenService {
             item.setPrecioUnitario(BigDecimal.ZERO);
             item.setSubTotal(BigDecimal.ZERO);
 
-            // ✅ IGUAL QUE PRODUCTOS NORMALES: Siempre descontar la cantidad completa (permite stock negativo)
+            // ✅ IGUAL QUE PRODUCTOS NORMALES: Siempre descontar la cantidad completa
+            // (permite stock negativo)
             item.setCantidadDescontada(requestedQuantity);
             item.setCantidadPendiente(0);
             item.setOutOfStock(false);
