@@ -104,12 +104,6 @@ public class InvoiceServiceImpl implements InvoiceService {
                         Paragraph companyName = new Paragraph("VITALEXA");
                 }
 
-                Paragraph slogan = new Paragraph("Sistema de Gestión de Pedidos")
-                                .setFontSize(12)
-                                .setTextAlignment(TextAlignment.CENTER)
-                                .setMarginBottom(20);
-                document.add(slogan);
-
                 // Watermark para facturas S/R -> REMOVIDO: Se usa estilo estándar
 
                 SolidLine lineDrawer = new SolidLine();
@@ -165,6 +159,9 @@ public class InvoiceServiceImpl implements InvoiceService {
                         String direccion = order.getCliente().getDireccion() != null ? order.getCliente().getDireccion()
                                         : "---";
                         String nit = order.getCliente().getNit() != null ? order.getCliente().getNit() : "---";
+                        String representanteLegal = order.getCliente().getRepresentanteLegal() != null
+                                        ? order.getCliente().getRepresentanteLegal()
+                                        : "---";
 
                         addInfoCell(clientTable, "Cliente:", order.getCliente().getNombre(), true, backgroundColor);
                         addInfoCell(clientTable, "NIT:", nit, true, backgroundColor);
@@ -172,6 +169,19 @@ public class InvoiceServiceImpl implements InvoiceService {
                         addInfoCell(clientTable, "Email:", email, true, backgroundColor);
 
                         document.add(clientTable);
+
+                        // Fila para Representante Legal
+                        Table repTable = new Table(
+                                        UnitValue.createPercentArray(new float[] { 1.5f, 1.5f, 1.5f, 1.5f }))
+                                        .useAllAvailableWidth()
+                                        .setMarginBottom(5);
+
+                        addInfoCell(repTable, "Representante Legal:", representanteLegal, true, backgroundColor);
+                        addInfoCell(repTable, "", "", false, backgroundColor);
+                        addInfoCell(repTable, "", "", false, backgroundColor);
+                        addInfoCell(repTable, "", "", false, backgroundColor);
+
+                        document.add(repTable);
 
                         // Tercera línea: Dirección (ocupa toda la fila)
                         Table addressTable = new Table(UnitValue.createPercentArray(new float[] { 1f }))

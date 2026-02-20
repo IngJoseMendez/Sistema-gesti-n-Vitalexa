@@ -641,4 +641,27 @@ public class ProductAdminController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
+
+    /**
+     * GET /api/admin/products/inventory/stock-report
+     * Reporte completo de inventario: stock real vs stock comprometido en pedidos activos.
+     *
+     * Cada producto retorna:
+     *   - stockReal:          unidades registradas en BD
+     *   - stockComprometido:  unidades en pedidos que NO están COMPLETADO/CANCELADO/ANULADA
+     *   - stockDisponible:    stockReal - stockComprometido (puede ser negativo)
+     */
+    @GetMapping("/inventory/stock-report")
+    public ResponseEntity<List<org.example.sistema_gestion_vitalexa.dto.StockSummaryDTO>> getStockReport() {
+        return ResponseEntity.ok(productService.getStockReport());
+    }
+
+    /**
+     * GET /api/admin/products/inventory/stock-alerts
+     * Solo productos con stockDisponible NEGATIVO → requieren atención inmediata.
+     */
+    @GetMapping("/inventory/stock-alerts")
+    public ResponseEntity<List<org.example.sistema_gestion_vitalexa.dto.StockSummaryDTO>> getStockAlerts() {
+        return ResponseEntity.ok(productService.getStockAlerts());
+    }
 }

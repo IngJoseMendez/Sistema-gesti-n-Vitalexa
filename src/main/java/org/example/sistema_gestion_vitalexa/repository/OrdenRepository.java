@@ -134,6 +134,8 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
                         LEFT JOIN FETCH o.items items
                         LEFT JOIN FETCH items.product
                         LEFT JOIN FETCH items.promotion
+                        LEFT JOIN FETCH o.vendedor
+                        LEFT JOIN FETCH o.cliente
                         WHERE o.id = :orderId
                         """)
         Optional<Order> findByIdWithPromotions(@Param("orderId") UUID orderId);

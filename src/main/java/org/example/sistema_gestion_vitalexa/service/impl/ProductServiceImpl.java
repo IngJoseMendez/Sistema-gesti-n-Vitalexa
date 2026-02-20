@@ -5,14 +5,16 @@ import lombok.RequiredArgsConstructor;
 import org.example.sistema_gestion_vitalexa.dto.*;
 import org.example.sistema_gestion_vitalexa.entity.Product;
 import org.example.sistema_gestion_vitalexa.entity.SpecialProduct;
+import org.example.sistema_gestion_vitalexa.enums.OrdenStatus;
 import org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption;
 import org.example.sistema_gestion_vitalexa.mapper.ProductMapper;
+import org.example.sistema_gestion_vitalexa.repository.OrdenItemRepository;
 import org.example.sistema_gestion_vitalexa.repository.ProductRepository;
+import org.example.sistema_gestion_vitalexa.service.InventoryMovementService;
 import org.example.sistema_gestion_vitalexa.service.NotificationService;
+import org.example.sistema_gestion_vitalexa.service.ProductImageService;
 import org.example.sistema_gestion_vitalexa.service.ProductService;
 import org.example.sistema_gestion_vitalexa.service.ProductTagService;
-import org.example.sistema_gestion_vitalexa.service.ProductImageService;
-import org.example.sistema_gestion_vitalexa.service.InventoryMovementService;
 import org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +38,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductImageService imageService;
     private final InventoryMovementService movementService;
     private final org.example.sistema_gestion_vitalexa.repository.SpecialProductRepository specialProductRepository;
+    private final OrdenItemRepository ordenItemRepository;
 
     // Helper para decodificar y guardar imagen Base64
     private String handleBase64Image(String base64Image, String originalFilename) {
@@ -464,13 +467,15 @@ public class ProductServiceImpl implements ProductService {
 
             org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("Inventario");
 
-            // Header Style
+            // ---- Estilos ----
             org.apache.poi.ss.usermodel.CellStyle headerStyle = workbook.createCellStyle();
             org.apache.poi.ss.usermodel.Font headerFont = workbook.createFont();
             headerFont.setBold(true);
             headerStyle.setFont(headerFont);
+            headerStyle.setAlignment(org.apache.poi.ss.usermodel.HorizontalAlignment.CENTER);
+            headerStyle.setFillForegroundColor(org.apache.poi.ss.usermodel.IndexedColors.GREY_25_PERCENT.getIndex());
+            headerStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
 
-            // Group Layout Style (Centered, Large, Bold)
             org.apache.poi.ss.usermodel.CellStyle groupStyle = workbook.createCellStyle();
             org.apache.poi.ss.usermodel.Font groupFont = workbook.createFont();
             groupFont.setBold(true);
@@ -479,21 +484,36 @@ public class ProductServiceImpl implements ProductService {
             groupStyle.setAlignment(org.apache.poi.ss.usermodel.HorizontalAlignment.CENTER);
             groupStyle.setVerticalAlignment(org.apache.poi.ss.usermodel.VerticalAlignment.CENTER);
 
-            // Headers
-            org.apache.poi.ss.usermodel.Row headerRow = sheet.createRow(0);
-            String[] columns = { "Letra", "ID", "Nombre", "Descripción", "Precio", "Stock Actual", "Punto de Reorden",
-                    "Activo",
-                    "Etiqueta" };
+            // Estilo alerta roja (stock negativo)
+            org.apache.poi.ss.usermodel.CellStyle alertStyle = workbook.createCellStyle();
+            org.apache.poi.ss.usermodel.Font alertFont = workbook.createFont();
+            alertFont.setBold(true);
+            alertFont.setColor(org.apache.poi.ss.usermodel.IndexedColors.RED.getIndex());
+            alertStyle.setFont(alertFont);
+            alertStyle.setAlignment(org.apache.poi.ss.usermodel.HorizontalAlignment.CENTER);
 
+            org.apache.poi.ss.usermodel.CellStyle centerStyle = workbook.createCellStyle();
+            centerStyle.setAlignment(org.apache.poi.ss.usermodel.HorizontalAlignment.CENTER);
+
+            // ---- Encabezados ----
+            // Columnas: #letra | Nombre | Precio | En Bodega | En Pedidos | Sistema | Activo
+            String[] columns = { "#", "Nombre", "Precio", "En Bodega", "En Pedidos", "Sistema", "Activo" };
+            org.apache.poi.ss.usermodel.Row headerRow = sheet.createRow(0);
             for (int i = 0; i < columns.length; i++) {
                 org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
                 cell.setCellValue(columns[i]);
                 cell.setCellStyle(headerStyle);
             }
 
-            // Data
+            // ---- Datos ----
+            List<StockSummaryDTO> stockData = getStockReport();
+            // Construir mapa productId -> StockSummaryDTO para lookup rápido
+            java.util.Map<UUID, StockSummaryDTO> stockMap = new java.util.HashMap<>();
+            for (StockSummaryDTO s : stockData) {
+                stockMap.put(s.productId(), s);
+            }
+
             List<ProductResponse> products = new java.util.ArrayList<>(findAllAdmin());
-            // Sort alphabetically by name
             products.sort((p1, p2) -> {
                 String n1 = p1.nombre() != null ? p1.nombre() : "";
                 String n2 = p2.nombre() != null ? p2.nombre() : "";
@@ -506,10 +526,17 @@ public class ProductServiceImpl implements ProductService {
 
             for (int i = 0; i < products.size(); i++) {
                 ProductResponse product = products.get(i);
+                StockSummaryDTO stock = stockMap.get(product.id());
+
+                int enBodega     = stock != null ? stock.stockFisicoReal() : (product.stock() != null ? product.stock() : 0);
+                int enPedidos    = stock != null ? (stock.stockComprometido() != null ? stock.stockComprometido() : 0) : 0;
+                int sistema      = stock != null ? (stock.stockEnBD() != null ? stock.stockEnBD() : 0) : (product.stock() != null ? product.stock() : 0);
+                boolean alerta   = sistema < 0;
+
                 org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowIdx);
                 int colIdx = 0;
 
-                // Determine grouping letter
+                // Columna letra grupo
                 String name = product.nombre() != null ? product.nombre().trim() : "";
                 char firstChar = name.isEmpty() ? '#' : Character.toUpperCase(name.charAt(0));
 
@@ -519,10 +546,8 @@ public class ProductServiceImpl implements ProductService {
                     cell.setCellValue(String.valueOf(currentLetter));
                     cell.setCellStyle(groupStyle);
                 } else if (firstChar != currentLetter) {
-                    // New group started, merge previous if necessary
                     if (rowIdx - 1 > startRow) {
-                        sheet.addMergedRegion(
-                                new org.apache.poi.ss.util.CellRangeAddress(startRow, rowIdx - 1, 0, 0));
+                        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(startRow, rowIdx - 1, 0, 0));
                     }
                     currentLetter = firstChar;
                     startRow = rowIdx;
@@ -534,26 +559,43 @@ public class ProductServiceImpl implements ProductService {
                 }
                 colIdx++;
 
-                row.createCell(colIdx++).setCellValue(product.id().toString());
                 row.createCell(colIdx++).setCellValue(product.nombre());
-                row.createCell(colIdx++).setCellValue(product.descripcion() != null ? product.descripcion() : "");
-                row.createCell(colIdx++).setCellValue(
-                        product.precio() != null ? product.precio().doubleValue() : 0.0);
-                row.createCell(colIdx++).setCellValue(product.stock() != null ? product.stock() : 0);
-                row.createCell(colIdx++)
-                        .setCellValue(product.reorderPoint() != null ? product.reorderPoint() : 0);
+                row.createCell(colIdx++).setCellValue(product.precio() != null ? product.precio().doubleValue() : 0.0);
+
+                org.apache.poi.ss.usermodel.Cell bodegaCell = row.createCell(colIdx++);
+                bodegaCell.setCellValue(enBodega);
+                bodegaCell.setCellStyle(centerStyle);
+
+                org.apache.poi.ss.usermodel.Cell pedidosCell = row.createCell(colIdx++);
+                pedidosCell.setCellValue(enPedidos);
+                pedidosCell.setCellStyle(centerStyle);
+
+                org.apache.poi.ss.usermodel.Cell sistemaCell = row.createCell(colIdx++);
+                sistemaCell.setCellValue(sistema);
+                sistemaCell.setCellStyle(alerta ? alertStyle : centerStyle);
+
                 row.createCell(colIdx++).setCellValue(product.active() ? "Sí" : "No");
-                row.createCell(colIdx++).setCellValue(product.tagName() != null ? product.tagName() : "-");
 
                 rowIdx++;
             }
 
-            // Merge last group
+            // Merge último grupo
             if (rowIdx - 1 > startRow) {
                 sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(startRow, rowIdx - 1, 0, 0));
             }
 
-            // Auto-size columns
+            // Leyenda debajo de la tabla
+            rowIdx++;
+            org.apache.poi.ss.usermodel.Row legendRow1 = sheet.createRow(rowIdx++);
+            legendRow1.createCell(0).setCellValue("Leyenda:");
+            org.apache.poi.ss.usermodel.Row legendRow2 = sheet.createRow(rowIdx++);
+            legendRow2.createCell(0).setCellValue("En Bodega = unidades físicas reales en almacén");
+            org.apache.poi.ss.usermodel.Row legendRow3 = sheet.createRow(rowIdx++);
+            legendRow3.createCell(0).setCellValue("En Pedidos = unidades comprometidas en pedidos activos (pendientes de despacho)");
+            org.apache.poi.ss.usermodel.Row legendRow4 = sheet.createRow(rowIdx);
+            legendRow4.createCell(0).setCellValue("Sistema = stock registrado en BD (puede ser negativo si hay más pedidos que stock)");
+
+            // Auto-size columnas
             for (int i = 0; i < columns.length; i++) {
                 sheet.autoSizeColumn(i);
             }
@@ -575,102 +617,152 @@ public class ProductServiceImpl implements ProductService {
                     com.itextpdf.kernel.geom.PageSize.A4.rotate());
             document.setMargins(20, 20, 20, 20);
 
-            // Title
-            com.itextpdf.layout.element.Paragraph title = new com.itextpdf.layout.element.Paragraph(
-                    "Reporte de Inventario - Vitalexa")
-                    .setFontSize(18)
-                    .setBold()
+            // Colores
+            com.itextpdf.kernel.colors.DeviceRgb headerBg  = new com.itextpdf.kernel.colors.DeviceRgb(52, 73, 94);
+            com.itextpdf.kernel.colors.DeviceRgb rowAlt     = new com.itextpdf.kernel.colors.DeviceRgb(245, 245, 245);
+            com.itextpdf.kernel.colors.DeviceRgb alertRed   = new com.itextpdf.kernel.colors.DeviceRgb(231, 76, 60);
+            com.itextpdf.kernel.colors.DeviceRgb alertRedBg = new com.itextpdf.kernel.colors.DeviceRgb(255, 235, 235);
+            com.itextpdf.kernel.colors.DeviceRgb groupBg    = new com.itextpdf.kernel.colors.DeviceRgb(189, 195, 199);
+            com.itextpdf.kernel.colors.Color    white       = com.itextpdf.kernel.colors.ColorConstants.WHITE;
+
+            // ---- Título ----
+            document.add(new com.itextpdf.layout.element.Paragraph("Reporte de Inventario — Vitalexa")
+                    .setFontSize(18).setBold()
+                    .setFontColor(headerBg)
                     .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER)
-                    .setMarginBottom(10);
-            document.add(title);
+                    .setMarginBottom(4));
 
-            // Date
             document.add(new com.itextpdf.layout.element.Paragraph(
-                    "Fecha: " + java.time.LocalDateTime.now()
+                    "Generado: " + java.time.LocalDateTime.now()
                             .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss")))
-                    .setFontSize(10)
+                    .setFontSize(9)
+                    .setFontColor(com.itextpdf.kernel.colors.ColorConstants.GRAY)
                     .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.RIGHT)
-                    .setMarginBottom(20));
+                    .setMarginBottom(14));
 
-            // Table
-            float[] columnWidths = { 1, 2, 4, 2, 2, 2, 2, 3 }; // Adjusted widths
+            // ---- Tabla ----
+            // Columnas: # | Nombre | Precio | En Bodega | En Pedidos | Sistema | Activo
+            float[] colWidths = { 1f, 5f, 2f, 2f, 2f, 2f, 1.5f };
             com.itextpdf.layout.element.Table table = new com.itextpdf.layout.element.Table(
-                    com.itextpdf.layout.properties.UnitValue.createPercentArray(columnWidths));
-            table.setWidth(com.itextpdf.layout.properties.UnitValue.createPercentValue(100));
+                    com.itextpdf.layout.properties.UnitValue.createPercentArray(colWidths))
+                    .setWidth(com.itextpdf.layout.properties.UnitValue.createPercentValue(100));
 
-            // Headers
-            String[] headers = { "#", "ID (Corto)", "Nombre", "Precio", "Stock", "Reorden", "Activo", "Etiqueta" };
-            for (String header : headers) {
+            String[] headers = { "#", "Nombre", "Precio", "En Bodega", "En Pedidos", "Sistema", "Activo" };
+            for (String h : headers) {
                 table.addHeaderCell(new com.itextpdf.layout.element.Cell()
-                        .add(new com.itextpdf.layout.element.Paragraph(header).setBold())
-                        .setBackgroundColor(com.itextpdf.kernel.colors.ColorConstants.LIGHT_GRAY)
-                        .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER));
+                        .add(new com.itextpdf.layout.element.Paragraph(h).setBold().setFontSize(9).setFontColor(white))
+                        .setBackgroundColor(headerBg)
+                        .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER)
+                        .setPadding(4));
             }
 
-            // Data
+            // ---- Datos ----
+            List<StockSummaryDTO> stockData = getStockReport();
+            java.util.Map<UUID, StockSummaryDTO> stockMap = new java.util.HashMap<>();
+            for (StockSummaryDTO s : stockData) {
+                stockMap.put(s.productId(), s);
+            }
+
             List<ProductResponse> products = new java.util.ArrayList<>(findAllAdmin());
-            // Sort alphabetically by name
             products.sort((p1, p2) -> {
                 String n1 = p1.nombre() != null ? p1.nombre() : "";
                 String n2 = p2.nombre() != null ? p2.nombre() : "";
                 return n1.compareToIgnoreCase(n2);
             });
 
-            // Count occurrences for rowspan
             java.util.Map<Character, Integer> groupCounts = new java.util.HashMap<>();
-            for (ProductResponse product : products) {
-                String name = product.nombre() != null ? product.nombre().trim() : "";
-                char firstChar = name.isEmpty() ? '#' : Character.toUpperCase(name.charAt(0));
-                groupCounts.put(firstChar, groupCounts.getOrDefault(firstChar, 0) + 1);
+            for (ProductResponse p : products) {
+                String nm = p.nombre() != null ? p.nombre().trim() : "";
+                char fc = nm.isEmpty() ? '#' : Character.toUpperCase(nm.charAt(0));
+                groupCounts.put(fc, groupCounts.getOrDefault(fc, 0) + 1);
             }
 
             char currentLetter = '\0';
+            int rowNum = 0;
 
             for (ProductResponse product : products) {
-                // Determine group letter
-                String name = product.nombre() != null ? product.nombre().trim() : "";
-                char firstChar = name.isEmpty() ? '#' : Character.toUpperCase(name.charAt(0));
+                StockSummaryDTO stock = stockMap.get(product.id());
 
+                int enBodega  = stock != null ? stock.stockFisicoReal() : (product.stock() != null ? product.stock() : 0);
+                int enPedidos = stock != null && stock.stockComprometido() != null ? stock.stockComprometido() : 0;
+                int sistema   = stock != null && stock.stockEnBD()         != null ? stock.stockEnBD()         : (product.stock() != null ? product.stock() : 0);
+                boolean alerta = sistema < 0;
+
+                String nm = product.nombre() != null ? product.nombre().trim() : "";
+                char firstChar = nm.isEmpty() ? '#' : Character.toUpperCase(nm.charAt(0));
+
+                // Celda de letra de grupo (con rowspan)
                 if (firstChar != currentLetter) {
                     currentLetter = firstChar;
-                    int rowSpan = groupCounts.getOrDefault(currentLetter, 1);
-
-                    // Merged Group Cell
-                    table.addCell(new com.itextpdf.layout.element.Cell(rowSpan, 1)
+                    int span = groupCounts.getOrDefault(currentLetter, 1);
+                    table.addCell(new com.itextpdf.layout.element.Cell(span, 1)
                             .add(new com.itextpdf.layout.element.Paragraph(String.valueOf(currentLetter))
-                                    .setBold()
-                                    .setFontSize(14)) // Larger font
+                                    .setBold().setFontSize(13))
+                            .setBackgroundColor(groupBg)
                             .setVerticalAlignment(com.itextpdf.layout.properties.VerticalAlignment.MIDDLE)
-                            .setHorizontalAlignment(com.itextpdf.layout.properties.HorizontalAlignment.CENTER)
-                            .setBackgroundColor(com.itextpdf.kernel.colors.ColorConstants.LIGHT_GRAY));
+                            .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER)
+                            .setPadding(3));
                 }
 
-                // Short ID
-                String shortId = product.id().toString().substring(0, 8);
+                com.itextpdf.kernel.colors.Color rowBg = alerta ? alertRedBg : (rowNum % 2 == 0 ? white : rowAlt);
+                rowNum++;
 
-                table.addCell(new com.itextpdf.layout.element.Paragraph(shortId).setFontSize(9));
-                table.addCell(new com.itextpdf.layout.element.Paragraph(product.nombre()).setFontSize(9));
-                table.addCell(new com.itextpdf.layout.element.Paragraph(
-                        String.format("$%.2f", product.precio() != null ? product.precio() : 0.0)).setFontSize(9));
-                table.addCell(new com.itextpdf.layout.element.Paragraph(
-                        product.stock() != null ? product.stock().toString() : "0").setFontSize(9)
-                        .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER));
-                table.addCell(new com.itextpdf.layout.element.Paragraph(
-                        product.reorderPoint() != null ? product.reorderPoint().toString() : "0").setFontSize(9)
-                        .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER));
-                table.addCell(new com.itextpdf.layout.element.Paragraph(product.active() ? "Sí" : "No").setFontSize(9)
-                        .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER));
-                table.addCell(new com.itextpdf.layout.element.Paragraph(
-                        product.tagName() != null ? product.tagName() : "-").setFontSize(9));
+                // helper lambda para crear celda de datos
+                java.util.function.BiFunction<String, com.itextpdf.layout.properties.TextAlignment, com.itextpdf.layout.element.Cell> mkCell =
+                    (text, align) -> new com.itextpdf.layout.element.Cell()
+                        .add(new com.itextpdf.layout.element.Paragraph(text).setFontSize(9))
+                        .setBackgroundColor(rowBg)
+                        .setTextAlignment(align)
+                        .setPadding(3);
+
+                table.addCell(mkCell.apply(product.nombre() != null ? product.nombre() : "", com.itextpdf.layout.properties.TextAlignment.LEFT));
+                table.addCell(mkCell.apply(String.format("$%.2f", product.precio() != null ? product.precio().doubleValue() : 0.0), com.itextpdf.layout.properties.TextAlignment.RIGHT));
+
+                // En Bodega
+                table.addCell(new com.itextpdf.layout.element.Cell()
+                        .add(new com.itextpdf.layout.element.Paragraph(String.valueOf(enBodega)).setFontSize(9).setBold())
+                        .setBackgroundColor(rowBg)
+                        .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER).setPadding(3));
+
+                // En Pedidos
+                table.addCell(new com.itextpdf.layout.element.Cell()
+                        .add(new com.itextpdf.layout.element.Paragraph(String.valueOf(enPedidos)).setFontSize(9))
+                        .setBackgroundColor(rowBg)
+                        .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER).setPadding(3));
+
+                // Sistema (rojo si negativo)
+                com.itextpdf.layout.element.Paragraph sistemaP = new com.itextpdf.layout.element.Paragraph(String.valueOf(sistema))
+                        .setFontSize(9).setBold();
+                if (alerta) sistemaP.setFontColor(alertRed);
+                table.addCell(new com.itextpdf.layout.element.Cell()
+                        .add(sistemaP)
+                        .setBackgroundColor(rowBg)
+                        .setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER).setPadding(3));
+
+                // Activo
+                table.addCell(mkCell.apply(product.active() ? "Sí" : "No", com.itextpdf.layout.properties.TextAlignment.CENTER));
             }
 
             document.add(table);
 
-            // Summary
+            // ---- Resumen y leyenda ----
+            long alertCount = products.stream().filter(p -> {
+                StockSummaryDTO s = stockMap.get(p.id());
+                return s != null && s.stockEnBD() != null && s.stockEnBD() < 0;
+            }).count();
+
             document.add(new com.itextpdf.layout.element.Paragraph(
-                    "\nTotal de productos: " + products.size())
-                    .setFontSize(10)
-                    .setBold());
+                    "\nTotal productos: " + products.size() +
+                    (alertCount > 0 ? "     ⚠ Productos con stock negativo: " + alertCount : ""))
+                    .setFontSize(10).setBold().setMarginTop(10));
+
+            document.add(new com.itextpdf.layout.element.Paragraph(
+                    "Leyenda  |  En Bodega: unidades físicas reales en almacén  " +
+                    "|  En Pedidos: comprometidas en pedidos activos (no despachados)  " +
+                    "|  Sistema: stock en BD (rojo = negativo)")
+                    .setFontSize(8)
+                    .setFontColor(com.itextpdf.kernel.colors.ColorConstants.GRAY)
+                    .setMarginTop(4));
 
             document.close();
             return out.toByteArray();
@@ -678,6 +770,28 @@ public class ProductServiceImpl implements ProductService {
             log.error("Error generando PDF de inventario", e);
             throw new BusinessExeption("Error generando el PDF de inventario: " + e.getMessage());
         }
+    }
+
+    // =====================================================================
+    // STOCK COMPROMETIDO (Stock Real vs Stock en Pedidos Activos)
+    // =====================================================================
+
+    private static final List<OrdenStatus> ESTADOS_FINALES = List.of(
+            OrdenStatus.COMPLETADO,
+            OrdenStatus.CANCELADO,
+            OrdenStatus.ANULADA,
+            OrdenStatus.PENDING_PROMOTION_COMPLETION);
+
+    @Override
+    public List<StockSummaryDTO> getStockReport() {
+        return ordenItemRepository.findStockSummaryWithCommitted(ESTADOS_FINALES);
+    }
+
+    @Override
+    public List<StockSummaryDTO> getStockAlerts() {
+        return getStockReport().stream()
+                .filter(StockSummaryDTO::isAlertaCritica)
+                .toList();
     }
 
 }

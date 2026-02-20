@@ -206,4 +206,22 @@ public class ProductOwnerController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error eliminando producto");
         }
     }
+
+    /**
+     * GET /api/owner/products/inventory/stock-report
+     * Reporte completo: stock real vs stock comprometido en pedidos activos.
+     */
+    @GetMapping("/inventory/stock-report")
+    public ResponseEntity<java.util.List<org.example.sistema_gestion_vitalexa.dto.StockSummaryDTO>> getStockReport() {
+        return ResponseEntity.ok(productService.getStockReport());
+    }
+
+    /**
+     * GET /api/owner/products/inventory/stock-alerts
+     * Solo productos con stockDisponible NEGATIVO → alerta crítica.
+     */
+    @GetMapping("/inventory/stock-alerts")
+    public ResponseEntity<java.util.List<org.example.sistema_gestion_vitalexa.dto.StockSummaryDTO>> getStockAlerts() {
+        return ResponseEntity.ok(productService.getStockAlerts());
+    }
 }
