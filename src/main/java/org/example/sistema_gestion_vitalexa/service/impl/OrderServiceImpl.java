@@ -1022,19 +1022,20 @@ public class OrderServiceImpl implements OrdenService {
 
             order.setEstado(OrdenStatus.COMPLETADO);
 
-            // Actualizar progreso de meta del vendedor
-            LocalDate fecha = order.getFecha().toLocalDate();
+            // Guardar fecha de completado (es la fecha real de la factura)
+            order.setCompletedAt(java.time.LocalDateTime.now());
+
+            // Actualizar progreso de meta del vendedor usando la fecha de completado (hoy)
+            LocalDate fechaCompletado = order.getCompletedAt().toLocalDate();
             saleGoalService.updateGoalProgress(
                     order.getVendedor().getId(),
                     order.getTotal(),
-                    fecha.getMonthValue(),
-                    fecha.getYear());
+                    fechaCompletado.getMonthValue(),
+                    fechaCompletado.getYear());
 
             // Notificación de orden completada (una sola vez)
             notificationService.sendOrderCompletedNotification(order.getId().toString());
 
-            // Set completion date
-            order.setCompletedAt(java.time.LocalDateTime.now());
 
             log.info("Orden {} completada (invoiceNumber={})", order.getId(), order.getInvoiceNumber());
         } else {

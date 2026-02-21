@@ -217,6 +217,14 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
                                 daysOverdue);
         }
 
+        /**
+         * Devuelve la fecha efectiva de la factura:
+         * si ya fue completada, usa completedAt; si no (órdenes históricas), usa fecha de creación.
+         */
+        private java.time.LocalDateTime getInvoiceDate(Order order) {
+                return order.getCompletedAt() != null ? order.getCompletedAt() : order.getFecha();
+        }
+
         private OrderPendingDTO toOrderPendingDTO(Order order) {
                 BigDecimal orderTotal = order.getDiscountedTotal() != null
                                 ? order.getDiscountedTotal()
@@ -231,7 +239,7 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
                 return new OrderPendingDTO(
                                 order.getId(),
                                 order.getInvoiceNumber(),
-                                order.getFecha(),
+                                getInvoiceDate(order),  // ← fecha de completado (o creación como fallback)
                                 order.getTotal(),
                                 order.getDiscountedTotal(),
                                 paidAmount,
@@ -274,9 +282,9 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
                         return 0;
                 }
 
-                // Obtener la factura más antigua pendiente
+                // Obtener la factura más antigua pendiente (usando fecha de completado, no de creación)
                 LocalDate oldestInvoiceDate = pendingOrders.stream()
-                                .map(o -> o.getFecha().toLocalDate())
+                                .map(o -> getInvoiceDate(o).toLocalDate())
                                 .min(LocalDate::compareTo)
                                 .orElse(LocalDate.now());
 
@@ -306,7 +314,7 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
                                 .filter(o -> o.getEstado() == OrdenStatus.COMPLETADO)
                                 .filter(o -> o.getPaymentStatus() != PaymentStatus.PAID)
                                 .filter(o -> {
-                                        LocalDate orderDate = o.getFecha().toLocalDate();
+                                        LocalDate orderDate = getInvoiceDate(o).toLocalDate();
                                         boolean afterStart = startDate == null || !orderDate.isBefore(startDate);
                                         boolean beforeEnd = endDate == null || !orderDate.isAfter(endDate);
                                         return afterStart && beforeEnd;
@@ -326,12 +334,12 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
                 List<Order> completedOrders = ordenRepository.findByCliente(client).stream()
                                 .filter(o -> o.getEstado() == OrdenStatus.COMPLETADO)
                                 .filter(o -> {
-                                        LocalDate orderDate = o.getFecha().toLocalDate();
+                                        LocalDate orderDate = getInvoiceDate(o).toLocalDate();
                                         boolean afterStart = startDate == null || !orderDate.isBefore(startDate);
                                         boolean beforeEnd = endDate == null || !orderDate.isAfter(endDate);
                                         return afterStart && beforeEnd;
                                 })
-                                .sorted((o1, o2) -> o2.getFecha().compareTo(o1.getFecha())) // Más recientes primero
+                                .sorted((o1, o2) -> getInvoiceDate(o2).compareTo(getInvoiceDate(o1))) // Más recientes primero
                                 .collect(Collectors.toList());
 
                 return completedOrders.stream()
@@ -581,8 +589,10 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
                                                                                 ? invoice.invoiceNumber().toString()
                                                                                 : "N/A");
 
-                                                // Fecha de despacho
-                                                String dispatchDate = getDispatchDate(invoice.orderId());
+                                                // Fecha de despacho (completedAt, ya resuelto en el DTO)
+                                                String dispatchDate = invoice.fecha() != null
+                                                                ? invoice.fecha().toLocalDate().toString()
+                                                                : "Sin fecha";
                                                 row.createCell(3).setCellValue(dispatchDate);
 
                                                 // Montos de la factura
@@ -649,21 +659,6 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
                 }
         }
 
-        private String getDispatchDate(UUID orderId) {
-                try {
-                        Order order = ordenRepository.findById(orderId).orElse(null);
-                        if (order != null && order.getCompletedAt() != null) {
-                                return order.getCompletedAt().toLocalDate().toString();
-                        }
-                        // Fallback: usar fecha de la orden si completedAt es null
-                        if (order != null && order.getFecha() != null) {
-                                return order.getFecha().toLocalDate().toString();
-                        }
-                } catch (Exception e) {
-                        log.warn("Error obteniendo fecha de completado para orden {}: {}", orderId, e.getMessage());
-                }
-                return "No despachado";
-        }
 
         private String getPaymentStatusText(String status) {
                 return switch (status) {

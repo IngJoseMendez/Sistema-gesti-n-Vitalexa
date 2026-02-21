@@ -60,7 +60,7 @@ public class ReportServiceImpl implements ReportService {
         public SalesReportDTO getSalesReport(LocalDate startDate, LocalDate endDate) {
                 LocalDateTime start = startDate.atStartOfDay();
                 LocalDateTime end = endDate.atTime(23, 59, 59);
-                List<Order> orders = ordenRepository.findByFechaBetween(start, end);
+                List<Order> orders = ordenRepository.findCompletedByCompletedAtBetween(start, end);
                 return buildSalesReport(orders);
         }
 
@@ -69,22 +69,19 @@ public class ReportServiceImpl implements ReportService {
                 LocalDateTime start = startDate.atStartOfDay();
                 LocalDateTime end = endDate.atTime(23, 59, 59);
 
-                // Get vendor user to check if it's a shared user
                 User vendor = userRepository.findById(vendorId)
                                 .orElseThrow(() -> new RuntimeException("Vendedor no encontrado"));
 
                 List<Order> orders;
                 if (UserUnificationUtil.isSharedUser(vendor.getUsername())) {
-                        // Get orders for both shared users
                         List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(vendor.getUsername());
-                        orders = ordenRepository.findByFechaBetween(start, end)
+                        orders = ordenRepository.findCompletedByCompletedAtBetween(start, end)
                                         .stream()
                                         .filter(o -> o.getVendedor() != null &&
                                                         sharedUsernames.contains(o.getVendedor().getUsername()))
                                         .toList();
                 } else {
-                        // Normal vendor - filter by ID
-                        orders = ordenRepository.findByFechaBetween(start, end)
+                        orders = ordenRepository.findCompletedByCompletedAtBetween(start, end)
                                         .stream()
                                         .filter(o -> o.getVendedor() != null
                                                         && o.getVendedor().getId().equals(vendorId))
@@ -178,7 +175,7 @@ public class ReportServiceImpl implements ReportService {
                 List<Product> products = productRepository.findAll();
                 LocalDateTime start = startDate.atStartOfDay();
                 LocalDateTime end = endDate.atTime(23, 59, 59);
-                List<Order> completedOrders = ordenRepository.findCompletedOrdersBetween(start, end);
+                List<Order> completedOrders = ordenRepository.findCompletedByCompletedAtBetween(start, end);
                 return buildProductReport(products, completedOrders);
         }
 
@@ -188,11 +185,10 @@ public class ReportServiceImpl implements ReportService {
                 LocalDateTime start = startDate.atStartOfDay();
                 LocalDateTime end = endDate.atTime(23, 59, 59);
 
-                // Get vendor user to check if it's a shared user
                 User vendor = userRepository.findById(vendorId)
                                 .orElseThrow(() -> new RuntimeException("Vendedor no encontrado"));
 
-                List<Order> vendorOrders = ordenRepository.findCompletedOrdersBetween(start, end);
+                List<Order> vendorOrders = ordenRepository.findCompletedByCompletedAtBetween(start, end);
 
                 if (UserUnificationUtil.isSharedUser(vendor.getUsername())) {
                         // Filter for both shared users
@@ -255,10 +251,7 @@ public class ReportServiceImpl implements ReportService {
                 LocalDateTime start = startDate.atStartOfDay();
                 LocalDateTime end = endDate.atTime(23, 59, 59);
 
-                List<Order> orders = ordenRepository.findByFechaBetween(start, end)
-                                .stream()
-                                .filter(o -> o.getEstado() == OrdenStatus.COMPLETADO)
-                                .toList();
+                List<Order> orders = ordenRepository.findCompletedByCompletedAtBetween(start, end);
 
                 // 2. Agrupar por vendedor (unificando usuarios compartidos)
                 Map<String, List<Order>> ordersByVendor = orders.stream()
@@ -360,7 +353,7 @@ public class ReportServiceImpl implements ReportService {
                 List<Client> clients = clientRepository.findAll();
                 LocalDateTime start = startDate.atStartOfDay();
                 LocalDateTime end = endDate.atTime(23, 59, 59);
-                List<Order> ordersInPeriod = ordenRepository.findByFechaBetween(start, end);
+                List<Order> ordersInPeriod = ordenRepository.findCompletedByCompletedAtBetween(start, end);
                 return buildClientReport(clients, ordersInPeriod);
         }
 
@@ -369,12 +362,11 @@ public class ReportServiceImpl implements ReportService {
                 LocalDateTime start = startDate.atStartOfDay();
                 LocalDateTime end = endDate.atTime(23, 59, 59);
 
-                // Get vendor user to check if it's a shared user
                 User vendor = userRepository.findById(vendorId)
                                 .orElseThrow(() -> new RuntimeException("Vendedor no encontrado"));
 
                 List<Client> allClients = clientRepository.findAll();
-                List<Order> vendorOrders = ordenRepository.findByFechaBetween(start, end);
+                List<Order> vendorOrders = ordenRepository.findCompletedByCompletedAtBetween(start, end);
 
                 if (UserUnificationUtil.isSharedUser(vendor.getUsername())) {
                         // Filter for both shared users
@@ -442,10 +434,17 @@ public class ReportServiceImpl implements ReportService {
 
         // ========== MÉTODOS AUXILIARES ==========
 
+        /**
+         * Fecha efectiva de la orden: completedAt si existe, fecha de creación como fallback.
+         */
+        private LocalDateTime getOrderDate(Order o) {
+                return o.getCompletedAt() != null ? o.getCompletedAt() : o.getFecha();
+        }
+
         private List<DailySalesDTO> calculateDailySales(List<Order> orders) {
                 Map<LocalDate, List<Order>> ordersByDate = orders.stream()
                                 .filter(o -> o.getEstado() == OrdenStatus.COMPLETADO)
-                                .collect(Collectors.groupingBy(o -> o.getFecha().toLocalDate()));
+                                .collect(Collectors.groupingBy(o -> getOrderDate(o).toLocalDate()));
 
                 return ordersByDate.entrySet().stream()
                                 .map(entry -> {
@@ -464,8 +463,8 @@ public class ReportServiceImpl implements ReportService {
         private List<MonthlySalesDTO> calculateMonthlySales(List<Order> orders) {
                 Map<String, List<Order>> ordersByMonth = orders.stream()
                                 .filter(o -> o.getEstado() == OrdenStatus.COMPLETADO)
-                                .collect(Collectors.groupingBy(o -> o.getFecha().getYear() + "-" +
-                                                String.format("%02d", o.getFecha().getMonthValue())));
+                                .collect(Collectors.groupingBy(o -> getOrderDate(o).getYear() + "-" +
+                                                String.format("%02d", getOrderDate(o).getMonthValue())));
 
                 return ordersByMonth.entrySet().stream()
                                 .map(entry -> {
@@ -553,10 +552,8 @@ public class ReportServiceImpl implements ReportService {
                 LocalDateTime start = startDate.atStartOfDay();
                 LocalDateTime end = endDate.atTime(23, 59, 59);
 
-                // 1. Obtener todas las órdenes completadas en el período
-                List<Order> completedOrders = ordenRepository.findByFechaBetween(start, end).stream()
-                                .filter(o -> o.getEstado() == OrdenStatus.COMPLETADO)
-                                .toList();
+                // 1. Obtener todas las órdenes completadas en el período (por fecha de completado)
+                List<Order> completedOrders = ordenRepository.findCompletedByCompletedAtBetween(start, end);
 
                 // 2. Agrupar por vendedor (unificando usuarios compartidos)
                 Map<String, List<Order>> ordersByVendor = completedOrders.stream()
@@ -587,10 +584,10 @@ public class ReportServiceImpl implements ReportService {
                                                 vendedorName = actualUsername;
                                         }
 
-                                        // 3.1 Agrupar órdenes por día
+                                        // 3.1 Agrupar órdenes por día (usando completedAt, fallback a fecha)
                                         Map<LocalDate, List<Order>> ordersByDay = vendorOrders.stream()
                                                         .collect(Collectors
-                                                                        .groupingBy(o -> o.getFecha().toLocalDate()));
+                                                                        .groupingBy(o -> getOrderDate(o).toLocalDate()));
 
                                         // 3.2 Crear grupos diarios con agrupación por cliente
                                         List<VendorDailyGroupDTO> dailyGroups = ordersByDay.entrySet().stream()

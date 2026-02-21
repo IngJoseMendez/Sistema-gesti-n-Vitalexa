@@ -70,10 +70,27 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
                         @Param("year") int year);
 
         /**
-         * Para reportes: órdenes en un rango de fechas
+         * Para reportes: órdenes en un rango de fechas (por fecha de creación)
          */
         @Query("SELECT o FROM Order o WHERE o.fecha BETWEEN :start AND :end")
         List<Order> findByFechaBetween(
+                        @Param("start") LocalDateTime start,
+                        @Param("end") LocalDateTime end);
+
+        /**
+         * Para reportes: órdenes COMPLETADAS filtradas por fecha de completado (completedAt).
+         * Si completedAt es null (órdenes históricas), usa fecha como fallback.
+         */
+        @Query("""
+                        SELECT o FROM Order o
+                        WHERE o.estado = 'COMPLETADO'
+                        AND (
+                            (o.completedAt IS NOT NULL AND o.completedAt BETWEEN :start AND :end)
+                            OR
+                            (o.completedAt IS NULL AND o.fecha BETWEEN :start AND :end)
+                        )
+                        """)
+        List<Order> findCompletedByCompletedAtBetween(
                         @Param("start") LocalDateTime start,
                         @Param("end") LocalDateTime end);
 
