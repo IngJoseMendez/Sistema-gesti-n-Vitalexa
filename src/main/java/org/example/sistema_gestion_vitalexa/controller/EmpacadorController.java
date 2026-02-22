@@ -3,8 +3,10 @@ package org.example.sistema_gestion_vitalexa.controller;
 import lombok.RequiredArgsConstructor;
 import org.example.sistema_gestion_vitalexa.dto.ReembolsoRequest;
 import org.example.sistema_gestion_vitalexa.dto.ReembolsoResponse;
+import org.example.sistema_gestion_vitalexa.dto.StockSummaryDTO;
 import org.example.sistema_gestion_vitalexa.entity.Product;
 import org.example.sistema_gestion_vitalexa.repository.ProductRepository;
+import org.example.sistema_gestion_vitalexa.service.ProductService;
 import org.example.sistema_gestion_vitalexa.service.ReembolsoService;
 import org.example.sistema_gestion_vitalexa.mapper.ProductMapper;
 import org.example.sistema_gestion_vitalexa.dto.ProductResponse;
@@ -23,6 +25,7 @@ public class EmpacadorController {
     private final ProductRepository productRepository;
     private final ReembolsoService reembolsoService;
     private final ProductMapper productMapper;
+    private final ProductService productService;
 
     @GetMapping("/products")
     public ResponseEntity<List<ProductResponse>> getProductosDisponibles() {
@@ -31,6 +34,15 @@ public class EmpacadorController {
                 .filter(p -> p.getStock() > 0)
                 .toList();
         return ResponseEntity.ok(productMapper.toResponseList(productos));
+    }
+
+    /**
+     * GET /api/empacador/products/inventory/stock-report
+     * Reporte de stock real vs stock comprometido (acceso para EMPACADOR).
+     */
+    @GetMapping("/products/inventory/stock-report")
+    public ResponseEntity<List<StockSummaryDTO>> getStockReport() {
+        return ResponseEntity.ok(productService.getStockReport());
     }
 
     @PostMapping("/reembolsos")
