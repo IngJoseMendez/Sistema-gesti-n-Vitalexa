@@ -55,8 +55,7 @@ public interface OrdenItemRepository extends JpaRepository<OrderItem, UUID> {
             FROM Product p
             LEFT JOIN OrderItem oi ON oi.product.id = p.id
             LEFT JOIN oi.order o
-            WHERE p.active = true
-              AND (p.isHidden = false OR p.isHidden IS NULL)
+            WHERE (p.isHidden = false OR p.isHidden IS NULL)
             GROUP BY p.id, p.nombre, p.stock
             ORDER BY p.nombre ASC
             """)
