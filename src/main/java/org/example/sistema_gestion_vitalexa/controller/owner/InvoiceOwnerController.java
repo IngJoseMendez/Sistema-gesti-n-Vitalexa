@@ -22,7 +22,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/owner/invoices")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
+@PreAuthorize("hasRole('OWNER')")
 public class InvoiceOwnerController {
 
     private final OrdenService ordenService;
@@ -70,9 +70,10 @@ public class InvoiceOwnerController {
 
     /**
      * PUT /api/owner/invoices/{id}
-     * Actualizar una factura histórica (Owner/Admin)
+     * Actualizar una factura histórica (solo OWNER)
      */
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<OrderResponse> updateHistoricalInvoice(
             @PathVariable java.util.UUID id,
             @Valid @RequestBody CreateHistoricalInvoiceRequest request,

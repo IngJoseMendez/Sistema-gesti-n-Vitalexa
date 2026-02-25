@@ -6,6 +6,7 @@ import org.example.sistema_gestion_vitalexa.dto.OrderRequestDto;
 import org.example.sistema_gestion_vitalexa.dto.OrderResponse;
 import org.example.sistema_gestion_vitalexa.dto.UpdateEtaRequest;
 import org.example.sistema_gestion_vitalexa.enums.OrdenStatus;
+import org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption;
 import org.example.sistema_gestion_vitalexa.service.InvoiceService;
 import org.example.sistema_gestion_vitalexa.service.OrdenService;
 import org.springframework.http.HttpHeaders;
@@ -13,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -38,13 +40,29 @@ public class OrderAdminController {
         return ResponseEntity.ok(ordenService.findById(id));
     }
 
+    /**
+     * PATCH /api/admin/orders/{id}/status
+     * ADMIN y OWNER pueden cambiar estado (COMPLETADO, PENDIENTE, EN_PROCESO, etc.)
+     * SOLO OWNER puede poner estado ANULADA — usar el endpoint /annul para anular con motivo.
+     */
     @PatchMapping("/{id}/status")
     public OrderResponse changeStatus(
             @PathVariable UUID id,
-            @RequestParam OrdenStatus status) {
+            @RequestParam OrdenStatus status,
+            Authentication authentication) {
+        boolean isOwner = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_OWNER"));
+        if (status == OrdenStatus.ANULADA && !isOwner) {
+            throw new BusinessExeption("Solo el Owner puede anular ventas. Usa el endpoint /annul con un motivo.");
+        }
         return ordenService.cambiarEstadoOrden(id, status);
     }
 
+    /**
+     * PUT /api/admin/orders/{id}
+     * Editar el contenido de una orden (items, totales).
+     * ADMIN y OWNER pueden editar.
+     */
     @PutMapping("/{id}")
     public ResponseEntity<OrderResponse> updateOrder(
             @PathVariable UUID id,
@@ -138,12 +156,27 @@ public class OrderAdminController {
 
     /**
      * POST /api/admin/orders/{id}/annul
-     * Anular orden con motivo
+     * Anular orden con motivo.
+     * - OWNER: puede anular cualquier orden (incluso COMPLETADAS).
+     * - ADMIN: solo puede anular órdenes que NO estén COMPLETADAS.
      */
     @PostMapping("/{id}/annul")
     public ResponseEntity<Void> annulOrder(
             @PathVariable UUID id,
-            @RequestParam String reason) {
+            @RequestParam String reason,
+            Authentication authentication) {
+
+        boolean isOwner = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_OWNER"));
+
+        if (!isOwner) {
+            // El Admin no puede anular órdenes completadas
+            OrderResponse order = ordenService.findById(id);
+            if ("COMPLETADO".equals(order.estado())) {
+                throw new BusinessExeption("Solo el Owner puede anular una orden que ya está completada");
+            }
+        }
+
         ordenService.annulOrder(id, reason);
         return ResponseEntity.noContent().build();
     }

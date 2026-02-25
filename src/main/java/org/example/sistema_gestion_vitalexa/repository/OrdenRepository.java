@@ -156,4 +156,38 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
                         WHERE o.id = :orderId
                         """)
         Optional<Order> findByIdWithPromotions(@Param("orderId") UUID orderId);
+
+        /**
+         * Para nómina: suma total de órdenes NO ANULADAS de un vendedor
+         * en un rango de fechas calendario exacto (inicio y fin del mes).
+         * Usa o.fecha (fecha de creación/factura) para respetar el mes calendario.
+         */
+        @Query("""
+                        SELECT COALESCE(SUM(o.total), 0)
+                        FROM Order o
+                        WHERE o.vendedor.id = :vendedorId
+                        AND o.estado <> 'ANULADA'
+                        AND o.fecha >= :start
+                        AND o.fecha < :end
+                        """)
+        BigDecimal sumTotalSoldByVendedorBetween(
+                        @Param("vendedorId") UUID vendedorId,
+                        @Param("start") LocalDateTime start,
+                        @Param("end") LocalDateTime end);
+
+        /**
+         * Para nómina con usuarios compartidos (NinaTorres/YicelaSandoval).
+         */
+        @Query("""
+                        SELECT COALESCE(SUM(o.total), 0)
+                        FROM Order o
+                        WHERE o.vendedor.id IN :vendedorIds
+                        AND o.estado <> 'ANULADA'
+                        AND o.fecha >= :start
+                        AND o.fecha < :end
+                        """)
+        BigDecimal sumTotalSoldByVendedorIdsBetween(
+                        @Param("vendedorIds") List<UUID> vendedorIds,
+                        @Param("start") LocalDateTime start,
+                        @Param("end") LocalDateTime end);
 }

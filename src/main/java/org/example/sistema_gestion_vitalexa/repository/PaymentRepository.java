@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -53,4 +54,47 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
      */
     @Query("SELECT p FROM Payment p WHERE p.order.id = :orderId AND (p.isCancelled = false OR p.isCancelled IS NULL) ORDER BY p.actualPaymentDate DESC, p.paymentDate DESC")
     List<Payment> findActivePaymentsByOrderId(@Param("orderId") UUID orderId);
+
+    /**
+     * Suma de pagos activos recibidos ESTE MES (paymentDate entre start/end)
+     * pero SOLO sobre órdenes cuya fecha (o.fecha) cae en el MES ANTERIOR
+     * (entre orderStart y orderEnd).
+     * Regla: recaudo de febrero = pagos recibidos en febrero de facturas de enero.
+     */
+    @Query("""
+            SELECT COALESCE(SUM(p.amount), 0)
+            FROM Payment p
+            WHERE p.order.vendedor.id = :vendedorId
+            AND (p.isCancelled = false OR p.isCancelled IS NULL)
+            AND p.paymentDate >= :start
+            AND p.paymentDate < :end
+            AND p.order.fecha >= :orderStart
+            AND p.order.fecha < :orderEnd
+            """)
+    BigDecimal sumCollectedByVendedorBetween(
+            @Param("vendedorId") UUID vendedorId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end,
+            @Param("orderStart") LocalDateTime orderStart,
+            @Param("orderEnd") LocalDateTime orderEnd);
+
+    /**
+     * Igual que el anterior pero para usuarios compartidos (NinaTorres/YicelaSandoval).
+     */
+    @Query("""
+            SELECT COALESCE(SUM(p.amount), 0)
+            FROM Payment p
+            WHERE p.order.vendedor.id IN :vendedorIds
+            AND (p.isCancelled = false OR p.isCancelled IS NULL)
+            AND p.paymentDate >= :start
+            AND p.paymentDate < :end
+            AND p.order.fecha >= :orderStart
+            AND p.order.fecha < :orderEnd
+            """)
+    BigDecimal sumCollectedByVendedorIdsBetween(
+            @Param("vendedorIds") List<UUID> vendedorIds,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end,
+            @Param("orderStart") LocalDateTime orderStart,
+            @Param("orderEnd") LocalDateTime orderEnd);
 }

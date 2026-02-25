@@ -17,7 +17,8 @@ import java.util.UUID;
 /**
  * Controller para gestión de pagos/abonos
  * - Lectura (GET): Owner, Admin y Vendedor
- * - Escritura (POST/PUT/DELETE): solo Owner y Admin
+ * - Registrar pago (POST): Owner y Admin
+ * - Anular / Restaurar / Eliminar pago: SOLO Owner
  */
 @RestController
 @RequestMapping("/api/owner/payments")
@@ -64,10 +65,10 @@ public class PaymentOwnerController {
     }
 
     /**
-     * Anular un pago (soft delete con auditoría)
+     * Anular un pago (soft delete con auditoría) — SOLO OWNER
      */
     @PutMapping("/{paymentId}/cancel")
-    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<PaymentResponse> cancelPayment(
             @PathVariable UUID paymentId,
             @RequestParam(required = false) String reason,
@@ -77,10 +78,10 @@ public class PaymentOwnerController {
     }
 
     /**
-     * Restaurar un pago anulado
+     * Restaurar un pago anulado — SOLO OWNER
      */
     @PutMapping("/{paymentId}/restore")
-    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<PaymentResponse> restorePayment(
             @PathVariable UUID paymentId,
             Authentication auth) {
@@ -89,13 +90,13 @@ public class PaymentOwnerController {
     }
 
     /**
-     * Anular un pago (DELETE - deprecado, usar PUT /cancel)
-     * 
+     * Anular un pago (DELETE - deprecado, usar PUT /cancel) — SOLO OWNER
+     *
      * @deprecated Usar cancelPayment en su lugar
      */
     @DeleteMapping("/{paymentId}")
     @Deprecated
-    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<Void> deletePayment(
             @PathVariable UUID paymentId,
             Authentication auth) {

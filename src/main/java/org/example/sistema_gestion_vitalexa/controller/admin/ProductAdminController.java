@@ -361,21 +361,22 @@ public class ProductAdminController {
     }
 
     /**
-     * Obtener todos los productos (incluyendo inactivos)
+     * Obtener todos los productos (incluyendo inactivos regulares, pero solo especiales ACTIVOS).
+     * Los especiales inactivos/eliminados NO se muestran en el panel de gestión.
      */
     @GetMapping
     public ResponseEntity<List<ProductResponse>> findAll() {
         // Usar Map para evitar duplicados
         java.util.Map<java.util.UUID, ProductResponse> uniqueProducts = new java.util.LinkedHashMap<>();
 
-        // 1. Productos regulares
+        // 1. Productos regulares (activos e inactivos)
         List<ProductResponse> regularProducts = productService.findAllAdmin();
         for (ProductResponse p : regularProducts) {
             uniqueProducts.put(p.id(), p);
         }
 
-        // 2. Todos los productos especiales (activos e inactivos)
-        List<SpecialProduct> specialProducts = specialProductRepository.findAll();
+        // 2. Solo productos especiales ACTIVOS — los eliminados (inactive) no deben aparecer
+        List<SpecialProduct> specialProducts = specialProductRepository.findByActiveTrue();
         for (SpecialProduct sp : specialProducts) {
             uniqueProducts.put(sp.getId(), toProductResponse(sp));
         }

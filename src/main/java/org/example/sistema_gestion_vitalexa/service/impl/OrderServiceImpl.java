@@ -1041,6 +1041,22 @@ public class OrderServiceImpl implements OrdenService {
         } else {
             // Otros estados
             order.setEstado(nuevoEstado);
+
+            // Si se está anulando desde cambiarEstadoOrden (OWNER vía PATCH /status),
+            // también recalcular la meta del mes
+            if (nuevoEstado == OrdenStatus.ANULADA) {
+                LocalDate fechaOrden = order.getCompletedAt() != null
+                        ? order.getCompletedAt().toLocalDate()
+                        : order.getFecha().toLocalDate();
+                // Guardar primero para que el recálculo no cuente esta orden
+                ordenRepository.save(order);
+                saleGoalService.recalculateGoalForVendorMonth(
+                        order.getVendedor().getId(),
+                        fechaOrden.getMonthValue(),
+                        fechaOrden.getYear());
+                log.info("Meta recalculada tras anulación de orden {} para {}/{}",
+                        order.getId(), fechaOrden.getMonthValue(), fechaOrden.getYear());
+            }
         }
 
         // Guardar cambios
@@ -1594,7 +1610,19 @@ public class OrderServiceImpl implements OrdenService {
         order.setCancellationReason(reason);
         ordenRepository.save(order);
 
-        log.info("✅ Orden {} anulada completamente. Stock restaurado.", orderId);
+        // ✅ Recalcular progreso de la meta del vendedor para el mes de la orden
+        // Esto actualiza currentAmount descontando la venta anulada en tiempo real,
+        // sin tener que borrar y recrear la meta manualmente.
+        LocalDate fechaOrden = order.getCompletedAt() != null
+                ? order.getCompletedAt().toLocalDate()
+                : order.getFecha().toLocalDate();
+        saleGoalService.recalculateGoalForVendorMonth(
+                order.getVendedor().getId(),
+                fechaOrden.getMonthValue(),
+                fechaOrden.getYear());
+
+        log.info("✅ Orden {} anulada. Stock restaurado y meta recalculada para {}/{} .",
+                orderId, fechaOrden.getMonthValue(), fechaOrden.getYear());
     }
 
     /**
