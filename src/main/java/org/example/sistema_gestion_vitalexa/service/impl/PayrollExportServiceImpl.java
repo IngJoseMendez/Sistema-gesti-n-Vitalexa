@@ -288,7 +288,11 @@ public class PayrollExportServiceImpl implements PayrollExportService {
                 dStyle, p.generalCommissionEnabled() ? yStyle : nStyle);
         addDetailRow(sheet, rowNum++, "Suma de metas globales:", fmt(p.totalGlobalGoals()), dStyle, cStyle);
         addDetailRow(sheet, rowNum++, "Ventas totales empresa:", fmt(p.totalCompanySales()), dStyle, cStyle);
-        addDetailRow(sheet, rowNum++, "¿Umbral alcanzado? (ventas >= suma metas):",
+        String thresholdLabel = p.thresholdIsCustom()
+                ? "Umbral personalizado (Owner):"
+                : "Umbral de referencia (suma metas):";
+        addDetailRow(sheet, rowNum++, thresholdLabel, fmt(p.effectiveThreshold()), dStyle, cStyle);
+        addDetailRow(sheet, rowNum++, "¿Umbral alcanzado? (ventas >= umbral):",
                 p.generalCommissionGoalMet() ? "✓ SÍ" : "✗ NO",
                 dStyle, p.generalCommissionGoalMet() ? yStyle : nStyle);
         addDetailRow(sheet, rowNum++, "% Comisión general:", pct(p.generalCommissionPct()), dStyle, dStyle);
@@ -381,8 +385,12 @@ public class PayrollExportServiceImpl implements PayrollExportService {
                 !p.generalCommissionEnabled());
         addPdfDataRow(table, "Suma de metas globales", fmtPdf(p.totalGlobalGoals()), false);
         addPdfDataRow(table, "Ventas totales empresa", fmtPdf(p.totalCompanySales()), false);
+        String pdfThresholdLabel = p.thresholdIsCustom()
+                ? "Umbral personalizado (Owner)"
+                : "Umbral de referencia (suma metas)";
+        addPdfDataRow(table, pdfThresholdLabel, fmtPdf(p.effectiveThreshold()), false);
         addPdfDataRow(table, "¿Umbral alcanzado?",
-                p.generalCommissionGoalMet() ? "✓ SÍ" : "✗ NO (ventas < suma de metas)",
+                p.generalCommissionGoalMet() ? "✓ SÍ" : "✗ NO (ventas < umbral)",
                 !p.generalCommissionGoalMet());
         addPdfDataRow(table, "% Comisión general", pctPdf(p.generalCommissionPct()), false);
         addPdfDataRow(table, "Comisión general", fmtPdf(p.generalCommissionAmount()), false);

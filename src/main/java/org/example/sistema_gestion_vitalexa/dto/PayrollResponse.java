@@ -9,43 +9,45 @@ import java.util.UUID;
  */
 public record PayrollResponse(
 
-                UUID id,
-                UUID vendedorId,
-                String vendedorUsername,
-                int month,
-                int year,
+        UUID id,
+        UUID vendedorId,
+        String vendedorUsername,
+        int month,
+        int year,
 
-                // ─── Salario Base ──────────────────────────────────
-                BigDecimal baseSalary,
+        // ─── Salario Base ──────────────────────────────────
+        BigDecimal baseSalary,
 
-                // ─── Comisión por Meta de Ventas ───────────────────
-                BigDecimal salesGoalTarget,
-                BigDecimal totalSold,
-                boolean salesGoalMet,
-                BigDecimal salesCommissionPct,
-                BigDecimal salesCommissionAmount,
+        // ─── Comisión por Meta de Ventas ───────────────────
+        BigDecimal salesGoalTarget,
+        BigDecimal totalSold,
+        boolean salesGoalMet,
+        BigDecimal salesCommissionPct,
+        BigDecimal salesCommissionAmount,
 
-                // ─── Comisión por Meta de Recaudo ──────────────────
-                BigDecimal prevMonthTotalSold,
-                BigDecimal totalCollected,
-                BigDecimal collectionPct,
-                boolean collectionGoalMet,
-                BigDecimal collectionCommissionPct,
-                BigDecimal collectionCommissionAmount,
+        // ─── Comisión por Meta de Recaudo ──────────────────
+        BigDecimal prevMonthTotalSold,
+        BigDecimal totalCollected,
+        BigDecimal collectionPct,
+        boolean collectionGoalMet,
+        BigDecimal collectionCommissionPct,
+        BigDecimal collectionCommissionAmount,
 
-                // ─── Comisión General ──────────────────────────────
-                boolean generalCommissionEnabled,
-                BigDecimal totalGlobalGoals,
-                BigDecimal totalCompanySales, // ventas totales empresa en el mes
-                boolean generalCommissionGoalMet, // ventas empresa >= suma de metas
-                BigDecimal generalCommissionPct,
-                BigDecimal generalCommissionAmount,
+        // ─── Comisión General ──────────────────────────────
+        boolean generalCommissionEnabled,
+        BigDecimal totalGlobalGoals,
+        BigDecimal totalCompanySales, // ventas totales empresa en el mes
+        BigDecimal effectiveThreshold, // umbral real usado (puede ser personalizado)
+        boolean thresholdIsCustom, // true = el Owner puso el umbral manualmente
+        boolean generalCommissionGoalMet, // ventas empresa >= effectiveThreshold
+        BigDecimal generalCommissionPct,
+        BigDecimal generalCommissionAmount,
 
-                // ─── Totales ───────────────────────────────────────
-                BigDecimal totalCommissions,
-                BigDecimal totalPayout,
+        // ─── Totales ───────────────────────────────────────
+        BigDecimal totalCommissions,
+        BigDecimal totalPayout,
 
-                String notes,
-                LocalDateTime createdAt,
-                LocalDateTime updatedAt) {
+        String notes,
+        LocalDateTime createdAt,
+        LocalDateTime updatedAt) {
 }

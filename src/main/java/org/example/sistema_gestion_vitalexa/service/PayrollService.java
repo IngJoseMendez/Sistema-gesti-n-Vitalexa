@@ -2,6 +2,7 @@ package org.example.sistema_gestion_vitalexa.service;
 
 import org.example.sistema_gestion_vitalexa.dto.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -28,8 +29,17 @@ public interface PayrollService {
 
     /**
      * Calcular nóminas de TODOS los vendedores para un mes/año.
+     * Usa la suma de metas como umbral de comisión general.
      */
     List<PayrollResponse> calculateAllPayrolls(int month, int year, UUID calculatedBy);
+
+    /**
+     * Calcular nóminas de TODOS los vendedores para un mes/año,
+     * con un umbral de comisión general personalizado.
+     * Si generalCommissionThreshold es null se usa la suma de metas.
+     */
+    List<PayrollResponse> calculateAllPayrolls(int month, int year, UUID calculatedBy,
+            BigDecimal generalCommissionThreshold);
 
     // ─── Consultas ─────────────────────────────────────────────────────────────
 
@@ -48,4 +58,3 @@ public interface PayrollService {
     /** Historial propio del vendedor autenticado */
     List<PayrollResponse> findMyPayrollHistory(String username);
 }
-

@@ -119,15 +119,32 @@ public class Payroll {
 
     /**
      * Total de ventas de TODA la empresa en el mes (suma de todos los vendedores).
-     * Debe ser >= totalGlobalGoals para que la comisión general aplique.
+     * Debe ser >= effectiveThreshold para que la comisión general aplique.
      */
     @Column(name = "total_company_sales", precision = 12, scale = 2)
     @Builder.Default
     private BigDecimal totalCompanySales = BigDecimal.ZERO;
 
     /**
+     * Umbral efectivo usado para la comisión general.
+     * Puede ser la suma de metas (thresholdIsCustom=false) o un valor personalizado
+     * del Owner.
+     */
+    @Column(name = "effective_threshold", precision = 12, scale = 2)
+    @Builder.Default
+    private BigDecimal effectiveThreshold = BigDecimal.ZERO;
+
+    /**
+     * true si el Owner proporcionó un umbral manual; false si se usó la suma de
+     * metas.
+     */
+    @Column(name = "threshold_is_custom", nullable = false)
+    @Builder.Default
+    private Boolean thresholdIsCustom = false;
+
+    /**
      * ¿Se cumplió el umbral de ventas globales (totalCompanySales >=
-     * totalGlobalGoals)?
+     * effectiveThreshold)?
      */
     @Column(name = "general_commission_goal_met", nullable = false)
     @Builder.Default

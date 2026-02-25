@@ -150,40 +150,51 @@ public class PayrollServiceImpl implements PayrollService {
                                 : BigDecimal.ZERO;
 
                 // ── 4. Comisión general por metas globales ────────────────────
-                // Solo aplica si las ventas TOTALES DE LA EMPRESA >= suma de metas de todos los
-                // vendedores
+                // Umbral: si el Owner pasó un valor personalizado se usa ese,
+                // de lo contrario se calcula como la suma de todas las metas del mes.
                 boolean generalEnabled = Boolean.TRUE.equals(config.getGeneralCommissionEnabled());
                 BigDecimal totalGlobalGoals = BigDecimal.ZERO;
                 BigDecimal totalCompanySales = BigDecimal.ZERO;
+                BigDecimal effectiveThreshold = BigDecimal.ZERO; // umbral real usado
+                boolean thresholdIsCustom = false; // true = lo puso el Owner
                 boolean generalGoalMet = false;
                 BigDecimal generalCommissionPct = config.getGeneralCommissionPct();
                 BigDecimal generalCommissionAmount = BigDecimal.ZERO;
 
                 if (generalEnabled) {
-                        // Suma de todas las metas del mes
+                        // Suma de todas las metas del mes (siempre se calcula para auditoría)
                         totalGlobalGoals = saleGoalRepository.findByMonthAndYear(month, year).stream()
                                         .map(SaleGoal::getTargetAmount)
                                         .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-                        // Ventas totales de toda la empresa ese mes (todos los vendedores, no anuladas)
+                        // Usar umbral personalizado si el Owner lo proveyó, sino la suma de metas
+                        if (request.generalCommissionThreshold() != null
+                                        && request.generalCommissionThreshold().compareTo(BigDecimal.ZERO) > 0) {
+                                effectiveThreshold = request.generalCommissionThreshold();
+                                thresholdIsCustom = true;
+                        } else {
+                                effectiveThreshold = totalGlobalGoals;
+                        }
+
+                        // Ventas totales de toda la empresa ese mes (solo COMPLETADAS)
                         LocalDateTime monthStart = LocalDateTime.of(year, month, 1, 0, 0, 0);
                         LocalDateTime monthEnd = monthStart.plusMonths(1);
                         totalCompanySales = ordenRepository.getTotalRevenueBetween(monthStart, monthEnd);
 
-                        // La comisión general solo aplica si las ventas globales cubren la suma de
-                        // metas
-                        generalGoalMet = totalGlobalGoals.compareTo(BigDecimal.ZERO) > 0
-                                        && totalCompanySales.compareTo(totalGlobalGoals) >= 0;
+                        // La comisión general aplica si las ventas supera el umbral efectivo
+                        generalGoalMet = effectiveThreshold.compareTo(BigDecimal.ZERO) > 0
+                                        && totalCompanySales.compareTo(effectiveThreshold) >= 0;
 
                         generalCommissionAmount = generalGoalMet
                                         ? totalGlobalGoals.multiply(generalCommissionPct).setScale(2,
                                                         RoundingMode.HALF_UP)
                                         : BigDecimal.ZERO;
 
-                        log.info("[ComisionGeneral] Vendedor={} mes={}/{}: ventasEmpresa=${} >= sumasMetas=${} => {}",
+                        log.info("[ComisionGeneral] Vendedor={} mes={}/{}: ventasEmpresa=${} vs umbral${} ({}) => {}",
                                         vendedor.getUsername(), month, year,
-                                        totalCompanySales, totalGlobalGoals,
-                                        generalGoalMet ? "APLICA" : "NO aplica (umbral no alcanzado)");
+                                        totalCompanySales, effectiveThreshold,
+                                        thresholdIsCustom ? "personalizado" : "suma de metas",
+                                        generalGoalMet ? "APLICA" : "NO aplica");
                 }
 
                 // ── 5. Totales ────────────────────────────────────────────────────────
@@ -212,6 +223,8 @@ public class PayrollServiceImpl implements PayrollService {
                 payroll.setGeneralCommissionEnabled(generalEnabled);
                 payroll.setTotalGlobalGoals(totalGlobalGoals);
                 payroll.setTotalCompanySales(totalCompanySales);
+                payroll.setEffectiveThreshold(effectiveThreshold);
+                payroll.setThresholdIsCustom(thresholdIsCustom);
                 payroll.setGeneralCommissionGoalMet(generalGoalMet);
                 payroll.setGeneralCommissionPct(generalCommissionPct);
                 payroll.setGeneralCommissionAmount(generalCommissionAmount);
@@ -231,15 +244,21 @@ public class PayrollServiceImpl implements PayrollService {
 
         @Override
         public List<PayrollResponse> calculateAllPayrolls(int month, int year, UUID calculatedBy) {
+                return calculateAllPayrolls(month, year, calculatedBy, null);
+        }
+
+        @Override
+        public List<PayrollResponse> calculateAllPayrolls(int month, int year, UUID calculatedBy,
+                        BigDecimal generalCommissionThreshold) {
                 List<User> vendedores = userRepository.findAll().stream()
                                 .filter(u -> u.getRole() == Role.VENDEDOR && u.isActive())
-                                // Para usuarios compartidos (Nina/Yicela), solo calcular UNA vez
-                                // usando el usuario canónico (NinaTorres). Yicela se omite.
                                 .filter(u -> !u.getUsername().equals(UserUnificationUtil.YICELA_SANDOVAL))
                                 .toList();
 
                 return vendedores.stream()
-                                .map(v -> calculatePayroll(new CalculatePayrollRequest(v.getId(), month, year, null),
+                                .map(v -> calculatePayroll(
+                                                new CalculatePayrollRequest(v.getId(), month, year, null,
+                                                                generalCommissionThreshold),
                                                 calculatedBy))
                                 .collect(Collectors.toList());
         }
@@ -408,6 +427,8 @@ public class PayrollServiceImpl implements PayrollService {
                                 Boolean.TRUE.equals(p.getGeneralCommissionEnabled()),
                                 p.getTotalGlobalGoals(),
                                 p.getTotalCompanySales(),
+                                p.getEffectiveThreshold(),
+                                Boolean.TRUE.equals(p.getThresholdIsCustom()),
                                 Boolean.TRUE.equals(p.getGeneralCommissionGoalMet()),
                                 p.getGeneralCommissionPct(),
                                 p.getGeneralCommissionAmount(),

@@ -13,6 +13,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -82,18 +83,24 @@ public class PayrollOwnerController {
 
     /**
      * POST /api/owner/payroll/calculate-all?month=1&year=2026 — OWNER y ADMIN
-     * Calcular nóminas de TODOS los vendedores activos para un mes/año
+     * Calcular nóminas de TODOS los vendedores activos para un mes/año.
+     *
+     * Parámetro opcional: generalCommissionThreshold
+     * - Si se envía, se usará ese valor como umbral de ventas de la empresa.
+     * - Si no se envía (null), se usa la suma de todas las metas de los vendedores.
      */
     @PostMapping("/calculate-all")
     public ResponseEntity<List<PayrollResponse>> calculateAllPayrolls(
             @RequestParam int month,
             @RequestParam int year,
+            @RequestParam(required = false) BigDecimal generalCommissionThreshold,
             Authentication authentication) {
 
         User currentUser = userRepository.findByUsername(authentication.getName())
                 .orElseThrow(() -> new BusinessExeption("Usuario no encontrado"));
 
-        List<PayrollResponse> responses = payrollService.calculateAllPayrolls(month, year, currentUser.getId());
+        List<PayrollResponse> responses = payrollService.calculateAllPayrolls(
+                month, year, currentUser.getId(), generalCommissionThreshold);
         return ResponseEntity.ok(responses);
     }
 
