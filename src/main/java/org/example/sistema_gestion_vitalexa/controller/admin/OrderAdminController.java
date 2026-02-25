@@ -155,6 +155,20 @@ public class OrderAdminController {
     }
 
     /**
+     * POST /api/admin/orders/{id}/promotions/add
+     * Agrega nuevas promociones a una orden que ya es de tipo promoción.
+     * No elimina las existentes, solo agrega instancias nuevas.
+     * Body: lista de UUIDs de promociones a agregar (pueden repetirse para múltiples instancias)
+     */
+    @PostMapping("/{id}/promotions/add")
+    public ResponseEntity<OrderResponse> addPromotionsToOrder(
+            @PathVariable UUID id,
+            @RequestBody List<UUID> promotionIds) {
+        OrderResponse response = ordenService.addPromotionsToOrder(id, promotionIds);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * POST /api/admin/orders/{id}/annul
      * Anular orden con motivo.
      * - OWNER: puede anular cualquier orden (incluso COMPLETADAS).

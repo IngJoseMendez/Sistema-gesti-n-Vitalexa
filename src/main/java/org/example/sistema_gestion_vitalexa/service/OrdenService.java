@@ -63,4 +63,11 @@ public interface OrdenService {
      */
     OrderResponse updateHistoricalInvoice(UUID orderId, CreateHistoricalInvoiceRequest request, String username);
 
+    /**
+     * Agregar promociones adicionales a una orden que ya es de tipo promoción.
+     * Solo Admin/Owner pueden usar este endpoint.
+     * No elimina las promociones existentes, solo agrega nuevas instancias.
+     */
+    OrderResponse addPromotionsToOrder(UUID orderId, List<UUID> promotionIds);
+
 }

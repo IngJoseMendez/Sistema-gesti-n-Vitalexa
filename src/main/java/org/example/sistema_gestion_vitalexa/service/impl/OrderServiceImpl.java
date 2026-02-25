@@ -2188,4 +2188,82 @@ public class OrderServiceImpl implements OrdenService {
 
         return orderMapper.toResponse(savedOrder);
     }
+
+    // =========================
+    // AGREGAR PROMOCIONES A ORDEN EXISTENTE (ADMIN)
+    // =========================
+
+    /**
+     * Agrega nuevas instancias de promoción a una orden que ya es de tipo
+     * promoción, sin eliminar las existentes. Solo Admin/Owner.
+     *
+     * @param orderId      ID de la orden a modificar
+     * @param promotionIds Lista de IDs de promociones a agregar (pueden repetirse
+     *                     para múltiples instancias)
+     */
+    @Override
+    @Transactional
+    public OrderResponse addPromotionsToOrder(UUID orderId, List<UUID> promotionIds) {
+        log.info("➕ Admin agregando {} promociones a orden {}", promotionIds.size(), orderId);
+
+        if (promotionIds == null || promotionIds.isEmpty()) {
+            throw new BusinessExeption("Debe especificar al menos una promoción para agregar");
+        }
+
+        Order order = ordenRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessExeption("Orden no encontrada"));
+
+        // Solo se puede editar órdenes no completadas/canceladas/anuladas
+        if (order.getEstado() == OrdenStatus.COMPLETADO ||
+                order.getEstado() == OrdenStatus.CANCELADO ||
+                order.getEstado() == OrdenStatus.ANULADA) {
+            throw new BusinessExeption("No se pueden agregar promociones a una orden completada, cancelada o anulada");
+        }
+
+        // ✅ Detectar si realmente es una orden de promoción
+        boolean isPromoOrder = (order.getNotas() != null && order.getNotas().contains("[Promoción]")) ||
+                order.getItems().stream().anyMatch(i -> Boolean.TRUE.equals(i.getIsPromotionItem()));
+
+        if (!isPromoOrder) {
+            throw new BusinessExeption(
+                    "Esta orden no es de tipo promoción. Use la edición normal para agregar productos.");
+        }
+
+        // Calcular cantidad de items no-promo actuales (por si hay surtidos)
+        int currentNormalItemsCount = order.getItems().stream()
+                .filter(i -> !Boolean.TRUE.equals(i.getIsPromotionItem()))
+                .mapToInt(OrderItem::getCantidad)
+                .sum();
+
+        // Procesar las nuevas promociones (se agregan sin eliminar las existentes)
+        processPromotions(order, promotionIds, currentNormalItemsCount);
+
+        // Asegurar que la nota tiene el sufijo [Promoción]
+        String notes = order.getNotas() != null ? order.getNotas() : "";
+        if (!notes.contains("[Promoción]")) {
+            order.setNotas(notes + " [Promoción]");
+        }
+
+        // ✅ CONTABLE: Recalcular paymentStatus después de que el total cambió
+        // El total sube al agregar promociones; si ya había pagos parciales el estado
+        // debe actualizarse (PAID → PARTIAL, o PARTIAL sigue siendo PARTIAL pero con nuevo saldo pendiente)
+        BigDecimal newTotal = order.getDiscountedTotal() != null ? order.getDiscountedTotal() : order.getTotal();
+        BigDecimal totalPaid = paymentRepository.sumPaymentsByOrderId(order.getId());
+        if (totalPaid == null) totalPaid = BigDecimal.ZERO;
+
+        if (totalPaid.compareTo(BigDecimal.ZERO) == 0) {
+            order.setPaymentStatus(org.example.sistema_gestion_vitalexa.enums.PaymentStatus.PENDING);
+        } else if (totalPaid.compareTo(newTotal) >= 0) {
+            order.setPaymentStatus(org.example.sistema_gestion_vitalexa.enums.PaymentStatus.PAID);
+        } else {
+            order.setPaymentStatus(org.example.sistema_gestion_vitalexa.enums.PaymentStatus.PARTIAL);
+        }
+
+        Order updatedOrder = ordenRepository.save(order);
+
+        log.info("✅ {} promociones agregadas a orden {}. Nuevo total: ${}",
+                promotionIds.size(), orderId, updatedOrder.getTotal());
+
+        return orderMapper.toResponse(updatedOrder);
+    }
 }

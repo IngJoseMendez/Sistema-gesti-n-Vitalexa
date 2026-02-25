@@ -238,10 +238,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 
                 // 1. Separar items: Sin promoción vs Con promoción
                 List<OrderItem> regularItems = new ArrayList<>();
-                // ✅ ACTUALIZADO: Agrupar por promotionInstanceId (no promotion.id)
-                // Esto permite tener múltiples instancias de la misma promoción como grupos
-                // separados
-                Map<String, List<OrderItem>> itemsByPromotion = new java.util.HashMap<>();
+                // ✅ AGRUPADO POR promotion.id / specialPromotion.id para compactar en la factura
+                // Múltiples instancias de la MISMA promoción se combinan en una sola fila
+                // La clave es el ID de la promoción lógica (no el instanceId)
+                Map<String, List<OrderItem>> itemsByPromotion = new java.util.LinkedHashMap<>();
 
                 for (OrderItem item : order.getItems()) {
                         // Ignorar items de flete (se muestran en totales)
@@ -252,10 +252,11 @@ public class InvoiceServiceImpl implements InvoiceService {
                         if (item.getPromotion() == null) {
                                 regularItems.add(item);
                         } else {
-                                // ✅ NUEVO: Usar promotionInstanceId si está disponible, fallback a promotion.id
-                                String promoKey = item.getPromotionInstanceId() != null
-                                                ? item.getPromotionInstanceId().toString()
-                                                : item.getPromotion().getId().toString();
+                                // ✅ AGRUPAR por la ID lógica de la promoción (no por instanceId)
+                                // Así todas las instancias de "Promo X" quedan en un solo grupo
+                                String promoKey = item.getSpecialPromotion() != null
+                                                ? "sp_" + item.getSpecialPromotion().getId().toString()
+                                                : "p_" + item.getPromotion().getId().toString();
                                 itemsByPromotion.computeIfAbsent(promoKey, k -> new ArrayList<>()).add(item);
                         }
                 }
@@ -272,16 +273,14 @@ public class InvoiceServiceImpl implements InvoiceService {
                         }
                 }
 
-                // 3. Agregar bloques de promociones
+                // 3. Agregar bloques de promociones - AGRUPADAS (una fila por tipo de promo)
                 if (!itemsByPromotion.isEmpty()) {
-                        // Recorremos las promociones agrupadas
                         for (Map.Entry<String, List<OrderItem>> entry : itemsByPromotion.entrySet()) {
                                 List<OrderItem> promoItems = entry.getValue();
-                                // Tomamos la información de la promoción del primer item (todos comparten la
-                                // misma promoción)
+                                // Tomamos la información de la promoción del primer item
                                 var promo = promoItems.get(0).getPromotion();
 
-                                // ✅ NUEVO: Detectar si es una SpecialPromotion
+                                // Detectar si es una SpecialPromotion
                                 SpecialPromotion specialPromo = promoItems.stream()
                                                 .map(OrderItem::getSpecialPromotion)
                                                 .filter(Objects::nonNull)
@@ -290,30 +289,98 @@ public class InvoiceServiceImpl implements InvoiceService {
 
                                 String promoName = (specialPromo != null) ? specialPromo.getNombre()
                                                 : promo.getNombre();
-                                BigDecimal promoPrice = (specialPromo != null && specialPromo.getPackPrice() != null)
+                                BigDecimal promoUnitPrice = (specialPromo != null && specialPromo.getPackPrice() != null)
                                                 ? specialPromo.getPackPrice()
                                                 : promo.getPackPrice();
 
-                                // Construir encabezado con nombre y precio de la promoción
-                                String promoHeaderText = "PROMOCIÓN: " + promoName;
-                                if (promoPrice != null) {
-                                        promoHeaderText += " - Precio: $" + promoPrice.toPlainString();
+                                // ✅ Contar cuántas INSTANCIAS hay de esta promoción
+                                // Una instancia = un grupo de items con el mismo promotionInstanceId
+                                long instanceCount = promoItems.stream()
+                                                .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem())
+                                                                && !Boolean.TRUE.equals(i.getIsFreeItem()))
+                                                .map(OrderItem::getPromotionInstanceId)
+                                                .filter(Objects::nonNull)
+                                                .distinct()
+                                                .count();
+                                // Fallback: si no hay instanceId, contar items main (no free)
+                                if (instanceCount == 0) {
+                                        instanceCount = promoItems.stream()
+                                                        .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem())
+                                                                        && !Boolean.TRUE.equals(i.getIsFreeItem()))
+                                                        .count();
+                                        if (instanceCount == 0) instanceCount = 1;
                                 }
 
-                                // Separador de promoción - SOLO TÍTULO SIN DESGLOSE
-                                com.itextpdf.layout.element.Cell promoHeader = new com.itextpdf.layout.element.Cell(1,
-                                                4)
-                                                .add(new Paragraph(promoHeaderText)
+                                // ✅ Si la promo NO tiene packPrice fijo (surtida / BUY_GET_FREE),
+                                // calcular el precio de UNA instancia sumando los subTotals de los
+                                // items mainProduct (no free) que pertenecen a la primera instancia.
+                                if (promoUnitPrice == null) {
+                                        // Agrupar items no-free por instanceId y sumar subTotal de la primera instancia
+                                        java.util.Optional<UUID> firstInstance = promoItems.stream()
+                                                        .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem())
+                                                                        && !Boolean.TRUE.equals(i.getIsFreeItem())
+                                                                        && i.getPromotionInstanceId() != null)
+                                                        .map(OrderItem::getPromotionInstanceId)
+                                                        .findFirst();
+
+                                        if (firstInstance.isPresent()) {
+                                                UUID firstId = firstInstance.get();
+                                                promoUnitPrice = promoItems.stream()
+                                                                .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem())
+                                                                                && !Boolean.TRUE.equals(i.getIsFreeItem())
+                                                                                && firstId.equals(i.getPromotionInstanceId()))
+                                                                .map(OrderItem::getSubTotal)
+                                                                .filter(Objects::nonNull)
+                                                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                                        } else {
+                                                // Último fallback: sumar todos los items no-free
+                                                BigDecimal totalSum = promoItems.stream()
+                                                                .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem())
+                                                                                && !Boolean.TRUE.equals(i.getIsFreeItem()))
+                                                                .map(OrderItem::getSubTotal)
+                                                                .filter(Objects::nonNull)
+                                                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                                                promoUnitPrice = instanceCount > 0
+                                                                ? totalSum.divide(BigDecimal.valueOf(instanceCount),
+                                                                                2, java.math.RoundingMode.HALF_UP)
+                                                                : totalSum;
+                                        }
+                                        // Si sigue siendo cero, dejar null para no mostrar fila vacía con $0
+                                        if (promoUnitPrice != null && promoUnitPrice.compareTo(BigDecimal.ZERO) == 0) {
+                                                promoUnitPrice = null;
+                                        }
+                                }
+
+                                // ✅ Calcular precio total = precio unitario × cantidad de instancias
+                                BigDecimal totalPromoPrice = null;
+                                if (promoUnitPrice != null && instanceCount > 0) {
+                                        totalPromoPrice = promoUnitPrice.multiply(BigDecimal.valueOf(instanceCount));
+                                }
+
+                                // Fila del encabezado de la promoción con color azul
+                                String promoRowName = "PROMOCIÓN: " + promoName;
+                                com.itextpdf.layout.element.Cell promoHeader = new com.itextpdf.layout.element.Cell(1, 4)
+                                                .add(new Paragraph(promoRowName)
                                                                 .setBold()
+                                                                .setFontSize(8)
                                                                 .setFontColor(ColorConstants.WHITE)
-                                                                .setBackgroundColor(new DeviceRgb(100, 149, 237)) // Cornflower
-                                                                                                                  // Blue
-                                                                .setPadding(5)
-                                                                .setTextAlignment(TextAlignment.LEFT));
+                                                                .setMargin(0)
+                                                                .setTextAlignment(TextAlignment.LEFT))
+                                                .setPaddingTop(2)
+                                                .setPaddingBottom(2)
+                                                .setPaddingLeft(4)
+                                                .setPaddingRight(4)
+                                                .setBackgroundColor(new DeviceRgb(100, 149, 237));
                                 table.addCell(promoHeader);
 
-                                // ✅ CAMBIO: Ya NO se listan los items individuales de la promoción
-                                // Solo se muestra el título azul con el nombre y precio total
+                                // ✅ NUEVA FILA: cantidad de instancias + precio unitario + total
+                                if (promoUnitPrice != null) {
+                                        addTableDataCell(table, "");
+                                        addTableDataCell(table, instanceCount > 1 ? "x" + instanceCount : "x1");
+                                        addTableDataCell(table, formatCurrency(promoUnitPrice));
+                                        addTableDataCell(table,
+                                                        totalPromoPrice != null ? formatCurrency(totalPromoPrice) : "");
+                                }
                         }
                 }
 
@@ -352,10 +419,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 
                 com.itextpdf.layout.element.Cell nameCell = new com.itextpdf.layout.element.Cell()
                                 .add(new Paragraph(productName)
-                                                .setFontSize(10)
+                                                .setFontSize(9)
                                                 .setItalic()
                                                 .setFontColor(new DeviceRgb(40, 167, 69))) // Verde
-                                .setPadding(6)
+                                .setPadding(3)
                                 .setTextAlignment(TextAlignment.CENTER);
                 table.addCell(nameCell);
 
@@ -587,18 +654,18 @@ public class InvoiceServiceImpl implements InvoiceService {
 
         private void addTableHeaderCell(Table table, String content, DeviceRgb backgroundColor) {
                 com.itextpdf.layout.element.Cell cell = new com.itextpdf.layout.element.Cell()
-                                .add(new Paragraph(content).setBold().setFontSize(11))
+                                .add(new Paragraph(content).setBold().setFontSize(10))
                                 .setBackgroundColor(backgroundColor)
                                 .setFontColor(ColorConstants.WHITE)
                                 .setTextAlignment(TextAlignment.CENTER)
-                                .setPadding(8);
+                                .setPadding(4);
                 table.addCell(cell);
         }
 
         private void addTableDataCell(Table table, String content) {
                 com.itextpdf.layout.element.Cell cell = new com.itextpdf.layout.element.Cell()
-                                .add(new Paragraph(content).setFontSize(10))
-                                .setPadding(6)
+                                .add(new Paragraph(content).setFontSize(9))
+                                .setPadding(3)
                                 .setTextAlignment(TextAlignment.CENTER);
                 table.addCell(cell);
         }
