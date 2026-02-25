@@ -186,7 +186,7 @@ public class PayrollServiceImpl implements PayrollService {
                                         && totalCompanySales.compareTo(effectiveThreshold) >= 0;
 
                         generalCommissionAmount = generalGoalMet
-                                        ? totalGlobalGoals.multiply(generalCommissionPct).setScale(2,
+                                        ? effectiveThreshold.multiply(generalCommissionPct).setScale(2,
                                                         RoundingMode.HALF_UP)
                                         : BigDecimal.ZERO;
 
