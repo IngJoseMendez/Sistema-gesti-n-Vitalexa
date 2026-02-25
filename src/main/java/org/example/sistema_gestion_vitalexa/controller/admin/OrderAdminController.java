@@ -43,7 +43,8 @@ public class OrderAdminController {
     /**
      * PATCH /api/admin/orders/{id}/status
      * ADMIN y OWNER pueden cambiar estado (COMPLETADO, PENDIENTE, EN_PROCESO, etc.)
-     * SOLO OWNER puede poner estado ANULADA — usar el endpoint /annul para anular con motivo.
+     * SOLO OWNER puede poner estado ANULADA — usar el endpoint /annul para anular
+     * con motivo.
      */
     @PatchMapping("/{id}/status")
     public OrderResponse changeStatus(
@@ -75,7 +76,7 @@ public class OrderAdminController {
      * Generar PDF de la orden (para vendedor/empacador)
      */
     @GetMapping("/{id}/invoice/pdf")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CUSTOMER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'OWNER')")
     public ResponseEntity<byte[]> downloadOrderInvoice(@PathVariable UUID id) {
         byte[] pdfBytes = invoiceService.generateOrderInvoicePdf(id);
 
@@ -91,7 +92,7 @@ public class OrderAdminController {
      * Visualizar PDF de la orden en el navegador
      */
     @GetMapping("/{id}/invoice/preview")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CUSTOMER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'OWNER')")
     public ResponseEntity<byte[]> previewOrderInvoice(@PathVariable UUID id) {
         byte[] pdfBytes = invoiceService.generateOrderInvoicePdf(id);
 
@@ -158,7 +159,8 @@ public class OrderAdminController {
      * POST /api/admin/orders/{id}/promotions/add
      * Agrega nuevas promociones a una orden que ya es de tipo promoción.
      * No elimina las existentes, solo agrega instancias nuevas.
-     * Body: lista de UUIDs de promociones a agregar (pueden repetirse para múltiples instancias)
+     * Body: lista de UUIDs de promociones a agregar (pueden repetirse para
+     * múltiples instancias)
      */
     @PostMapping("/{id}/promotions/add")
     public ResponseEntity<OrderResponse> addPromotionsToOrder(

@@ -12,14 +12,16 @@ import java.util.UUID;
 /**
  * Entidad que representa el cálculo de nómina mensual de un vendedor.
  * Se calcula al finalizar cada mes y contempla:
- *  - Salario base (opcional)
- *  - Comisión por meta de ventas (1.5% si cumple la meta)
- *  - Comisión por meta de recaudo (3% si recauda ≥80% del mes anterior)
- *  - Comisión general por metas globales (2% de la suma de todas las metas)
+ * - Salario base (opcional)
+ * - Comisión por meta de ventas (1.5% si cumple la meta)
+ * - Comisión por meta de recaudo (3% si recauda ≥80% del mes anterior)
+ * - Comisión general por metas globales (2% de la suma de todas las metas)
+ * → Solo aplica si las ventas totales de la empresa >= suma de metas de todos
+ * los vendedores
  */
 @Entity
 @Table(name = "payrolls", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"vendedor_id", "month", "year"})
+        @UniqueConstraint(columnNames = { "vendedor_id", "month", "year" })
 })
 @Getter
 @Setter
@@ -115,6 +117,22 @@ public class Payroll {
     @Builder.Default
     private BigDecimal totalGlobalGoals = BigDecimal.ZERO;
 
+    /**
+     * Total de ventas de TODA la empresa en el mes (suma de todos los vendedores).
+     * Debe ser >= totalGlobalGoals para que la comisión general aplique.
+     */
+    @Column(name = "total_company_sales", precision = 12, scale = 2)
+    @Builder.Default
+    private BigDecimal totalCompanySales = BigDecimal.ZERO;
+
+    /**
+     * ¿Se cumplió el umbral de ventas globales (totalCompanySales >=
+     * totalGlobalGoals)?
+     */
+    @Column(name = "general_commission_goal_met", nullable = false)
+    @Builder.Default
+    private Boolean generalCommissionGoalMet = false;
+
     /** Porcentaje de comisión general (configurable, por defecto 2%) */
     @Column(name = "general_commission_pct", precision = 5, scale = 4, nullable = false)
     @Builder.Default
@@ -161,4 +179,3 @@ public class Payroll {
         this.totalPayout = baseSalary.add(totalCommissions);
     }
 }
-

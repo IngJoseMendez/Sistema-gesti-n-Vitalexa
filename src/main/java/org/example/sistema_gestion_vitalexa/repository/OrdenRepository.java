@@ -78,7 +78,8 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
                         @Param("end") LocalDateTime end);
 
         /**
-         * Para reportes: órdenes COMPLETADAS filtradas por fecha de completado (completedAt).
+         * Para reportes: órdenes COMPLETADAS filtradas por fecha de completado
+         * (completedAt).
          * Si completedAt es null (órdenes históricas), usa fecha como fallback.
          */
         @Query("""
@@ -166,7 +167,7 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
                         SELECT COALESCE(SUM(o.total), 0)
                         FROM Order o
                         WHERE o.vendedor.id = :vendedorId
-                        AND o.estado <> 'ANULADA'
+                        AND o.estado = 'COMPLETADO'
                         AND o.fecha >= :start
                         AND o.fecha < :end
                         """)
@@ -182,7 +183,7 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
                         SELECT COALESCE(SUM(o.total), 0)
                         FROM Order o
                         WHERE o.vendedor.id IN :vendedorIds
-                        AND o.estado <> 'ANULADA'
+                        AND o.estado = 'COMPLETADO'
                         AND o.fecha >= :start
                         AND o.fecha < :end
                         """)

@@ -37,13 +37,13 @@ public class PayrollExportServiceImpl implements PayrollExportService {
 
     private final PayrollService payrollService;
 
-    private static final DeviceRgb COLOR_HEADER     = new DeviceRgb(34, 85, 136);
-    private static final DeviceRgb COLOR_SUBHEADER  = new DeviceRgb(52, 120, 190);
-    private static final DeviceRgb COLOR_GREEN       = new DeviceRgb(39, 174, 96);
-    private static final DeviceRgb COLOR_RED         = new DeviceRgb(192, 57, 43);
-    private static final DeviceRgb COLOR_LIGHT_BLUE  = new DeviceRgb(214, 234, 248);
+    private static final DeviceRgb COLOR_HEADER = new DeviceRgb(34, 85, 136);
+    private static final DeviceRgb COLOR_SUBHEADER = new DeviceRgb(52, 120, 190);
+    private static final DeviceRgb COLOR_GREEN = new DeviceRgb(39, 174, 96);
+    private static final DeviceRgb COLOR_RED = new DeviceRgb(192, 57, 43);
+    private static final DeviceRgb COLOR_LIGHT_BLUE = new DeviceRgb(214, 234, 248);
     private static final DeviceRgb COLOR_LIGHT_GREEN = new DeviceRgb(212, 239, 223);
-    private static final DeviceRgb COLOR_LIGHT_RED   = new DeviceRgb(250, 219, 216);
+    private static final DeviceRgb COLOR_LIGHT_RED = new DeviceRgb(250, 219, 216);
 
     // =========================================================================
     // EXCEL — TODOS LOS VENDEDORES
@@ -56,12 +56,12 @@ public class PayrollExportServiceImpl implements PayrollExportService {
             throw new BusinessExeption("No hay nóminas calculadas para " + getMonthName(month) + " " + year);
         }
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            CellStyle headerStyle   = createExcelHeaderStyle(workbook);
-            CellStyle dataStyle     = createExcelDataStyle(workbook);
+            CellStyle headerStyle = createExcelHeaderStyle(workbook);
+            CellStyle dataStyle = createExcelDataStyle(workbook);
             CellStyle currencyStyle = createExcelCurrencyStyle(workbook);
-            CellStyle yesStyle      = createExcelColorStyle(workbook, IndexedColors.LIGHT_GREEN);
-            CellStyle noStyle       = createExcelColorStyle(workbook, IndexedColors.ROSE);
-            CellStyle titleStyle    = createExcelTitleStyle(workbook);
+            CellStyle yesStyle = createExcelColorStyle(workbook, IndexedColors.LIGHT_GREEN);
+            CellStyle noStyle = createExcelColorStyle(workbook, IndexedColors.ROSE);
+            CellStyle titleStyle = createExcelTitleStyle(workbook);
 
             // Hoja 1: Resumen general
             createSummarySheet(workbook, payrolls, month, year, headerStyle, dataStyle, currencyStyle, titleStyle);
@@ -89,12 +89,12 @@ public class PayrollExportServiceImpl implements PayrollExportService {
     public byte[] exportVendorPayrollToExcel(UUID vendedorId, int month, int year) {
         PayrollResponse payroll = payrollService.findByVendedorAndMonthYear(vendedorId, month, year);
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            CellStyle headerStyle   = createExcelHeaderStyle(workbook);
-            CellStyle dataStyle     = createExcelDataStyle(workbook);
+            CellStyle headerStyle = createExcelHeaderStyle(workbook);
+            CellStyle dataStyle = createExcelDataStyle(workbook);
             CellStyle currencyStyle = createExcelCurrencyStyle(workbook);
-            CellStyle yesStyle      = createExcelColorStyle(workbook, IndexedColors.LIGHT_GREEN);
-            CellStyle noStyle       = createExcelColorStyle(workbook, IndexedColors.ROSE);
-            CellStyle titleStyle    = createExcelTitleStyle(workbook);
+            CellStyle yesStyle = createExcelColorStyle(workbook, IndexedColors.LIGHT_GREEN);
+            CellStyle noStyle = createExcelColorStyle(workbook, IndexedColors.ROSE);
+            CellStyle titleStyle = createExcelTitleStyle(workbook);
 
             createVendorSheet(workbook, payroll, headerStyle, dataStyle, currencyStyle, yesStyle, noStyle, titleStyle);
 
@@ -155,7 +155,7 @@ public class PayrollExportServiceImpl implements PayrollExportService {
 
             addPdfTitle(document,
                     "NÓMINA — " + payroll.vendedorUsername().toUpperCase()
-                    + " — " + getMonthName(month).toUpperCase() + " " + year);
+                            + " — " + getMonthName(month).toUpperCase() + " " + year);
             addPayrollSectionToPdf(document, payroll);
 
             document.close();
@@ -173,9 +173,9 @@ public class PayrollExportServiceImpl implements PayrollExportService {
     // =========================================================================
 
     private void createSummarySheet(Workbook wb, List<PayrollResponse> payrolls,
-                                    int month, int year,
-                                    CellStyle hStyle, CellStyle dStyle,
-                                    CellStyle cStyle, CellStyle tStyle) {
+            int month, int year,
+            CellStyle hStyle, CellStyle dStyle,
+            CellStyle cStyle, CellStyle tStyle) {
         Sheet sheet = wb.createSheet("Resumen " + getMonthName(month) + " " + year);
         int rowNum = 0;
 
@@ -184,15 +184,15 @@ public class PayrollExportServiceImpl implements PayrollExportService {
         org.apache.poi.ss.usermodel.Cell titleCell = titleRow.createCell(0);
         titleCell.setCellValue("NÓMINA " + getMonthName(month).toUpperCase() + " " + year);
         titleCell.setCellStyle(tStyle);
-        sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 9));
+        sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 10));
         rowNum++;
 
         // Encabezados
         String[] headers = {
-            "Vendedor", "Salario Base",
-            "Meta Ventas", "Total Vendido", "¿Cumplió?", "Comisión Ventas",
-            "% Recaudo", "¿Cumplió Recaudo?", "Comisión Recaudo",
-            "Comisión General", "TOTAL A PAGAR"
+                "Vendedor", "Salario Base",
+                "Meta Ventas", "Total Vendido", "¿Cumplió?", "Comisión Ventas",
+                "% Recaudo", "¿Cumplió Recaudo?", "Comisión Recaudo",
+                "Comisión General", "Total Comisiones", "TOTAL A PAGAR"
         };
         Row headerRow = sheet.createRow(rowNum++);
         for (int i = 0; i < headers.length; i++) {
@@ -215,6 +215,7 @@ public class PayrollExportServiceImpl implements PayrollExportService {
             setCell(row, col++, p.collectionGoalMet() ? "✓ Sí" : "✗ No", dStyle);
             setCurrencyCell(row, col++, p.collectionCommissionAmount(), cStyle);
             setCurrencyCell(row, col++, p.generalCommissionAmount(), cStyle);
+            setCurrencyCell(row, col++, p.totalCommissions(), cStyle);
             setCurrencyCell(row, col++, p.totalPayout(), cStyle);
             grandTotal = grandTotal.add(p.totalPayout());
         }
@@ -223,16 +224,18 @@ public class PayrollExportServiceImpl implements PayrollExportService {
         rowNum++;
         Row totalRow = sheet.createRow(rowNum);
         setCell(totalRow, 0, "TOTAL NÓMINA:", hStyle);
-        setCurrencyCell(totalRow, 10, grandTotal, cStyle);
+        setCurrencyCell(totalRow, 11, grandTotal, cStyle);
 
-        for (int i = 0; i < headers.length; i++) sheet.autoSizeColumn(i);
+        for (int i = 0; i < headers.length; i++)
+            sheet.autoSizeColumn(i);
     }
 
     private void createVendorSheet(Workbook wb, PayrollResponse p,
-                                   CellStyle hStyle, CellStyle dStyle, CellStyle cStyle,
-                                   CellStyle yStyle, CellStyle nStyle, CellStyle tStyle) {
+            CellStyle hStyle, CellStyle dStyle, CellStyle cStyle,
+            CellStyle yStyle, CellStyle nStyle, CellStyle tStyle) {
         String sheetName = p.vendedorUsername().length() > 31
-                ? p.vendedorUsername().substring(0, 31) : p.vendedorUsername();
+                ? p.vendedorUsername().substring(0, 31)
+                : p.vendedorUsername();
         Sheet sheet = wb.createSheet(sheetName);
         int rowNum = 0;
 
@@ -269,7 +272,8 @@ public class PayrollExportServiceImpl implements PayrollExportService {
                 p.collectionPct().setScale(2, RoundingMode.HALF_UP) + "%", dStyle, dStyle);
         addDetailRow(sheet, rowNum++, "Umbral requerido:",
                 pct(p.collectionCommissionPct().equals(new BigDecimal("0.0300"))
-                        ? new BigDecimal("0.8000") : new BigDecimal("0.8000")),
+                        ? new BigDecimal("0.8000")
+                        : new BigDecimal("0.8000")),
                 dStyle, dStyle);
         addDetailRow(sheet, rowNum++, "¿Cumplió recaudo?:", p.collectionGoalMet() ? "✓ SÍ" : "✗ NO",
                 dStyle, p.collectionGoalMet() ? yStyle : nStyle);
@@ -282,7 +286,11 @@ public class PayrollExportServiceImpl implements PayrollExportService {
         addSectionHeader(sheet, rowNum++, "COMISIÓN GENERAL POR METAS GLOBALES", hStyle, 3);
         addDetailRow(sheet, rowNum++, "¿Habilitada?:", p.generalCommissionEnabled() ? "✓ SÍ" : "✗ NO",
                 dStyle, p.generalCommissionEnabled() ? yStyle : nStyle);
-        addDetailRow(sheet, rowNum++, "Suma total de metas globales:", fmt(p.totalGlobalGoals()), dStyle, cStyle);
+        addDetailRow(sheet, rowNum++, "Suma de metas globales:", fmt(p.totalGlobalGoals()), dStyle, cStyle);
+        addDetailRow(sheet, rowNum++, "Ventas totales empresa:", fmt(p.totalCompanySales()), dStyle, cStyle);
+        addDetailRow(sheet, rowNum++, "¿Umbral alcanzado? (ventas >= suma metas):",
+                p.generalCommissionGoalMet() ? "✓ SÍ" : "✗ NO",
+                dStyle, p.generalCommissionGoalMet() ? yStyle : nStyle);
         addDetailRow(sheet, rowNum++, "% Comisión general:", pct(p.generalCommissionPct()), dStyle, dStyle);
         addDetailRow(sheet, rowNum++, "Comisión general:", fmt(p.generalCommissionAmount()), dStyle, cStyle);
         rowNum++;
@@ -338,7 +346,7 @@ public class PayrollExportServiceImpl implements PayrollExportService {
                 .setPadding(6)
                 .setMarginTop(8).setMarginBottom(4));
 
-        Table table = new Table(UnitValue.createPercentArray(new float[]{3f, 2f}))
+        Table table = new Table(UnitValue.createPercentArray(new float[] { 3f, 2f }))
                 .useAllAvailableWidth()
                 .setMarginBottom(6);
 
@@ -372,6 +380,10 @@ public class PayrollExportServiceImpl implements PayrollExportService {
         addPdfDataRow(table, "¿Habilitada?", p.generalCommissionEnabled() ? "✓ SÍ" : "✗ NO",
                 !p.generalCommissionEnabled());
         addPdfDataRow(table, "Suma de metas globales", fmtPdf(p.totalGlobalGoals()), false);
+        addPdfDataRow(table, "Ventas totales empresa", fmtPdf(p.totalCompanySales()), false);
+        addPdfDataRow(table, "¿Umbral alcanzado?",
+                p.generalCommissionGoalMet() ? "✓ SÍ" : "✗ NO (ventas < suma de metas)",
+                !p.generalCommissionGoalMet());
         addPdfDataRow(table, "% Comisión general", pctPdf(p.generalCommissionPct()), false);
         addPdfDataRow(table, "Comisión general", fmtPdf(p.generalCommissionAmount()), false);
 
@@ -431,7 +443,7 @@ public class PayrollExportServiceImpl implements PayrollExportService {
     }
 
     private void addDetailRow(Sheet sheet, int rowNum, String label, String value,
-                               CellStyle labelStyle, CellStyle valueStyle) {
+            CellStyle labelStyle, CellStyle valueStyle) {
         Row row = sheet.createRow(rowNum);
         org.apache.poi.ss.usermodel.Cell lbl = row.createCell(0);
         lbl.setCellValue(label);
@@ -528,17 +540,20 @@ public class PayrollExportServiceImpl implements PayrollExportService {
     // =========================================================================
 
     private String fmt(BigDecimal v) {
-        if (v == null) return "$0.00";
+        if (v == null)
+            return "$0.00";
         return "$" + String.format("%,.2f", v);
     }
 
     private String fmtPdf(BigDecimal v) {
-        if (v == null) return "$0.00";
+        if (v == null)
+            return "$0.00";
         return "$" + String.format("%,.2f", v);
     }
 
     private String pct(BigDecimal v) {
-        if (v == null) return "0.00%";
+        if (v == null)
+            return "0.00%";
         return v.multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP) + "%";
     }
 
@@ -550,4 +565,3 @@ public class PayrollExportServiceImpl implements PayrollExportService {
         return Month.of(month).getDisplayName(TextStyle.FULL, new Locale("es", "CO"));
     }
 }
-
