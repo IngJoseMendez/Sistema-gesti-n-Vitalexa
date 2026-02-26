@@ -254,10 +254,14 @@ public class PayrollExportServiceImpl implements PayrollExportService {
         rowNum++;
 
         // ── Comisión por Ventas ────────────────────────────────────────────
-        addSectionHeader(sheet, rowNum++, "COMISIÓN POR META DE VENTAS", hStyle, 3);
+        String salesSectionTitle = p.salesCommissionByGoal()
+                ? "COMISIÓN POR META DE VENTAS"
+                : "COMISIÓN POR VENTAS (DIRECTA — SIN META)";
+        addSectionHeader(sheet, rowNum++, salesSectionTitle, hStyle, 3);
+        addDetailRow(sheet, rowNum++, "Modalidad:", p.salesCommissionByGoal() ? "Solo si cumple meta" : "% directo sobre lo vendido", dStyle, dStyle);
         addDetailRow(sheet, rowNum++, "Meta de ventas:", fmt(p.salesGoalTarget()), dStyle, cStyle);
         addDetailRow(sheet, rowNum++, "Total vendido:", fmt(p.totalSold()), dStyle, cStyle);
-        addDetailRow(sheet, rowNum++, "¿Cumplió meta?:", p.salesGoalMet() ? "✓ SÍ" : "✗ NO",
+        addDetailRow(sheet, rowNum++, "¿Cumplió meta?:", p.salesGoalMet() ? "✓ SÍ" : (p.salesCommissionByGoal() ? "✗ NO" : "N/A"),
                 dStyle, p.salesGoalMet() ? yStyle : nStyle);
         addDetailRow(sheet, rowNum++, "% Comisión ventas:",
                 pct(p.salesCommissionPct()), dStyle, dStyle);
@@ -265,7 +269,11 @@ public class PayrollExportServiceImpl implements PayrollExportService {
         rowNum++;
 
         // ── Comisión por Recaudo ───────────────────────────────────────────
-        addSectionHeader(sheet, rowNum++, "COMISIÓN POR META DE RECAUDO", hStyle, 3);
+        String collectionSectionTitle = p.collectionCommissionByGoal()
+                ? "COMISIÓN POR META DE RECAUDO"
+                : "COMISIÓN POR RECAUDO (DIRECTA — SIN UMBRAL)";
+        addSectionHeader(sheet, rowNum++, collectionSectionTitle, hStyle, 3);
+        addDetailRow(sheet, rowNum++, "Modalidad:", p.collectionCommissionByGoal() ? "Solo si supera umbral" : "% directo sobre lo recaudado", dStyle, dStyle);
         addDetailRow(sheet, rowNum++, "Vendido mes anterior:", fmt(p.prevMonthTotalSold()), dStyle, cStyle);
         addDetailRow(sheet, rowNum++, "Total recaudado este mes:", fmt(p.totalCollected()), dStyle, cStyle);
         addDetailRow(sheet, rowNum++, "% Recaudado:",
@@ -275,7 +283,7 @@ public class PayrollExportServiceImpl implements PayrollExportService {
                         ? new BigDecimal("0.8000")
                         : new BigDecimal("0.8000")),
                 dStyle, dStyle);
-        addDetailRow(sheet, rowNum++, "¿Cumplió recaudo?:", p.collectionGoalMet() ? "✓ SÍ" : "✗ NO",
+        addDetailRow(sheet, rowNum++, "¿Cumplió recaudo?:", p.collectionGoalMet() ? "✓ SÍ" : (p.collectionCommissionByGoal() ? "✗ NO" : "N/A"),
                 dStyle, p.collectionGoalMet() ? yStyle : nStyle);
         addDetailRow(sheet, rowNum++, "% Comisión recaudo:",
                 pct(p.collectionCommissionPct()), dStyle, dStyle);
@@ -359,23 +367,35 @@ public class PayrollExportServiceImpl implements PayrollExportService {
         addPdfDataRow(table, "Salario base mensual", fmtPdf(p.baseSalary()), false);
 
         // ── Comisión Ventas ───────────────────────────────────────────────
-        addPdfSectionRow(table, "COMISIÓN POR META DE VENTAS", true);
+        String pdfSalesSectionTitle = p.salesCommissionByGoal()
+                ? "COMISIÓN POR META DE VENTAS"
+                : "COMISIÓN POR VENTAS (DIRECTA — SIN META)";
+        addPdfSectionRow(table, pdfSalesSectionTitle, true);
+        addPdfDataRow(table, "Modalidad",
+                p.salesCommissionByGoal() ? "Solo si cumple meta" : "% directo sobre lo vendido", false);
         addPdfDataRow(table, "Meta de ventas", fmtPdf(p.salesGoalTarget()), false);
         addPdfDataRow(table, "Total vendido", fmtPdf(p.totalSold()), false);
-        addPdfDataRow(table, "¿Cumplió meta?", p.salesGoalMet() ? "✓ SÍ" : "✗ NO",
-                !p.salesGoalMet());
+        addPdfDataRow(table, "¿Cumplió meta?",
+                p.salesGoalMet() ? "✓ SÍ" : (p.salesCommissionByGoal() ? "✗ NO" : "N/A"),
+                p.salesCommissionByGoal() && !p.salesGoalMet());
         addPdfDataRow(table, "% Comisión", pctPdf(p.salesCommissionPct()), false);
         addPdfDataRow(table, "Comisión por ventas", fmtPdf(p.salesCommissionAmount()), false);
 
         // ── Comisión Recaudo ──────────────────────────────────────────────
-        addPdfSectionRow(table, "COMISIÓN POR META DE RECAUDO", true);
+        String pdfCollectionSectionTitle = p.collectionCommissionByGoal()
+                ? "COMISIÓN POR META DE RECAUDO"
+                : "COMISIÓN POR RECAUDO (DIRECTA — SIN UMBRAL)";
+        addPdfSectionRow(table, pdfCollectionSectionTitle, true);
+        addPdfDataRow(table, "Modalidad",
+                p.collectionCommissionByGoal() ? "Solo si supera umbral" : "% directo sobre lo recaudado", false);
         addPdfDataRow(table, "Vendido mes anterior", fmtPdf(p.prevMonthTotalSold()), false);
         addPdfDataRow(table, "Total recaudado", fmtPdf(p.totalCollected()), false);
         addPdfDataRow(table, "% Recaudado",
                 p.collectionPct().setScale(2, RoundingMode.HALF_UP) + "%", false);
         addPdfDataRow(table, "Umbral requerido (80%)", "80.00%", false);
-        addPdfDataRow(table, "¿Cumplió recaudo?", p.collectionGoalMet() ? "✓ SÍ" : "✗ NO",
-                !p.collectionGoalMet());
+        addPdfDataRow(table, "¿Cumplió recaudo?",
+                p.collectionGoalMet() ? "✓ SÍ" : (p.collectionCommissionByGoal() ? "✗ NO" : "N/A"),
+                p.collectionCommissionByGoal() && !p.collectionGoalMet());
         addPdfDataRow(table, "% Comisión recaudo", pctPdf(p.collectionCommissionPct()), false);
         addPdfDataRow(table, "Comisión por recaudo", fmtPdf(p.collectionCommissionAmount()), false);
 

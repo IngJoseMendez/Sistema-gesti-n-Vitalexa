@@ -21,6 +21,12 @@ public record VendorPayrollConfigRequest(
         @DecimalMin(value = "0.0000") @DecimalMax(value = "1.0000")
         BigDecimal salesCommissionPct,
 
+        /**
+         * true  → la comisión de ventas solo aplica si el vendedor CUMPLE su meta (default).
+         * false → la comisión se gana SIEMPRE como % directo sobre lo vendido, sin meta.
+         */
+        Boolean salesCommissionByGoal,
+
         /** % comisión por recaudo en decimal (ej: 0.0300 para 3%) */
         @DecimalMin(value = "0.0000") @DecimalMax(value = "1.0000")
         BigDecimal collectionCommissionPct,
@@ -28,6 +34,12 @@ public record VendorPayrollConfigRequest(
         /** % mínimo de recaudo requerido (ej: 0.8000 para 80%) */
         @DecimalMin(value = "0.0000") @DecimalMax(value = "1.0000")
         BigDecimal collectionThresholdPct,
+
+        /**
+         * true  → la comisión de recaudo solo aplica si supera el umbral (default).
+         * false → la comisión se gana SIEMPRE como % directo sobre lo recaudado, sin umbral.
+         */
+        Boolean collectionCommissionByGoal,
 
         /** ¿Habilitar comisión general por metas globales? */
         Boolean generalCommissionEnabled,

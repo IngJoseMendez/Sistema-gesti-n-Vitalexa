@@ -23,6 +23,8 @@ public record PayrollResponse(
         BigDecimal totalSold,
         boolean salesGoalMet,
         BigDecimal salesCommissionPct,
+        /** true = comisión solo si cumplió meta; false = % directo sobre lo vendido siempre */
+        boolean salesCommissionByGoal,
         BigDecimal salesCommissionAmount,
 
         // ─── Comisión por Meta de Recaudo ──────────────────
@@ -31,6 +33,8 @@ public record PayrollResponse(
         BigDecimal collectionPct,
         boolean collectionGoalMet,
         BigDecimal collectionCommissionPct,
+        /** true = comisión solo si superó umbral; false = % directo sobre lo recaudado siempre */
+        boolean collectionCommissionByGoal,
         BigDecimal collectionCommissionAmount,
 
         // ─── Comisión General ──────────────────────────────

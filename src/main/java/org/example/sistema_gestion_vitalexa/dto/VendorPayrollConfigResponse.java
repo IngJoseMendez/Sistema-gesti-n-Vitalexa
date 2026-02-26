@@ -12,8 +12,12 @@ public record VendorPayrollConfigResponse(
         String vendedorUsername,
         BigDecimal baseSalary,
         BigDecimal salesCommissionPct,
+        /** true = solo cobra comisión de ventas si cumple meta; false = siempre gana % directo */
+        boolean salesCommissionByGoal,
         BigDecimal collectionCommissionPct,
         BigDecimal collectionThresholdPct,
+        /** true = solo cobra comisión de recaudo si supera umbral; false = siempre gana % directo */
+        boolean collectionCommissionByGoal,
         boolean generalCommissionEnabled,
         BigDecimal generalCommissionPct
 ) {}

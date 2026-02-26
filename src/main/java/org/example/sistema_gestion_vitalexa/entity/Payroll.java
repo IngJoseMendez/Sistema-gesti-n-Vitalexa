@@ -70,7 +70,15 @@ public class Payroll {
     @Builder.Default
     private BigDecimal salesCommissionPct = new BigDecimal("0.0150");
 
-    /** Valor de la comisión por meta de ventas (0 si no cumplió) */
+    /**
+     * true  → comisión de ventas aplicó solo por haber cumplido la meta.
+     * false → comisión de ventas se aplicó directamente sobre lo vendido, sin meta.
+     */
+    @Column(name = "sales_commission_by_goal", nullable = false)
+    @Builder.Default
+    private Boolean salesCommissionByGoal = true;
+
+    /** Valor de la comisión por meta de ventas (0 si no cumplió cuando byGoal=true) */
     @Column(name = "sales_commission_amount", precision = 12, scale = 2, nullable = false)
     @Builder.Default
     private BigDecimal salesCommissionAmount = BigDecimal.ZERO;
@@ -101,7 +109,15 @@ public class Payroll {
     @Builder.Default
     private BigDecimal collectionCommissionPct = new BigDecimal("0.0300");
 
-    /** Valor de la comisión por recaudo (0 si no cumplió el 80%) */
+    /**
+     * true  → comisión de recaudo aplicó solo por superar el umbral.
+     * false → comisión de recaudo se aplicó directamente sobre lo recaudado, sin umbral.
+     */
+    @Column(name = "collection_commission_by_goal", nullable = false)
+    @Builder.Default
+    private Boolean collectionCommissionByGoal = true;
+
+    /** Valor de la comisión por recaudo (0 si no cumplió el umbral cuando byGoal=true) */
     @Column(name = "collection_commission_amount", precision = 12, scale = 2, nullable = false)
     @Builder.Default
     private BigDecimal collectionCommissionAmount = BigDecimal.ZERO;

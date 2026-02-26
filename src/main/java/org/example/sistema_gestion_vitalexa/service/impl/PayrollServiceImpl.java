@@ -48,10 +48,14 @@ public class PayrollServiceImpl implements PayrollService {
                         config.setBaseSalary(request.baseSalary());
                 if (request.salesCommissionPct() != null)
                         config.setSalesCommissionPct(request.salesCommissionPct());
+                if (request.salesCommissionByGoal() != null)
+                        config.setSalesCommissionByGoal(request.salesCommissionByGoal());
                 if (request.collectionCommissionPct() != null)
                         config.setCollectionCommissionPct(request.collectionCommissionPct());
                 if (request.collectionThresholdPct() != null)
                         config.setCollectionThresholdPct(request.collectionThresholdPct());
+                if (request.collectionCommissionByGoal() != null)
+                        config.setCollectionCommissionByGoal(request.collectionCommissionByGoal());
                 if (request.generalCommissionEnabled() != null)
                         config.setGeneralCommissionEnabled(request.generalCommissionEnabled());
                 if (request.generalCommissionPct() != null)
@@ -109,13 +113,21 @@ public class PayrollServiceImpl implements PayrollService {
                                 .map(SaleGoal::getTargetAmount)
                                 .orElse(BigDecimal.ZERO);
 
+                boolean salesByGoal = Boolean.TRUE.equals(config.getSalesCommissionByGoal());
                 boolean salesGoalMet = salesGoalTarget.compareTo(BigDecimal.ZERO) > 0
                                 && totalSold.compareTo(salesGoalTarget) >= 0;
 
                 BigDecimal salesCommissionPct = config.getSalesCommissionPct();
-                BigDecimal salesCommissionAmount = salesGoalMet
-                                ? totalSold.multiply(salesCommissionPct).setScale(2, RoundingMode.HALF_UP)
-                                : BigDecimal.ZERO;
+                BigDecimal salesCommissionAmount;
+                if (!salesByGoal) {
+                        // Comisión directa: siempre se gana el % sobre lo vendido, sin meta
+                        salesCommissionAmount = totalSold.multiply(salesCommissionPct).setScale(2, RoundingMode.HALF_UP);
+                } else {
+                        // Comisión clásica: solo si cumplió la meta
+                        salesCommissionAmount = salesGoalMet
+                                        ? totalSold.multiply(salesCommissionPct).setScale(2, RoundingMode.HALF_UP)
+                                        : BigDecimal.ZERO;
+                }
 
                 // ── 3. Recaudo del mes anterior ───────────────────────────────────────
                 // prevMonth/prevYear = mes cuyas FACTURAS se deben cobrar ahora
@@ -141,13 +153,21 @@ public class PayrollServiceImpl implements PayrollService {
                 BigDecimal thresholdAsPercent = config.getCollectionThresholdPct()
                                 .multiply(BigDecimal.valueOf(100));
 
+                boolean collectionByGoal = Boolean.TRUE.equals(config.getCollectionCommissionByGoal());
                 boolean collectionGoalMet = prevMonthTotalSold.compareTo(BigDecimal.ZERO) > 0
                                 && collectionPct.compareTo(thresholdAsPercent) >= 0;
 
                 BigDecimal collectionCommissionPct = config.getCollectionCommissionPct();
-                BigDecimal collectionCommissionAmount = collectionGoalMet
-                                ? totalCollected.multiply(collectionCommissionPct).setScale(2, RoundingMode.HALF_UP)
-                                : BigDecimal.ZERO;
+                BigDecimal collectionCommissionAmount;
+                if (!collectionByGoal) {
+                        // Comisión directa: siempre se gana el % sobre lo recaudado, sin umbral
+                        collectionCommissionAmount = totalCollected.multiply(collectionCommissionPct).setScale(2, RoundingMode.HALF_UP);
+                } else {
+                        // Comisión clásica: solo si superó el umbral
+                        collectionCommissionAmount = collectionGoalMet
+                                        ? totalCollected.multiply(collectionCommissionPct).setScale(2, RoundingMode.HALF_UP)
+                                        : BigDecimal.ZERO;
+                }
 
                 // ── 4. Comisión general por metas globales ────────────────────
                 // Umbral: si el Owner pasó un valor personalizado se usa ese,
@@ -213,12 +233,14 @@ public class PayrollServiceImpl implements PayrollService {
                 payroll.setTotalSold(totalSold);
                 payroll.setSalesGoalMet(salesGoalMet);
                 payroll.setSalesCommissionPct(salesCommissionPct);
+                payroll.setSalesCommissionByGoal(salesByGoal);
                 payroll.setSalesCommissionAmount(salesCommissionAmount);
                 payroll.setPrevMonthTotalSold(prevMonthTotalSold);
                 payroll.setTotalCollected(totalCollected);
                 payroll.setCollectionPct(collectionPct);
                 payroll.setCollectionGoalMet(collectionGoalMet);
                 payroll.setCollectionCommissionPct(collectionCommissionPct);
+                payroll.setCollectionCommissionByGoal(collectionByGoal);
                 payroll.setCollectionCommissionAmount(collectionCommissionAmount);
                 payroll.setGeneralCommissionEnabled(generalEnabled);
                 payroll.setTotalGlobalGoals(totalGlobalGoals);
@@ -417,12 +439,14 @@ public class PayrollServiceImpl implements PayrollService {
                                 p.getTotalSold(),
                                 Boolean.TRUE.equals(p.getSalesGoalMet()),
                                 p.getSalesCommissionPct(),
+                                Boolean.TRUE.equals(p.getSalesCommissionByGoal()),
                                 p.getSalesCommissionAmount(),
                                 p.getPrevMonthTotalSold(),
                                 p.getTotalCollected(),
                                 p.getCollectionPct(),
                                 Boolean.TRUE.equals(p.getCollectionGoalMet()),
                                 p.getCollectionCommissionPct(),
+                                Boolean.TRUE.equals(p.getCollectionCommissionByGoal()),
                                 p.getCollectionCommissionAmount(),
                                 Boolean.TRUE.equals(p.getGeneralCommissionEnabled()),
                                 p.getTotalGlobalGoals(),
@@ -446,8 +470,10 @@ public class PayrollServiceImpl implements PayrollService {
                                 c.getVendedor().getUsername(),
                                 c.getBaseSalary(),
                                 c.getSalesCommissionPct(),
+                                Boolean.TRUE.equals(c.getSalesCommissionByGoal()),
                                 c.getCollectionCommissionPct(),
                                 c.getCollectionThresholdPct(),
+                                Boolean.TRUE.equals(c.getCollectionCommissionByGoal()),
                                 Boolean.TRUE.equals(c.getGeneralCommissionEnabled()),
                                 c.getGeneralCommissionPct());
         }

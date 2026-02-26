@@ -34,10 +34,18 @@ public class VendorPayrollConfig {
     @Builder.Default
     private BigDecimal baseSalary = BigDecimal.ZERO;
 
-    /** % comisión por meta de ventas (ej: 0.0150 = 1.5%) */
+    /** % comisión por ventas (ej: 0.0150 = 1.5%) */
     @Column(name = "sales_commission_pct", precision = 5, scale = 4, nullable = false)
     @Builder.Default
     private BigDecimal salesCommissionPct = new BigDecimal("0.0150");
+
+    /**
+     * true  → comisión de ventas solo aplica si CUMPLE la meta (comportamiento clásico).
+     * false → comisión se gana SIEMPRE como % directo sobre lo vendido, sin meta.
+     */
+    @Column(name = "sales_commission_by_goal", nullable = false)
+    @Builder.Default
+    private Boolean salesCommissionByGoal = true;
 
     /** % comisión por recaudo (ej: 0.0300 = 3%) */
     @Column(name = "collection_commission_pct", precision = 5, scale = 4, nullable = false)
@@ -48,6 +56,14 @@ public class VendorPayrollConfig {
     @Column(name = "collection_threshold_pct", precision = 5, scale = 4, nullable = false)
     @Builder.Default
     private BigDecimal collectionThresholdPct = new BigDecimal("0.8000");
+
+    /**
+     * true  → comisión de recaudo solo aplica si recaudó el umbral mínimo (comportamiento clásico).
+     * false → comisión se gana SIEMPRE como % directo sobre lo recaudado, sin umbral.
+     */
+    @Column(name = "collection_commission_by_goal", nullable = false)
+    @Builder.Default
+    private Boolean collectionCommissionByGoal = true;
 
     /** ¿Está habilitado para recibir comisión general por metas globales? */
     @Column(name = "general_commission_enabled", nullable = false)
