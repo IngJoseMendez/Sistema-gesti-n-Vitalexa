@@ -201,6 +201,7 @@ public class SaleGoalServiceImpl implements SaleGoalService {
         public List<SaleGoalResponse> findAll() {
                 return saleGoalRepository.findAllByOrderByYearDescMonthDesc()
                                 .stream()
+                                .peek(this::syncLive)
                                 .map(saleGoalMapper::toResponse)
                                 .collect(Collectors.toList());
         }
@@ -209,6 +210,7 @@ public class SaleGoalServiceImpl implements SaleGoalService {
         public List<SaleGoalResponse> findByMonthAndYear(int month, int year) {
                 return saleGoalRepository.findByMonthAndYear(month, year)
                                 .stream()
+                                .peek(this::syncLive)
                                 .map(saleGoalMapper::toResponse)
                                 .collect(Collectors.toList());
         }
@@ -217,6 +219,7 @@ public class SaleGoalServiceImpl implements SaleGoalService {
         public SaleGoalResponse findById(UUID id) {
                 SaleGoal saleGoal = saleGoalRepository.findById(id)
                                 .orElseThrow(() -> new BusinessExeption("Meta no encontrada"));
+                syncLive(saleGoal);
                 return saleGoalMapper.toResponse(saleGoal);
         }
 
@@ -236,12 +239,7 @@ public class SaleGoalServiceImpl implements SaleGoalService {
                                                         .findByVendedorAndMonthAndYear(vendedor, currentMonth,
                                                                         currentYear)
                                                         .map(saleGoal -> {
-                                                                BigDecimal liveAmount = calculateExistingSalesForMonth(
-                                                                        vendedor.getId(), currentMonth, currentYear);
-                                                                if (liveAmount.compareTo(saleGoal.getCurrentAmount()) != 0) {
-                                                                        saleGoal.setCurrentAmount(liveAmount);
-                                                                        saleGoalRepository.save(saleGoal);
-                                                                }
+                                                                syncLive(saleGoal);
                                                                 return saleGoalMapper.toResponse(saleGoal);
                                                         })
                                                         .orElse(null);
@@ -274,16 +272,8 @@ public class SaleGoalServiceImpl implements SaleGoalService {
                                 .orElseThrow(() -> new BusinessExeption(
                                                 "No tienes una meta asignada para este mes"));
 
-                // Siempre recalcular en vivo para garantizar consistencia con el Excel
-                BigDecimal liveAmount = calculateExistingSalesForMonth(
-                                vendedor.getId(), currentMonth, currentYear);
-                if (liveAmount.compareTo(saleGoal.getCurrentAmount()) != 0) {
-                        saleGoal.setCurrentAmount(liveAmount);
-                        saleGoalRepository.save(saleGoal);
-                        log.info("[LiveSync] Meta de {} en {}/{} actualizada: ${} → ${}",
-                                        vendedor.getUsername(), currentMonth, currentYear,
-                                        saleGoal.getCurrentAmount(), liveAmount);
-                }
+                // Recalcular en vivo para garantizar consistencia con el Excel
+                syncLive(saleGoal);
 
                 return saleGoalMapper.toResponse(saleGoal);
         }
@@ -296,14 +286,7 @@ public class SaleGoalServiceImpl implements SaleGoalService {
                 // Para el historial, recalcular en vivo cada meta antes de devolver
                 return saleGoalRepository.findByVendedorOrderByYearDescMonthDesc(vendedor)
                                 .stream()
-                                .peek(saleGoal -> {
-                                        BigDecimal liveAmount = calculateExistingSalesForMonth(
-                                                        vendedor.getId(), saleGoal.getMonth(), saleGoal.getYear());
-                                        if (liveAmount.compareTo(saleGoal.getCurrentAmount()) != 0) {
-                                                saleGoal.setCurrentAmount(liveAmount);
-                                                saleGoalRepository.save(saleGoal);
-                                        }
-                                })
+                                .peek(this::syncLive)
                                 .map(saleGoalMapper::toResponse)
                                 .collect(Collectors.toList());
         }
@@ -422,6 +405,33 @@ public class SaleGoalServiceImpl implements SaleGoalService {
         // =============================================
         // UTILIDADES
         // =============================================
+
+        /**
+         * Recalcula el currentAmount de una meta en vivo y lo persiste si cambió.
+         * Siempre normaliza la escala a 2 decimales para serialización consistente.
+         */
+        private void syncLive(SaleGoal saleGoal) {
+                BigDecimal liveAmount = calculateExistingSalesForMonth(
+                                saleGoal.getVendedor().getId(),
+                                saleGoal.getMonth(),
+                                saleGoal.getYear())
+                                .setScale(2, java.math.RoundingMode.HALF_UP);
+
+                BigDecimal stored = saleGoal.getCurrentAmount()
+                                .setScale(2, java.math.RoundingMode.HALF_UP);
+
+                if (liveAmount.compareTo(stored) != 0) {
+                        log.info("[LiveSync] {} {}/{}: ${} → ${}",
+                                        saleGoal.getVendedor().getUsername(),
+                                        saleGoal.getMonth(), saleGoal.getYear(),
+                                        stored, liveAmount);
+                        saleGoal.setCurrentAmount(liveAmount);
+                        saleGoalRepository.save(saleGoal);
+                } else {
+                        // Solo normalizar escala en memoria para serialización consistente (sin persistir)
+                        saleGoal.setCurrentAmount(stored);
+                }
+        }
 
         /**
          * Utilidad para obtener nombre del mes en español

@@ -87,19 +87,6 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
                         @Param("start") LocalDateTime start,
                         @Param("end") LocalDateTime end);
 
-        /**
-         * Órdenes COMPLETADAS filtradas por fecha de CREACIÓN (o.fecha).
-         * Usar para el reporte diario del vendedor, para que sea consistente
-         * con el cálculo de las metas de ventas (que también usan o.fecha).
-         */
-        @Query("""
-                        SELECT o FROM Order o
-                        WHERE o.estado = 'COMPLETADO'
-                        AND o.fecha BETWEEN :start AND :end
-                        """)
-        List<Order> findCompletedByFechaBetween(
-                        @Param("start") LocalDateTime start,
-                        @Param("end") LocalDateTime end);
 
         /**
          * Para reportes: órdenes COMPLETADAS filtradas por fecha de completado
@@ -155,14 +142,20 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
         }
 
         /**
-         * Obtener ingresos totales en un rango de fechas
+         * Ingresos totales de empresa en un rango de fechas.
+         * Usa completedAt + COALESCE(discountedTotal, total) — consistente con reportes.
          */
         @Query("""
-                        SELECT COALESCE(SUM(o.total), 0)
+                        SELECT COALESCE(SUM(
+                            CASE WHEN o.discountedTotal IS NOT NULL THEN o.discountedTotal ELSE o.total END
+                        ), 0)
                         FROM Order o
                         WHERE o.estado = 'COMPLETADO'
-                        AND o.fecha >= :startDate
-                        AND o.fecha < :endDate
+                        AND (
+                            (o.completedAt IS NOT NULL AND o.completedAt >= :startDate AND o.completedAt < :endDate)
+                            OR
+                            (o.completedAt IS NULL AND o.fecha >= :startDate AND o.fecha < :endDate)
+                        )
                         """)
         BigDecimal getTotalRevenueBetween(@Param("startDate") LocalDateTime startDate,
                         @Param("endDate") LocalDateTime endDate);
@@ -183,17 +176,23 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
         Optional<Order> findByIdWithPromotions(@Param("orderId") UUID orderId);
 
         /**
-         * Para nómina: suma total de órdenes NO ANULADAS de un vendedor
-         * en un rango de fechas calendario exacto (inicio y fin del mes).
-         * Usa o.fecha (fecha de creación/factura) para respetar el mes calendario.
+         * Para nómina: suma total EFECTIVO (con descuento) de órdenes COMPLETADAS
+         * de un vendedor en un rango de fechas.
+         * Filtra por completedAt (igual que el Excel del vendedor).
+         * Fallback a o.fecha para órdenes históricas sin completedAt.
          */
         @Query("""
-                        SELECT COALESCE(SUM(o.total), 0)
+                        SELECT COALESCE(SUM(
+                            CASE WHEN o.discountedTotal IS NOT NULL THEN o.discountedTotal ELSE o.total END
+                        ), 0)
                         FROM Order o
                         WHERE o.vendedor.id = :vendedorId
                         AND o.estado = 'COMPLETADO'
-                        AND o.fecha >= :start
-                        AND o.fecha < :end
+                        AND (
+                            (o.completedAt IS NOT NULL AND o.completedAt >= :start AND o.completedAt < :end)
+                            OR
+                            (o.completedAt IS NULL AND o.fecha >= :start AND o.fecha < :end)
+                        )
                         """)
         BigDecimal sumTotalSoldByVendedorBetween(
                         @Param("vendedorId") UUID vendedorId,
@@ -202,14 +201,20 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
 
         /**
          * Para nómina con usuarios compartidos (NinaTorres/YicelaSandoval).
+         * Misma lógica: completedAt + discountedTotal.
          */
         @Query("""
-                        SELECT COALESCE(SUM(o.total), 0)
+                        SELECT COALESCE(SUM(
+                            CASE WHEN o.discountedTotal IS NOT NULL THEN o.discountedTotal ELSE o.total END
+                        ), 0)
                         FROM Order o
                         WHERE o.vendedor.id IN :vendedorIds
                         AND o.estado = 'COMPLETADO'
-                        AND o.fecha >= :start
-                        AND o.fecha < :end
+                        AND (
+                            (o.completedAt IS NOT NULL AND o.completedAt >= :start AND o.completedAt < :end)
+                            OR
+                            (o.completedAt IS NULL AND o.fecha >= :start AND o.fecha < :end)
+                        )
                         """)
         BigDecimal sumTotalSoldByVendedorIdsBetween(
                         @Param("vendedorIds") List<UUID> vendedorIds,
