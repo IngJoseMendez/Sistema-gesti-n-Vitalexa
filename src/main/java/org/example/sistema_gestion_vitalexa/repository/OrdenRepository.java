@@ -39,14 +39,20 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
         Long syncInvoiceSequence(Long nextValue);
 
         /**
-         * Buscar órdenes completadas de un vendedor en un mes/año específico
+         * Buscar órdenes completadas de un vendedor en un mes/año específico.
+         * Filtra por completedAt (fecha en que se marcó como COMPLETADO).
+         * Fallback: si completedAt es null (órdenes históricas), usa o.fecha.
+         * Consistente con findCompletedByCompletedAtBetween usado en reportes Excel.
          */
         @Query("""
                         SELECT o FROM Order o
                         WHERE o.vendedor.id = :vendedorId
                         AND o.estado = 'COMPLETADO'
-                        AND MONTH(o.fecha) = :month
-                        AND YEAR(o.fecha) = :year
+                        AND (
+                            (o.completedAt IS NOT NULL AND MONTH(o.completedAt) = :month AND YEAR(o.completedAt) = :year)
+                            OR
+                            (o.completedAt IS NULL AND MONTH(o.fecha) = :month AND YEAR(o.fecha) = :year)
+                        )
                         """)
         List<Order> findCompletedOrdersByVendedorAndMonthYear(
                         @Param("vendedorId") UUID vendedorId,
@@ -54,15 +60,19 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
                         @Param("year") int year);
 
         /**
-         * Buscar órdenes completadas de MÚLTIPLES vendedores en un mes/año específico
-         * Útil para usuarios compartidos como NinaTorres/YicelaSandoval
+         * Buscar órdenes completadas de MÚLTIPLES vendedores en un mes/año específico.
+         * Filtra por completedAt (fallback a fecha para históricas).
+         * Útil para usuarios compartidos como NinaTorres/YicelaSandoval.
          */
         @Query("""
                         SELECT o FROM Order o
                         WHERE o.vendedor.id IN :vendedorIds
                         AND o.estado = 'COMPLETADO'
-                        AND MONTH(o.fecha) = :month
-                        AND YEAR(o.fecha) = :year
+                        AND (
+                            (o.completedAt IS NOT NULL AND MONTH(o.completedAt) = :month AND YEAR(o.completedAt) = :year)
+                            OR
+                            (o.completedAt IS NULL AND MONTH(o.fecha) = :month AND YEAR(o.fecha) = :year)
+                        )
                         """)
         List<Order> findCompletedOrdersByVendedorIdsAndMonthYear(
                         @Param("vendedorIds") List<UUID> vendedorIds,
@@ -74,6 +84,20 @@ public interface OrdenRepository extends JpaRepository<Order, UUID> {
          */
         @Query("SELECT o FROM Order o WHERE o.fecha BETWEEN :start AND :end")
         List<Order> findByFechaBetween(
+                        @Param("start") LocalDateTime start,
+                        @Param("end") LocalDateTime end);
+
+        /**
+         * Órdenes COMPLETADAS filtradas por fecha de CREACIÓN (o.fecha).
+         * Usar para el reporte diario del vendedor, para que sea consistente
+         * con el cálculo de las metas de ventas (que también usan o.fecha).
+         */
+        @Query("""
+                        SELECT o FROM Order o
+                        WHERE o.estado = 'COMPLETADO'
+                        AND o.fecha BETWEEN :start AND :end
+                        """)
+        List<Order> findCompletedByFechaBetween(
                         @Param("start") LocalDateTime start,
                         @Param("end") LocalDateTime end);
 

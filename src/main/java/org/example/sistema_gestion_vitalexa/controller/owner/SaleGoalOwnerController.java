@@ -6,6 +6,9 @@ import org.example.sistema_gestion_vitalexa.dto.CreateSaleGoalRequest;
 import org.example.sistema_gestion_vitalexa.dto.SaleGoalResponse;
 import org.example.sistema_gestion_vitalexa.dto.UpdateSaleGoalRequest;
 import org.example.sistema_gestion_vitalexa.dto.VendedorWithGoalResponse;
+import org.example.sistema_gestion_vitalexa.entity.User;
+import org.example.sistema_gestion_vitalexa.enums.Role;
+import org.example.sistema_gestion_vitalexa.repository.UserRepository;
 import org.example.sistema_gestion_vitalexa.service.SaleGoalService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +25,28 @@ import java.util.UUID;
 public class SaleGoalOwnerController {
 
     private final SaleGoalService saleGoalService;
+    private final UserRepository userRepository;
+
+    // ...existing code...
+
+    /**
+     * Recalcular los progresos de TODAS las metas de un mes/año.
+     * Útil para corregir discrepancias entre el panel visual y el Excel.
+     * POST /api/owner/sale-goals/recalculate?month=2&year=2026
+     */
+    @PostMapping("/recalculate")
+    public ResponseEntity<String> recalculateAll(
+            @RequestParam int month,
+            @RequestParam int year) {
+
+        List<User> vendedores = userRepository.findByRole(Role.VENDEDOR);
+        int count = 0;
+        for (User v : vendedores) {
+            saleGoalService.recalculateGoalForVendorMonth(v.getId(), month, year);
+            count++;
+        }
+        return ResponseEntity.ok("Recálculo completado para " + count + " vendedores en " + month + "/" + year);
+    }
 
     /**
      * Ver todos los vendedores con su meta del mes actual

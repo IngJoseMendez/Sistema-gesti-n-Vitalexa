@@ -140,9 +140,11 @@ public class SaleGoalServiceImpl implements SaleGoalService {
                                 return BigDecimal.ZERO;
                         }
 
-                        // Sumar los totales
+                        // Sumar los totales usando discountedTotal si existe (igual que el Excel)
                         BigDecimal total = orders.stream()
-                                        .map(Order::getTotal)
+                                        .map(o -> o.getDiscountedTotal() != null
+                                                        ? o.getDiscountedTotal()
+                                                        : o.getTotal())
                                         .reduce(BigDecimal.ZERO, BigDecimal::add);
 
                         log.debug("Ventas encontradas para vendedor {} en {}/{}: {} órdenes = ${}",
@@ -229,11 +231,19 @@ public class SaleGoalServiceImpl implements SaleGoalService {
 
                 return vendedores.stream()
                                 .map(vendedor -> {
-                                        // Buscar meta del mes actual
+                                        // Buscar meta del mes actual y recalcular en vivo
                                         SaleGoalResponse currentGoal = saleGoalRepository
                                                         .findByVendedorAndMonthAndYear(vendedor, currentMonth,
                                                                         currentYear)
-                                                        .map(saleGoalMapper::toResponse)
+                                                        .map(saleGoal -> {
+                                                                BigDecimal liveAmount = calculateExistingSalesForMonth(
+                                                                        vendedor.getId(), currentMonth, currentYear);
+                                                                if (liveAmount.compareTo(saleGoal.getCurrentAmount()) != 0) {
+                                                                        saleGoal.setCurrentAmount(liveAmount);
+                                                                        saleGoalRepository.save(saleGoal);
+                                                                }
+                                                                return saleGoalMapper.toResponse(saleGoal);
+                                                        })
                                                         .orElse(null);
 
                                         return new VendedorWithGoalResponse(
@@ -264,6 +274,17 @@ public class SaleGoalServiceImpl implements SaleGoalService {
                                 .orElseThrow(() -> new BusinessExeption(
                                                 "No tienes una meta asignada para este mes"));
 
+                // Siempre recalcular en vivo para garantizar consistencia con el Excel
+                BigDecimal liveAmount = calculateExistingSalesForMonth(
+                                vendedor.getId(), currentMonth, currentYear);
+                if (liveAmount.compareTo(saleGoal.getCurrentAmount()) != 0) {
+                        saleGoal.setCurrentAmount(liveAmount);
+                        saleGoalRepository.save(saleGoal);
+                        log.info("[LiveSync] Meta de {} en {}/{} actualizada: ${} → ${}",
+                                        vendedor.getUsername(), currentMonth, currentYear,
+                                        saleGoal.getCurrentAmount(), liveAmount);
+                }
+
                 return saleGoalMapper.toResponse(saleGoal);
         }
 
@@ -272,8 +293,17 @@ public class SaleGoalServiceImpl implements SaleGoalService {
                 User vendedor = userRepository.findByUsername(username)
                                 .orElseThrow(() -> new BusinessExeption("Usuario no encontrado"));
 
+                // Para el historial, recalcular en vivo cada meta antes de devolver
                 return saleGoalRepository.findByVendedorOrderByYearDescMonthDesc(vendedor)
                                 .stream()
+                                .peek(saleGoal -> {
+                                        BigDecimal liveAmount = calculateExistingSalesForMonth(
+                                                        vendedor.getId(), saleGoal.getMonth(), saleGoal.getYear());
+                                        if (liveAmount.compareTo(saleGoal.getCurrentAmount()) != 0) {
+                                                saleGoal.setCurrentAmount(liveAmount);
+                                                saleGoalRepository.save(saleGoal);
+                                        }
+                                })
                                 .map(saleGoalMapper::toResponse)
                                 .collect(Collectors.toList());
         }

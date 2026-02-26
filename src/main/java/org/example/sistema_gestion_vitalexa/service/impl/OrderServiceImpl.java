@@ -1026,10 +1026,14 @@ public class OrderServiceImpl implements OrdenService {
             order.setCompletedAt(java.time.LocalDateTime.now());
 
             // Actualizar progreso de meta del vendedor usando la fecha de completado (hoy)
+            // Usar discountedTotal si existe (igual que el Excel), si no el total bruto
             LocalDate fechaCompletado = order.getCompletedAt().toLocalDate();
+            BigDecimal montoMeta = order.getDiscountedTotal() != null
+                    ? order.getDiscountedTotal()
+                    : order.getTotal();
             saleGoalService.updateGoalProgress(
                     order.getVendedor().getId(),
-                    order.getTotal(),
+                    montoMeta,
                     fechaCompletado.getMonthValue(),
                     fechaCompletado.getYear());
 

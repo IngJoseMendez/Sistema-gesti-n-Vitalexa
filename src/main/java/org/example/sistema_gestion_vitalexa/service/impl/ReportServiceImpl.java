@@ -552,7 +552,8 @@ public class ReportServiceImpl implements ReportService {
                 LocalDateTime start = startDate.atStartOfDay();
                 LocalDateTime end = endDate.atTime(23, 59, 59);
 
-                // 1. Obtener todas las órdenes completadas en el período (por fecha de completado)
+                // 1. Órdenes COMPLETADAS filtradas por fecha de COMPLETADO (completedAt),
+                //    consistente con los reportes de ventas y el Excel.
                 List<Order> completedOrders = ordenRepository.findCompletedByCompletedAtBetween(start, end);
 
                 // 2. Agrupar por vendedor (unificando usuarios compartidos)
@@ -584,7 +585,7 @@ public class ReportServiceImpl implements ReportService {
                                                 vendedorName = actualUsername;
                                         }
 
-                                        // 3.1 Agrupar órdenes por día (usando completedAt, fallback a fecha)
+                                        // 3.1 Agrupar órdenes por día usando completedAt (fallback a fecha)
                                         Map<LocalDate, List<Order>> ordersByDay = vendorOrders.stream()
                                                         .collect(Collectors
                                                                         .groupingBy(o -> getOrderDate(o).toLocalDate()));
