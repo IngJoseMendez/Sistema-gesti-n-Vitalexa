@@ -22,19 +22,6 @@ public class UserDataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        // Crear usuarios administrativos primero
-        createOrUpdate("DueñoArnold", "Azb:iasNZ", Role.OWNER);
-        createOrUpdate("AdminHilary", "OL98Jaika", Role.ADMIN);
-        createOrUpdate("luisE", "JKMaoqi213", Role.EMPACADOR);
-
-        // Crear vendedores ANTES de crear clientes que los referencian
-        createOrUpdate("arnoldVentas", "ArnoldV123", Role.VENDEDOR);
-        createOrUpdate("NinaTorres", "ninori123jam", Role.VENDEDOR);
-        createOrUpdate("MercyMaestre", "mercyV123R", Role.VENDEDOR);
-        createOrUpdate("YicelaSandoval", "giselaV123R", Role.VENDEDOR);
-        createOrUpdate("SergioVentas", "sergioV123", Role.VENDEDOR);
-        createOrUpdate("BodegaMaicao", "BodegaMaicao123", Role.VENDEDOR);
-        createOrUpdate("BodegaValledupar", "BodegaValledupar123", Role.VENDEDOR);
 
     }
 
