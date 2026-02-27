@@ -1,0 +1,36 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------< org.example:Sistema_gestion_vitalexa >----------------
+[INFO] Building Sistema Gestion Vitalexa 0.0.1-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.3.2:clean (default-clean) @ Sistema_gestion_vitalexa ---
+[INFO] Deleting C:\Users\Jose Pc\IdeaProjects\Sistema_gestion_vitalexa\target
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ Sistema_gestion_vitalexa ---
+[INFO] Copying 3 resources from src\main\resources to target\classes
+[INFO] Copying 28 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.11.0:compile (default-compile) @ Sistema_gestion_vitalexa ---
+[INFO] Changes detected - recompiling the module! :source
+[INFO] Compiling 212 source files with javac [debug release 17] to target\classes
+[WARNING] /C:/Users/Jose Pc/IdeaProjects/Sistema_gestion_vitalexa/src/main/java/org/example/sistema_gestion_vitalexa/entity/User.java:[34,21] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /C:/Users/Jose Pc/IdeaProjects/Sistema_gestion_vitalexa/src/main/java/org/example/sistema_gestion_vitalexa/entity/User.java:[36,27] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /C:/Users/Jose Pc/IdeaProjects/Sistema_gestion_vitalexa/src/main/java/org/example/sistema_gestion_vitalexa/entity/Product.java:[37,21] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /C:/Users/Jose Pc/IdeaProjects/Sistema_gestion_vitalexa/src/main/java/org/example/sistema_gestion_vitalexa/entity/ShoppingList.java:[37,27] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /C:/Users/Jose Pc/IdeaProjects/Sistema_gestion_vitalexa/src/main/java/org/example/sistema_gestion_vitalexa/entity/ShoppingList.java:[40,36] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /C:/Users/Jose Pc/IdeaProjects/Sistema_gestion_vitalexa/src/main/java/org/example/sistema_gestion_vitalexa/entity/Order.java:[70,29] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /C:/Users/Jose Pc/IdeaProjects/Sistema_gestion_vitalexa/src/main/java/org/example/sistema_gestion_vitalexa/entity/ProductTag.java:[26,21] @Builder will ignore the initializing expression entirely. If you want the initializing expression to serve as default, add @Builder.Default. If it is not supposed to be settable during building, make the field final.
+[WARNING] /C:/Users/Jose Pc/IdeaProjects/Sistema_gestion_vitalexa/src/main/java/org/example/sistema_gestion_vitalexa/mapper/ProductMapper.java:[23,13] Unmapped target properties: "id, active, isHidden, createdAt, updatedAt, tag, specialProducts".
+[WARNING] /C:/Users/Jose Pc/IdeaProjects/Sistema_gestion_vitalexa/src/main/java/org/example/sistema_gestion_vitalexa/mapper/ProductMapper.java:[36,21] Unmapped target properties: "isSpecialProduct, specialProductId".
+[WARNING] /C:/Users/Jose Pc/IdeaProjects/Sistema_gestion_vitalexa/src/main/java/org/example/sistema_gestion_vitalexa/mapper/ProductMapper.java:[47,10] Unmapped target properties: "id, hidden, createdAt, updatedAt, tag, specialProducts".
+[WARNING] /C:/Users/Jose Pc/IdeaProjects/Sistema_gestion_vitalexa/src/main/java/org/example/sistema_gestion_vitalexa/mapper/ProductMapper.java:[57,10] Unmapped target properties: "hidden, createdAt, updatedAt, tag, specialProducts".
+[INFO] /C:/Users/Jose Pc/IdeaProjects/Sistema_gestion_vitalexa/src/main/java/org/example/sistema_gestion_vitalexa/dto/OrderRequestDto.java: Some input files use or override a deprecated API.
+[INFO] /C:/Users/Jose Pc/IdeaProjects/Sistema_gestion_vitalexa/src/main/java/org/example/sistema_gestion_vitalexa/dto/OrderRequestDto.java: Recompile with -Xlint:deprecation for details.
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  9.880 s
+[INFO] Finished at: 2026-02-12T10:59:40-05:00
+[INFO] ------------------------------------------------------------------------
