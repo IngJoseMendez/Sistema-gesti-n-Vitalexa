@@ -22,6 +22,20 @@ public interface PromotionRepository extends JpaRepository<Promotion, UUID> {
             "AND (p.validUntil IS NULL OR p.validUntil >= :now)")
     List<Promotion> findValidPromotions(@Param("now") LocalDateTime now);
 
+    /**
+     * Versión optimizada con FETCH JOIN para cargar giftItems y mainProduct
+     * en UNA SOLA query, evitando el problema N+1 que hace la página lenta.
+     * Usar DISTINCT para evitar filas duplicadas por el JOIN con giftItems.
+     */
+    @Query("SELECT DISTINCT p FROM Promotion p " +
+            "LEFT JOIN FETCH p.giftItems gi " +
+            "LEFT JOIN FETCH gi.product " +
+            "LEFT JOIN FETCH p.mainProduct " +
+            "WHERE p.active = true " +
+            "AND (p.validFrom IS NULL OR p.validFrom <= :now) " +
+            "AND (p.validUntil IS NULL OR p.validUntil >= :now)")
+    List<Promotion> findValidPromotionsEager(@Param("now") LocalDateTime now);
+
     // Encontrar por producto principal
     List<Promotion> findByMainProductId(UUID productId);
 }

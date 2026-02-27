@@ -45,6 +45,12 @@ public interface PromotionService {
     List<PromotionResponse> findValidPromotions();
 
     /**
+     * Versión optimizada con FETCH JOIN (una sola query a BD, sin N+1).
+     * Usar este método cuando se necesite cargar promociones para el inicio de la app.
+     */
+    List<PromotionResponse> findValidPromotionsEager();
+
+    /**
      * Obtener una promoción por ID
      */
     PromotionResponse findById(UUID id);

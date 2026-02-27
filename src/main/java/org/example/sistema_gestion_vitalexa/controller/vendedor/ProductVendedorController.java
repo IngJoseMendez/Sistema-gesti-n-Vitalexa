@@ -7,6 +7,8 @@ import org.example.sistema_gestion_vitalexa.entity.User;
 import org.example.sistema_gestion_vitalexa.repository.SpecialProductRepository;
 import org.example.sistema_gestion_vitalexa.repository.UserRepository;
 import org.example.sistema_gestion_vitalexa.service.ProductService;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,7 +16,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/vendedor/products")
@@ -27,10 +33,8 @@ public class ProductVendedorController {
     private final UserRepository userRepository;
 
     @GetMapping
-    public List<ProductResponse> findAllActive(Authentication authentication) {
-        // Usar Map para evitar duplicados si por alguna razón las queries retornan
-        // repetidos
-        java.util.Map<java.util.UUID, ProductResponse> uniqueProducts = new java.util.LinkedHashMap<>();
+    public ResponseEntity<List<ProductResponse>> findAllActive(Authentication authentication) {
+        Map<UUID, ProductResponse> uniqueProducts = new LinkedHashMap<>();
 
         // 1. Productos regulares
         List<ProductResponse> regularProducts = productService.findAllActive();
@@ -39,20 +43,17 @@ public class ProductVendedorController {
         }
 
         // 2. Productos especiales asignados al vendedor autenticado
-        User vendor = userRepository.findByUsername(authentication.getName())
-                .orElse(null);
+        User vendor = userRepository.findByUsername(authentication.getName()).orElse(null);
         if (vendor != null) {
-            List<SpecialProduct> specialProducts = specialProductRepository
-                    .findActiveByVendorId(vendor.getId());
+            List<SpecialProduct> specialProducts = specialProductRepository.findActiveByVendorId(vendor.getId());
             for (SpecialProduct sp : specialProducts) {
-                // Si ya existe (aunque IDs son UUIDs random, es buena práctica), se sobrescribe
-                // o ignora
-                // Aquí solo nos interesa que no aparezca dos veces el MISMO special product
                 uniqueProducts.put(sp.getId(), toProductResponse(sp));
             }
         }
 
-        return new ArrayList<>(uniqueProducts.values());
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(2, TimeUnit.MINUTES).noTransform())
+                .body(new ArrayList<>(uniqueProducts.values()));
     }
 
     /**

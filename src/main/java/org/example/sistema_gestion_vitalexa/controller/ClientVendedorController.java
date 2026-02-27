@@ -46,4 +46,11 @@ public class ClientVendedorController {
             @Valid @RequestBody CreateClientRequest request) {
         return clientService.update(id, request);
     }
+
+    @PatchMapping("/{id}")
+    public ClientResponse patch(
+            @PathVariable UUID id,
+            @Valid @RequestBody CreateClientRequest request) {
+        return clientService.update(id, request);
+    }
 }

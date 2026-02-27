@@ -172,6 +172,14 @@ public class PromotionServiceImpl implements PromotionService {
     }
 
     @Override
+    public List<PromotionResponse> findValidPromotionsEager() {
+        LocalDateTime now = LocalDateTime.now();
+        return repository.findValidPromotionsEager(now).stream()
+                .map(mapper::toResponse)
+                .toList();
+    }
+
+    @Override
     public PromotionResponse findById(UUID id) {
         return mapper.toResponse(findEntityById(id));
     }
