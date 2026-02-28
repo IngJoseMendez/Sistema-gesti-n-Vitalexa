@@ -16,7 +16,9 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.example.sistema_gestion_vitalexa.dto.*;
+import org.example.sistema_gestion_vitalexa.entity.PaymentTransfer;
 import org.example.sistema_gestion_vitalexa.entity.User;
+import org.example.sistema_gestion_vitalexa.repository.PaymentTransferRepository;
 import org.example.sistema_gestion_vitalexa.repository.UserRepository;
 import org.example.sistema_gestion_vitalexa.service.ClientBalanceService;
 import org.example.sistema_gestion_vitalexa.service.ReportExportService;
@@ -40,6 +42,7 @@ public class ReportExportServiceImpl implements ReportExportService {
     private final ReportService reportService;
     private final ClientBalanceService clientBalanceService;
     private final UserRepository userRepository;
+    private final PaymentTransferRepository paymentTransferRepository;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     // =============================================
@@ -1026,6 +1029,123 @@ public class ReportExportServiceImpl implements ReportExportService {
             Cell collectedValue = collectedRow.createCell(10);
             collectedValue.setCellValue(totalPaidPeriod.doubleValue());
             collectedValue.setCellStyle(currencyStyle);
+
+            // ========================================
+            // SECCIÓN: TRANSFERENCIAS RECIBIDAS
+            // Muestra los montos que otros vendedores transfirieron a esta vendedora
+            // ========================================
+            User destVendedor = userRepository.findAll().stream()
+                    .filter(u -> u.getUsername().equals(vendor.vendedorName())
+                            || (org.example.sistema_gestion_vitalexa.util.UserUnificationUtil
+                                    .isSharedUser(u.getUsername())
+                                    && org.example.sistema_gestion_vitalexa.util.UserUnificationUtil
+                                            .getSharedUsernames(u.getUsername())
+                                            .contains(vendor.vendedorName())))
+                    .findFirst().orElse(null);
+
+            if (destVendedor != null) {
+                List<PaymentTransfer> transfers = paymentTransferRepository
+                        .findByDestVendedorIdOrderByCreatedAtDesc(destVendedor.getId());
+
+                // Filtrar por período de fechas (por fecha de creación)
+                java.time.LocalDateTime periodStart = vendor.startDate().atStartOfDay();
+                java.time.LocalDateTime periodEnd = vendor.endDate().plusDays(1).atStartOfDay();
+                List<PaymentTransfer> periodTransfers = transfers.stream()
+                        .filter(t -> !t.getIsRevoked()
+                                && t.getCreatedAt() != null
+                                && !t.getCreatedAt().isBefore(periodStart)
+                                && t.getCreatedAt().isBefore(periodEnd))
+                        .toList();
+
+                if (!periodTransfers.isEmpty()) {
+                    rowNum++;
+                    // Encabezado de sección
+                    Row transferHeaderRow = sheet.createRow(rowNum++);
+                    Cell transferSectionTitle = transferHeaderRow.createCell(0);
+                    transferSectionTitle.setCellValue(
+                            "TRANSFERENCIAS RECIBIDAS (Pagos de otros vendedores asignados a esta vendedora)");
+                    transferSectionTitle.setCellStyle(headerStyle);
+                    sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(
+                            transferHeaderRow.getRowNum(), transferHeaderRow.getRowNum(), 0, 10));
+
+                    // Headers de la tabla de transferencias
+                    String[] tHeaders = { "Fecha Transferencia", "Vendedora Origen",
+                            "Orden / Factura", "Monto Transferido", "Mes Destino", "Año", "Motivo", "Registrado por" };
+                    Row tHeaderRow = sheet.createRow(rowNum++);
+                    for (int i = 0; i < tHeaders.length; i++) {
+                        Cell hc = tHeaderRow.createCell(i);
+                        hc.setCellValue(tHeaders[i]);
+                        hc.setCellStyle(headerStyle);
+                    }
+
+                    BigDecimal totalTransferred = BigDecimal.ZERO;
+                    String[] MONTHS_ES = { "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre" };
+
+                    for (PaymentTransfer t : periodTransfers) {
+                        Row tRow = sheet.createRow(rowNum++);
+
+                        // Fecha de la transferencia
+                        tRow.createCell(0).setCellValue(
+                                t.getCreatedAt()
+                                        .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
+
+                        // Vendedora origen
+                        tRow.createCell(1).setCellValue(
+                                t.getOriginVendedor() != null ? t.getOriginVendedor().getUsername() : "—");
+
+                        // Orden / Factura (del pago original)
+                        String facturaRef = "—";
+                        if (t.getPayment() != null && t.getPayment().getOrder() != null) {
+                            Long factNum = t.getPayment().getOrder().getInvoiceNumber();
+                            facturaRef = factNum != null ? "Factura #" + factNum
+                                    : "Orden #" + t.getPayment().getOrder().getId().toString().substring(0, 8);
+                        }
+                        tRow.createCell(2).setCellValue(facturaRef);
+
+                        // Monto transferido
+                        Cell amountCell = tRow.createCell(3);
+                        amountCell.setCellValue(t.getAmount().doubleValue());
+                        amountCell.setCellStyle(currencyStyle);
+                        totalTransferred = totalTransferred.add(t.getAmount());
+
+                        // Mes destino
+                        int tMonth = t.getTargetMonth() != null ? t.getTargetMonth() : 0;
+                        tRow.createCell(4).setCellValue(
+                                tMonth >= 1 && tMonth <= 12 ? MONTHS_ES[tMonth] : "—");
+
+                        // Año
+                        tRow.createCell(5).setCellValue(
+                                t.getTargetYear() != null ? t.getTargetYear() : 0);
+
+                        // Motivo
+                        tRow.createCell(6).setCellValue(t.getReason() != null ? t.getReason() : "—");
+
+                        // Registrado por
+                        tRow.createCell(7).setCellValue(
+                                t.getCreatedBy() != null ? t.getCreatedBy().getUsername() : "—");
+                    }
+
+                    // Total de transferencias recibidas
+                    rowNum++;
+                    Row tTotalRow = sheet.createRow(rowNum++);
+                    Cell tTotalLabel = tTotalRow.createCell(2);
+                    tTotalLabel.setCellValue("TOTAL TRANSFERENCIAS RECIBIDAS:");
+                    tTotalLabel.setCellStyle(headerStyle);
+                    Cell tTotalValue = tTotalRow.createCell(3);
+                    tTotalValue.setCellValue(totalTransferred.doubleValue());
+                    tTotalValue.setCellStyle(currencyStyle);
+
+                    // Total efectivo (ventas propias + transferencias)
+                    Row tGrandTotalRow = sheet.createRow(rowNum++);
+                    Cell tGrandLabel = tGrandTotalRow.createCell(2);
+                    tGrandLabel.setCellValue("TOTAL EFECTIVO (Ventas + Transferencias):");
+                    tGrandLabel.setCellStyle(headerStyle);
+                    Cell tGrandValue = tGrandTotalRow.createCell(3);
+                    tGrandValue.setCellValue(vendor.totalPeriod().add(totalTransferred).doubleValue());
+                    tGrandValue.setCellStyle(currencyStyle);
+                }
+            }
 
             // ========================================
             // TABLA RESUMEN: CARTERA POR CLIENTE (a la derecha)

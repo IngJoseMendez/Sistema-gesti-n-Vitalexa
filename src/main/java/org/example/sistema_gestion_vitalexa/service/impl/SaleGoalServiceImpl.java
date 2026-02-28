@@ -13,6 +13,7 @@ import org.example.sistema_gestion_vitalexa.enums.Role;
 import org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption;
 import org.example.sistema_gestion_vitalexa.mapper.SaleGoalMapper;
 import org.example.sistema_gestion_vitalexa.repository.OrdenRepository;
+import org.example.sistema_gestion_vitalexa.repository.PaymentTransferRepository;
 import org.example.sistema_gestion_vitalexa.repository.SaleGoalRepository;
 import org.example.sistema_gestion_vitalexa.repository.UserRepository;
 import org.example.sistema_gestion_vitalexa.service.SaleGoalService;
@@ -36,6 +37,7 @@ public class SaleGoalServiceImpl implements SaleGoalService {
         private final UserRepository userRepository;
         private final SaleGoalMapper saleGoalMapper;
         private final OrdenRepository orderRepository;
+        private final PaymentTransferRepository paymentTransferRepository;
 
         // =============================================
         // ADMIN/OWNER - GESTIÓN DE METAS
@@ -114,6 +116,8 @@ public class SaleGoalServiceImpl implements SaleGoalService {
 
                         // Check for shared user
                         User vendedor = userRepository.findById(vendedorId).orElse(null);
+                        BigDecimal transfersTotal;
+
                         if (vendedor != null && UserUnificationUtil.isSharedUser(vendedor.getUsername())) {
                                 // Get all shared user IDs
                                 List<String> sharedUsernames = UserUnificationUtil
@@ -128,27 +132,31 @@ public class SaleGoalServiceImpl implements SaleGoalService {
 
                                 orders = orderRepository.findCompletedOrdersByVendedorIdsAndMonthYear(
                                                 sharedIds, month, year);
+
+                                // ✅ Transferencias activas recibidas (usuarios compartidos)
+                                transfersTotal = paymentTransferRepository
+                                                .sumActiveTransfersToVendedorIdsInMonth(sharedIds, month, year);
                         } else {
                                 // Standard single user calculation
                                 orders = orderRepository.findCompletedOrdersByVendedorAndMonthYear(
                                                 vendedorId, month, year);
-                        }
 
-                        if (orders.isEmpty()) {
-                                log.debug("No hay ventas completadas para el vendedor {} en {}/{}",
-                                                vendedorId, month, year);
-                                return BigDecimal.ZERO;
+                                // ✅ Transferencias activas recibidas
+                                transfersTotal = paymentTransferRepository
+                                                .sumActiveTransfersToVendedorInMonth(vendedorId, month, year);
                         }
 
                         // Sumar los totales usando discountedTotal si existe (igual que el Excel)
-                        BigDecimal total = orders.stream()
+                        BigDecimal ordersTotal = orders.stream()
                                         .map(o -> o.getDiscountedTotal() != null
                                                         ? o.getDiscountedTotal()
                                                         : o.getTotal())
                                         .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-                        log.debug("Ventas encontradas para vendedor {} en {}/{}: {} órdenes = ${}",
-                                        vendedorId, month, year, orders.size(), total);
+                        BigDecimal total = ordersTotal.add(transfersTotal);
+
+                        log.debug("Ventas para vendedor {} en {}/{}: Orders=${}, Transferencias=${}, TOTAL=${}",
+                                        vendedorId, month, year, ordersTotal, transfersTotal, total);
 
                         return total;
 
@@ -428,7 +436,8 @@ public class SaleGoalServiceImpl implements SaleGoalService {
                         saleGoal.setCurrentAmount(liveAmount);
                         saleGoalRepository.save(saleGoal);
                 } else {
-                        // Solo normalizar escala en memoria para serialización consistente (sin persistir)
+                        // Solo normalizar escala en memoria para serialización consistente (sin
+                        // persistir)
                         saleGoal.setCurrentAmount(stored);
                 }
         }

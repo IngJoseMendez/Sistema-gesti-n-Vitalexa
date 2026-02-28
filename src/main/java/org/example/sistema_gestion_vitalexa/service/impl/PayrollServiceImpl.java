@@ -9,6 +9,7 @@ import org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption;
 import org.example.sistema_gestion_vitalexa.repository.*;
 import org.example.sistema_gestion_vitalexa.service.PayrollService;
 import org.example.sistema_gestion_vitalexa.util.UserUnificationUtil;
+import org.example.sistema_gestion_vitalexa.repository.PaymentTransferRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +33,7 @@ public class PayrollServiceImpl implements PayrollService {
         private final OrdenRepository ordenRepository;
         private final PaymentRepository paymentRepository;
         private final SaleGoalRepository saleGoalRepository;
+        private final PaymentTransferRepository paymentTransferRepository;
 
         // ─────────────────────────────────────────────────────────────────────────
         // CONFIGURACIÓN
@@ -121,7 +123,8 @@ public class PayrollServiceImpl implements PayrollService {
                 BigDecimal salesCommissionAmount;
                 if (!salesByGoal) {
                         // Comisión directa: siempre se gana el % sobre lo vendido, sin meta
-                        salesCommissionAmount = totalSold.multiply(salesCommissionPct).setScale(2, RoundingMode.HALF_UP);
+                        salesCommissionAmount = totalSold.multiply(salesCommissionPct).setScale(2,
+                                        RoundingMode.HALF_UP);
                 } else {
                         // Comisión clásica: solo si cumplió la meta
                         salesCommissionAmount = salesGoalMet
@@ -161,11 +164,13 @@ public class PayrollServiceImpl implements PayrollService {
                 BigDecimal collectionCommissionAmount;
                 if (!collectionByGoal) {
                         // Comisión directa: siempre se gana el % sobre lo recaudado, sin umbral
-                        collectionCommissionAmount = totalCollected.multiply(collectionCommissionPct).setScale(2, RoundingMode.HALF_UP);
+                        collectionCommissionAmount = totalCollected.multiply(collectionCommissionPct).setScale(2,
+                                        RoundingMode.HALF_UP);
                 } else {
                         // Comisión clásica: solo si superó el umbral
                         collectionCommissionAmount = collectionGoalMet
-                                        ? totalCollected.multiply(collectionCommissionPct).setScale(2, RoundingMode.HALF_UP)
+                                        ? totalCollected.multiply(collectionCommissionPct).setScale(2,
+                                                        RoundingMode.HALF_UP)
                                         : BigDecimal.ZERO;
                 }
 
@@ -377,10 +382,15 @@ public class PayrollServiceImpl implements PayrollService {
          * Calcula el total vendido por el vendedor en un mes/año dado usando rango
          * de fechas calendario exacto (1ro al último día del mes).
          * Cuenta todas las órdenes NO ANULADAS cuya fecha (o.fecha) cae en ese mes.
+         * Además suma las transferencias de pago ACTIVAS recibidas por este vendedor
+         * en el mes/año dado, afectando también el cumplimiento de meta y comisiones.
          */
         private BigDecimal calculateTotalSold(User vendedor, int month, int year) {
                 LocalDateTime start = LocalDateTime.of(year, month, 1, 0, 0, 0);
                 LocalDateTime end = start.plusMonths(1); // exclusivo: primer día del mes siguiente
+
+                BigDecimal sold;
+                BigDecimal incomingTransfers;
 
                 if (UserUnificationUtil.isSharedUser(vendedor.getUsername())) {
                         List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(vendedor.getUsername());
@@ -388,9 +398,21 @@ public class PayrollServiceImpl implements PayrollService {
                                         .filter(u -> sharedUsernames.contains(u.getUsername()))
                                         .map(User::getId)
                                         .collect(Collectors.toList());
-                        return ordenRepository.sumTotalSoldByVendedorIdsBetween(sharedIds, start, end);
+                        sold = ordenRepository.sumTotalSoldByVendedorIdsBetween(sharedIds, start, end);
+                        incomingTransfers = paymentTransferRepository
+                                        .sumActiveTransfersToVendedorIdsInMonth(sharedIds, month, year);
+                } else {
+                        sold = ordenRepository.sumTotalSoldByVendedorBetween(vendedor.getId(), start, end);
+                        incomingTransfers = paymentTransferRepository
+                                        .sumActiveTransfersToVendedorInMonth(vendedor.getId(), month, year);
                 }
-                return ordenRepository.sumTotalSoldByVendedorBetween(vendedor.getId(), start, end);
+
+                BigDecimal totalSold = sold.add(incomingTransfers);
+                if (incomingTransfers.compareTo(BigDecimal.ZERO) > 0) {
+                        log.info("[Transferencias] Vendedor={} {}/{}: ventas propias=${} + transferencias=${} = total=${}",
+                                        vendedor.getUsername(), month, year, sold, incomingTransfers, totalSold);
+                }
+                return totalSold;
         }
 
         /**
