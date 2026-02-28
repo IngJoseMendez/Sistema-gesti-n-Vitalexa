@@ -213,7 +213,7 @@ public class InvoiceServiceImpl implements InvoiceService {
                                 .setFontSize(14)
                                 .setBold()
                                 .setFontColor(BRAND_COLOR)
-                                .setMarginTop(10)
+                                .setMarginTop(4)
                                 .setMarginBottom(5);
                 document.add(productsTitle);
 
