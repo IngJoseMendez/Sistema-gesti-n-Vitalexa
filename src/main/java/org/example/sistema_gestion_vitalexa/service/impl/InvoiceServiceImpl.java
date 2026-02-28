@@ -128,7 +128,7 @@ public class InvoiceServiceImpl implements InvoiceService {
                 DeviceRgb bg = (DeviceRgb) ColorConstants.WHITE;
 
                 // ── Fila 1: datos de la orden ──────────────────────────────────────────
-                Table row1 = new Table(UnitValue.createPercentArray(new float[] { 1.5f, 1.5f, 1.5f, 1.5f }))
+                Table row1 = new Table(UnitValue.createPercentArray(new float[] { 1f, 2f, 1f, 2f }))
                                 .useAllAvailableWidth()
                                 .setMarginBottom(0);
 
@@ -163,7 +163,7 @@ public class InvoiceServiceImpl implements InvoiceService {
                                         : "---";
 
                         // Fila 2: Cliente / NIT / Teléfono / Email
-                        Table row2 = new Table(UnitValue.createPercentArray(new float[] { 1.5f, 1.5f, 1.5f, 1.5f }))
+                        Table row2 = new Table(UnitValue.createPercentArray(new float[] { 1f, 2f, 1f, 2f }))
                                         .useAllAvailableWidth()
                                         .setMarginBottom(0);
                         addInfoCell(row2, "Cliente:", order.getCliente().getNombre(), true, bg);
