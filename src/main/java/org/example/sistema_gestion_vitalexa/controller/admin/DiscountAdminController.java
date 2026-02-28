@@ -77,4 +77,18 @@ public class DiscountAdminController {
     public ResponseEntity<List<DiscountResponse>> getDiscountsByOrder(@PathVariable UUID orderId) {
         return ResponseEntity.ok(discountService.getDiscountsByOrderId(orderId));
     }
+
+    /**
+     * DELETE /api/admin/discounts/{id}
+     * Revocar un descuento aplicado — solo en órdenes que NO estén COMPLETADAS.
+     * El Admin puede revocar sus propios descuentos mientras la orden esté
+     * pendiente/confirmada.
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<DiscountResponse> revokeDiscount(
+            @PathVariable UUID id,
+            Authentication auth) {
+        DiscountResponse revoked = discountService.revokeDiscount(id, auth.getName());
+        return ResponseEntity.ok(revoked);
+    }
 }

@@ -14,7 +14,7 @@ public interface OrderMapper {
     @Mapping(source = "cliente.nombre", target = "cliente")
     @Mapping(source = "estado", target = "estado")
     @Mapping(target = "isSROrder", expression = "java(order.getNotas() != null && order.getNotas().contains(\"[S/R]\"))")
-    @Mapping(target = "isPromotionOrder", expression = "java(order.getNotas() != null && order.getNotas().contains(\"[Promoción]\"))")
+    @Mapping(target = "isPromotionOrder", expression = "java((order.getNotas() != null && order.getNotas().contains(\"[Promoción]\")) || !mapPromotionIds(order).isEmpty())")
     @Mapping(target = "isHistorical", expression = "java(order.getNotas() != null && order.getNotas().contains(\"[HISTÓRICA]\"))")
     @Mapping(source = "isFreightBonified", target = "isFreightBonified")
     @Mapping(source = "freightCustomText", target = "freightCustomText")
