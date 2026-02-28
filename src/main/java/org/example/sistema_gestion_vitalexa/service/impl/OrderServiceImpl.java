@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.sistema_gestion_vitalexa.dto.AddAssortmentItemRequest;
 import org.example.sistema_gestion_vitalexa.dto.BonifiedItemRequestDTO;
+import org.example.sistema_gestion_vitalexa.dto.CompleteOrderRequest;
 import org.example.sistema_gestion_vitalexa.dto.CreateHistoricalInvoiceRequest;
 import org.example.sistema_gestion_vitalexa.dto.OrderRequestDto;
 import org.example.sistema_gestion_vitalexa.dto.OrderResponse;
@@ -1040,7 +1041,6 @@ public class OrderServiceImpl implements OrdenService {
             // Notificación de orden completada (una sola vez)
             notificationService.sendOrderCompletedNotification(order.getId().toString());
 
-
             log.info("Orden {} completada (invoiceNumber={})", order.getId(), order.getInvoiceNumber());
         } else {
             // Otros estados
@@ -1068,6 +1068,98 @@ public class OrderServiceImpl implements OrdenService {
 
         // Notificar cambio de inventario/estado (una sola vez)
         notificationService.sendInventoryUpdate(order.getId().toString(), "ORDER_STATUS_CHANGED");
+
+        return orderMapper.toResponse(updated);
+    }
+
+    @Override
+    public OrderResponse completeOrder(UUID orderId, CompleteOrderRequest request, String username) {
+        Order order = ordenRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessExeption("Orden no encontrada"));
+
+        if (order.getEstado() == OrdenStatus.COMPLETADO) {
+            throw new BusinessExeption("La orden ya está completada");
+        }
+
+        // ── Parsear fecha de completado ──────────────────────────────────────────
+        // El frontend envía la fecha como String "YYYY-MM-DD" (ISO date).
+        // Si completedAt es null o vacío, se usa LocalDateTime.now().
+        String rawDate = (request != null) ? request.completedAt() : null;
+        log.info("completeOrder - orderId={} username={} rawDate='{}' auditNote='{}'",
+                orderId, username, rawDate, request != null ? request.auditNote() : null);
+
+        boolean isCustomDate = rawDate != null && !rawDate.isBlank();
+        java.time.LocalDateTime completedAt;
+
+        if (isCustomDate) {
+            try {
+                // Intentar primero formato date-only: "2026-01-15"
+                if (rawDate.length() <= 10) {
+                    completedAt = java.time.LocalDate.parse(rawDate,
+                            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                            .atStartOfDay();
+                } else {
+                    // Formato datetime: "2026-01-15T00:00:00"
+                    completedAt = java.time.LocalDateTime.parse(rawDate.substring(0, 19),
+                            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"));
+                }
+                log.info("completeOrder - fecha manual parseada: {}", completedAt);
+            } catch (Exception e) {
+                log.error("completeOrder - no se pudo parsear la fecha '{}': {}", rawDate, e.getMessage());
+                throw new BusinessExeption("Formato de fecha inválido: '" + rawDate
+                        + "'. Use el formato YYYY-MM-DD (ej: 2026-01-15)");
+            }
+        } else {
+            completedAt = java.time.LocalDateTime.now();
+            log.info("completeOrder - usando fecha actual: {}", completedAt);
+        }
+
+        // ── Número de factura ────────────────────────────────────────────────────
+        if (order.getInvoiceNumber() == null) {
+            Long nextInvoice = ordenRepository.nextInvoiceNumber();
+            order.setInvoiceNumber(nextInvoice);
+        }
+
+        order.setEstado(OrdenStatus.COMPLETADO);
+        order.setCompletedAt(completedAt);
+
+        // ── Auditoría en notas ───────────────────────────────────────────────────
+        java.time.format.DateTimeFormatter fmtFull = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+        java.time.format.DateTimeFormatter fmtDate = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        String fechaReal = java.time.LocalDateTime.now().format(fmtFull);
+        String fechaCompletado = completedAt.format(fmtDate);
+
+        String auditMsg = isCustomDate
+                ? String.format("[COMPLETADO el %s por %s | Fecha factura: %s]",
+                        fechaReal, username, fechaCompletado)
+                : String.format("[COMPLETADO el %s por %s]",
+                        fechaReal, username);
+
+        if (request != null && request.auditNote() != null && !request.auditNote().isBlank()) {
+            auditMsg += " " + request.auditNote().trim();
+        }
+
+        String existingNotes = order.getNotas() != null ? order.getNotas() + "\n" : "";
+        order.setNotas(existingNotes + auditMsg);
+
+        // ── Meta de venta ────────────────────────────────────────────────────────
+        LocalDate fechaMeta = completedAt.toLocalDate();
+        BigDecimal montoMeta = order.getDiscountedTotal() != null
+                ? order.getDiscountedTotal()
+                : order.getTotal();
+        saleGoalService.updateGoalProgress(
+                order.getVendedor().getId(),
+                montoMeta,
+                fechaMeta.getMonthValue(),
+                fechaMeta.getYear());
+
+        // ── Notificaciones ───────────────────────────────────────────────────────
+        notificationService.sendOrderCompletedNotification(order.getId().toString());
+        Order updated = ordenRepository.save(order);
+        notificationService.sendInventoryUpdate(order.getId().toString(), "ORDER_STATUS_CHANGED");
+
+        log.info("Orden {} completada con fecha={} (manual={}) por {}",
+                order.getId(), fechaCompletado, isCustomDate, username);
 
         return orderMapper.toResponse(updated);
     }
@@ -2250,10 +2342,12 @@ public class OrderServiceImpl implements OrdenService {
 
         // ✅ CONTABLE: Recalcular paymentStatus después de que el total cambió
         // El total sube al agregar promociones; si ya había pagos parciales el estado
-        // debe actualizarse (PAID → PARTIAL, o PARTIAL sigue siendo PARTIAL pero con nuevo saldo pendiente)
+        // debe actualizarse (PAID → PARTIAL, o PARTIAL sigue siendo PARTIAL pero con
+        // nuevo saldo pendiente)
         BigDecimal newTotal = order.getDiscountedTotal() != null ? order.getDiscountedTotal() : order.getTotal();
         BigDecimal totalPaid = paymentRepository.sumPaymentsByOrderId(order.getId());
-        if (totalPaid == null) totalPaid = BigDecimal.ZERO;
+        if (totalPaid == null)
+            totalPaid = BigDecimal.ZERO;
 
         if (totalPaid.compareTo(BigDecimal.ZERO) == 0) {
             order.setPaymentStatus(org.example.sistema_gestion_vitalexa.enums.PaymentStatus.PENDING);

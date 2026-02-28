@@ -115,82 +115,73 @@ public class InvoiceServiceImpl implements InvoiceService {
         }
 
         private void addOrderInfo(Document document, Order order, boolean isSROrder) {
-                // Indicador S/N -> REMOVIDO: Se usa estilo estándar
 
-                // Título con color estándar
+                // Título
                 Paragraph title = new Paragraph("FACTURA DE PEDIDO")
                                 .setFontSize(18)
                                 .setBold()
                                 .setTextAlignment(TextAlignment.CENTER)
                                 .setFontColor(BRAND_COLOR)
-                                .setMarginBottom(15);
+                                .setMarginBottom(12);
                 document.add(title);
 
-                // Información comprimida en tabla de una fila con múltiples columnas
-                Table infoTable = new Table(UnitValue.createPercentArray(new float[] { 1.5f, 1.5f, 1.5f, 1.5f }))
+                DeviceRgb bg = (DeviceRgb) ColorConstants.WHITE;
+
+                // ── Fila 1: datos de la orden ──────────────────────────────────────────
+                Table row1 = new Table(UnitValue.createPercentArray(new float[] { 1.5f, 1.5f, 1.5f, 1.5f }))
                                 .useAllAvailableWidth()
-                                .setMarginBottom(10);
+                                .setMarginBottom(0);
 
-                // Color de fondo estándar
-                DeviceRgb backgroundColor = (DeviceRgb) ColorConstants.WHITE;
-
-                // Primera línea: N° Factura, Fecha, Estado, Vendedor
-                addInfoCell(infoTable, "N° Factura:",
-                                order.getInvoiceNumber() != null ? order.getInvoiceNumber().toString() : "---", true,
-                                backgroundColor);
-                java.time.LocalDateTime displayDate = order.getCompletedAt() != null ? order.getCompletedAt()
+                java.time.LocalDateTime displayDate = order.getCompletedAt() != null
+                                ? order.getCompletedAt()
                                 : order.getFecha();
-                addInfoCell(infoTable, "Fecha:", displayDate.format(DATE_FORMATTER), true, backgroundColor);
-                addInfoCell(infoTable, "Estado:", order.getEstado().toString(), true, backgroundColor);
-                addInfoCell(infoTable, "Vendedor:", order.getVendedor().getUsername(), true, backgroundColor);
 
-                document.add(infoTable);
+                addInfoCell(row1, "N° Factura:", order.getInvoiceNumber() != null
+                                ? order.getInvoiceNumber().toString()
+                                : "---", true, bg);
+                addInfoCell(row1, "Fecha:", displayDate.format(DATE_FORMATTER), true, bg);
+                addInfoCell(row1, "Estado:", order.getEstado().toString(), true, bg);
+                addInfoCell(row1, "Vendedor:", order.getVendedor().getUsername(), true, bg);
+                document.add(row1);
 
-                // Segunda línea: Información del cliente (si existe)
+                // ── Filas de cliente (solo si existe) ─────────────────────────────────
                 if (order.getCliente() != null) {
-                        Table clientTable = new Table(
-                                        UnitValue.createPercentArray(new float[] { 1.5f, 1.5f, 1.5f, 1.5f }))
-                                        .useAllAvailableWidth()
-                                        .setMarginBottom(15);
-
-                        String telefono = order.getCliente().getTelefono() != null ? order.getCliente().getTelefono()
+                        String telefono = order.getCliente().getTelefono() != null
+                                        ? order.getCliente().getTelefono()
                                         : "---";
-                        String email = order.getCliente().getEmail() != null ? order.getCliente().getEmail() : "---";
-                        String direccion = order.getCliente().getDireccion() != null ? order.getCliente().getDireccion()
+                        String email = order.getCliente().getEmail() != null
+                                        ? order.getCliente().getEmail()
                                         : "---";
-                        String nit = order.getCliente().getNit() != null ? order.getCliente().getNit() : "---";
-                        String representanteLegal = order.getCliente().getRepresentanteLegal() != null
+                        String nit = order.getCliente().getNit() != null
+                                        ? order.getCliente().getNit()
+                                        : "---";
+                        String repLegal = order.getCliente().getRepresentanteLegal() != null
                                         ? order.getCliente().getRepresentanteLegal()
                                         : "---";
+                        String direccion = order.getCliente().getDireccion() != null
+                                        ? order.getCliente().getDireccion()
+                                        : "---";
 
-                        addInfoCell(clientTable, "Cliente:", order.getCliente().getNombre(), true, backgroundColor);
-                        addInfoCell(clientTable, "NIT:", nit, true, backgroundColor);
-                        addInfoCell(clientTable, "Teléfono:", telefono, true, backgroundColor);
-                        addInfoCell(clientTable, "Email:", email, true, backgroundColor);
-
-                        document.add(clientTable);
-
-                        // Fila para Representante Legal
-                        Table repTable = new Table(
-                                        UnitValue.createPercentArray(new float[] { 1.5f, 1.5f, 1.5f, 1.5f }))
+                        // Fila 2: Cliente / NIT / Teléfono / Email
+                        Table row2 = new Table(UnitValue.createPercentArray(new float[] { 1.5f, 1.5f, 1.5f, 1.5f }))
                                         .useAllAvailableWidth()
-                                        .setMarginBottom(5);
+                                        .setMarginBottom(0);
+                        addInfoCell(row2, "Cliente:", order.getCliente().getNombre(), true, bg);
+                        addInfoCell(row2, "NIT:", nit, true, bg);
+                        addInfoCell(row2, "Teléfono:", telefono, true, bg);
+                        addInfoCell(row2, "Email:", email, true, bg);
+                        document.add(row2);
 
-                        addInfoCell(repTable, "Representante Legal:", representanteLegal, true, backgroundColor);
-                        addInfoCell(repTable, "", "", false, backgroundColor);
-                        addInfoCell(repTable, "", "", false, backgroundColor);
-                        addInfoCell(repTable, "", "", false, backgroundColor);
-
-                        document.add(repTable);
-
-                        // Tercera línea: Dirección (ocupa toda la fila)
-                        Table addressTable = new Table(UnitValue.createPercentArray(new float[] { 1f }))
+                        // Fila 3: Rep. Legal (2 cols) | Dirección (2 cols)
+                        Table row3 = new Table(UnitValue.createPercentArray(new float[] { 1f, 2f, 1f, 2f }))
                                         .useAllAvailableWidth()
                                         .setMarginBottom(15);
-
-                        addInfoCell(addressTable, "Dirección:", direccion, true, backgroundColor);
-
-                        document.add(addressTable);
+                        addInfoCell(row3, "Rep. Legal:", repLegal, true, bg);
+                        addInfoCell(row3, "Dirección:", direccion, true, bg);
+                        document.add(row3);
+                } else {
+                        // Sin cliente: solo un pequeño margen antes de los productos
+                        document.add(new Paragraph("").setMarginBottom(15));
                 }
         }
 
@@ -238,7 +229,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 
                 // 1. Separar items: Sin promoción vs Con promoción
                 List<OrderItem> regularItems = new ArrayList<>();
-                // ✅ AGRUPADO POR promotion.id / specialPromotion.id para compactar en la factura
+                // ✅ AGRUPADO POR promotion.id / specialPromotion.id para compactar en la
+                // factura
                 // Múltiples instancias de la MISMA promoción se combinan en una sola fila
                 // La clave es el ID de la promoción lógica (no el instanceId)
                 Map<String, List<OrderItem>> itemsByPromotion = new java.util.LinkedHashMap<>();
@@ -289,9 +281,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 
                                 String promoName = (specialPromo != null) ? specialPromo.getNombre()
                                                 : promo.getNombre();
-                                BigDecimal promoUnitPrice = (specialPromo != null && specialPromo.getPackPrice() != null)
-                                                ? specialPromo.getPackPrice()
-                                                : promo.getPackPrice();
+                                BigDecimal promoUnitPrice = (specialPromo != null
+                                                && specialPromo.getPackPrice() != null)
+                                                                ? specialPromo.getPackPrice()
+                                                                : promo.getPackPrice();
 
                                 // ✅ Contar cuántas INSTANCIAS hay de esta promoción
                                 // Una instancia = un grupo de items con el mismo promotionInstanceId
@@ -308,7 +301,8 @@ public class InvoiceServiceImpl implements InvoiceService {
                                                         .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem())
                                                                         && !Boolean.TRUE.equals(i.getIsFreeItem()))
                                                         .count();
-                                        if (instanceCount == 0) instanceCount = 1;
+                                        if (instanceCount == 0)
+                                                instanceCount = 1;
                                 }
 
                                 // ✅ Si la promo NO tiene packPrice fijo (surtida / BUY_GET_FREE),
@@ -327,8 +321,10 @@ public class InvoiceServiceImpl implements InvoiceService {
                                                 UUID firstId = firstInstance.get();
                                                 promoUnitPrice = promoItems.stream()
                                                                 .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem())
-                                                                                && !Boolean.TRUE.equals(i.getIsFreeItem())
-                                                                                && firstId.equals(i.getPromotionInstanceId()))
+                                                                                && !Boolean.TRUE.equals(
+                                                                                                i.getIsFreeItem())
+                                                                                && firstId.equals(i
+                                                                                                .getPromotionInstanceId()))
                                                                 .map(OrderItem::getSubTotal)
                                                                 .filter(Objects::nonNull)
                                                                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -336,7 +332,8 @@ public class InvoiceServiceImpl implements InvoiceService {
                                                 // Último fallback: sumar todos los items no-free
                                                 BigDecimal totalSum = promoItems.stream()
                                                                 .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem())
-                                                                                && !Boolean.TRUE.equals(i.getIsFreeItem()))
+                                                                                && !Boolean.TRUE.equals(
+                                                                                                i.getIsFreeItem()))
                                                                 .map(OrderItem::getSubTotal)
                                                                 .filter(Objects::nonNull)
                                                                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -359,7 +356,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 
                                 // Fila del encabezado de la promoción con color azul
                                 String promoRowName = "PROMOCIÓN: " + promoName;
-                                com.itextpdf.layout.element.Cell promoHeader = new com.itextpdf.layout.element.Cell(1, 4)
+                                com.itextpdf.layout.element.Cell promoHeader = new com.itextpdf.layout.element.Cell(1,
+                                                4)
                                                 .add(new Paragraph(promoRowName)
                                                                 .setBold()
                                                                 .setFontSize(8)

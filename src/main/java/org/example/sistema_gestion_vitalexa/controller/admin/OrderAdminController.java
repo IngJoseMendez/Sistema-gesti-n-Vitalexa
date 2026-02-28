@@ -2,6 +2,7 @@ package org.example.sistema_gestion_vitalexa.controller.admin;
 
 import lombok.RequiredArgsConstructor;
 import org.example.sistema_gestion_vitalexa.dto.AddAssortmentItemRequest;
+import org.example.sistema_gestion_vitalexa.dto.CompleteOrderRequest;
 import org.example.sistema_gestion_vitalexa.dto.OrderRequestDto;
 import org.example.sistema_gestion_vitalexa.dto.OrderResponse;
 import org.example.sistema_gestion_vitalexa.dto.UpdateEtaRequest;
@@ -167,6 +168,45 @@ public class OrderAdminController {
             @PathVariable UUID id,
             @RequestBody List<UUID> promotionIds) {
         OrderResponse response = ordenService.addPromotionsToOrder(id, promotionIds);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * POST /api/admin/orders/{id}/complete
+     * Marcar una orden como COMPLETADA con fecha opcional.
+     *
+     * <p>
+     * Si el body está vacío o {@code completedAt} es null, se usa la fecha y hora
+     * actuales
+     * (comportamiento idéntico al endpoint existente
+     * {@code PATCH /{id}/status?status=COMPLETADO}).
+     *
+     * <p>
+     * Si {@code completedAt} se provee (formato ISO: "2026-01-15"), se usa como
+     * fecha de la
+     * factura. Esto afecta: metas de venta, reportes y comisiones del mes
+     * correspondiente.
+     *
+     * <p>
+     * La acción queda registrada en el campo {@code notas} de la orden (auditoría).
+     *
+     * <p>
+     * Ejemplo de body:
+     * 
+     * <pre>
+     * {
+     *   "completedAt": "2026-01-15",
+     *   "auditNote": "Factura de enero registrada con retraso"
+     * }
+     * </pre>
+     */
+    @PostMapping("/{id}/complete")
+    public ResponseEntity<OrderResponse> completeOrder(
+            @PathVariable UUID id,
+            @RequestBody(required = false) CompleteOrderRequest request,
+            Authentication authentication) {
+
+        OrderResponse response = ordenService.completeOrder(id, request, authentication.getName());
         return ResponseEntity.ok(response);
     }
 

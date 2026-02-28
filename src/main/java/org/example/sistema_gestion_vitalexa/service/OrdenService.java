@@ -1,6 +1,7 @@
 package org.example.sistema_gestion_vitalexa.service;
 
 import org.example.sistema_gestion_vitalexa.dto.AddAssortmentItemRequest;
+import org.example.sistema_gestion_vitalexa.dto.CompleteOrderRequest;
 import org.example.sistema_gestion_vitalexa.dto.CreateHistoricalInvoiceRequest;
 import org.example.sistema_gestion_vitalexa.dto.OrderRequestDto;
 import org.example.sistema_gestion_vitalexa.dto.OrderResponse;
@@ -16,6 +17,18 @@ public interface OrdenService {
 
     // 🔹 Cambiar estado (ADMIN / OWNER)
     OrderResponse cambiarEstadoOrden(UUID orderId, OrdenStatus nuevoEstado);
+
+    // 🔹 Completar orden con fecha opcional (ADMIN / OWNER)
+    /**
+     * Marca la orden como COMPLETADA asignando la fecha provista en el request,
+     * o la fecha actual si {@code request.completedAt()} es null.
+     * Recalcula la meta del vendedor y registra auditoría en el campo notas.
+     *
+     * @param orderId  ID de la orden a completar
+     * @param request  Fecha manual (opcional) y nota de auditoría
+     * @param username Usuario que ejecuta la acción
+     */
+    OrderResponse completeOrder(UUID orderId, CompleteOrderRequest request, String username);
 
     // 🔹 ADMIN / OWNER
     OrderResponse findById(UUID orderId);
