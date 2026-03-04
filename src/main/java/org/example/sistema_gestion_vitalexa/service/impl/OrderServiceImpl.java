@@ -1013,12 +1013,18 @@ public class OrderServiceImpl implements OrdenService {
                     OrdenStatus.PENDING_PROMOTION_COMPLETION);
             ordersPage = ordenRepository.findByEstadoIn(pendingStatuses, pageRequest);
         } else if ("completed".equalsIgnoreCase(status)) {
-            // Para completadas ordenar por completedAt desc (si existe), sino por fecha
-            PageRequest completedRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "completedAt"));
-            ordersPage = ordenRepository.findByEstado(OrdenStatus.COMPLETADO, completedRequest);
+            // Usar COALESCE(completedAt, fecha) para que las órdenes históricas
+            // (completedAt=NULL) se ordenen correctamente por su fecha de creación.
+            // No podemos pasar COALESCE como Sort de Spring Data, así que usamos un @Query.
+            PageRequest unpaged = PageRequest.of(page, size); // sin Sort porque lo define el @Query
+            ordersPage = ordenRepository.findCompletedOrdersSortedByEffectiveDate(unpaged);
         } else if ("cancelled".equalsIgnoreCase(status)) {
             List<OrdenStatus> cancelledStatuses = List.of(OrdenStatus.ANULADA, OrdenStatus.CANCELADO);
             ordersPage = ordenRepository.findByEstadoIn(cancelledStatuses, pageRequest);
+        } else if ("historical".equalsIgnoreCase(status)) {
+            // Órdenes históricas = todas las COMPLETADAS (alias del frontend)
+            PageRequest unpaged = PageRequest.of(page, size);
+            ordersPage = ordenRepository.findCompletedOrdersSortedByEffectiveDate(unpaged);
         } else {
             // Intentar mapear como un OrdenStatus exacto
             try {
