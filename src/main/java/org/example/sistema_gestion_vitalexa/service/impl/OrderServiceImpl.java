@@ -27,6 +27,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
 @Service
 @RequiredArgsConstructor
@@ -995,6 +998,42 @@ public class OrderServiceImpl implements OrdenService {
     }
 
     @Override
+    public Page<OrderResponse> findAllPaginated(int page, int size, String status) {
+        // Ordenar por fecha descendente por defecto
+        PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "fecha"));
+
+        Page<Order> ordersPage;
+
+        if (status == null || status.isBlank() || "all".equalsIgnoreCase(status)) {
+            ordersPage = ordenRepository.findAll(pageRequest);
+        } else if ("pending".equalsIgnoreCase(status)) {
+            List<OrdenStatus> pendingStatuses = List.of(
+                    OrdenStatus.PENDIENTE,
+                    OrdenStatus.CONFIRMADO,
+                    OrdenStatus.PENDING_PROMOTION_COMPLETION);
+            ordersPage = ordenRepository.findByEstadoIn(pendingStatuses, pageRequest);
+        } else if ("completed".equalsIgnoreCase(status)) {
+            // Para completadas ordenar por completedAt desc (si existe), sino por fecha
+            PageRequest completedRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "completedAt"));
+            ordersPage = ordenRepository.findByEstado(OrdenStatus.COMPLETADO, completedRequest);
+        } else if ("cancelled".equalsIgnoreCase(status)) {
+            List<OrdenStatus> cancelledStatuses = List.of(OrdenStatus.ANULADA, OrdenStatus.CANCELADO);
+            ordersPage = ordenRepository.findByEstadoIn(cancelledStatuses, pageRequest);
+        } else {
+            // Intentar mapear como un OrdenStatus exacto
+            try {
+                OrdenStatus exactStatus = OrdenStatus.valueOf(status.toUpperCase());
+                ordersPage = ordenRepository.findByEstado(exactStatus, pageRequest);
+            } catch (IllegalArgumentException e) {
+                // Estado desconocido: devolver todas
+                ordersPage = ordenRepository.findAll(pageRequest);
+            }
+        }
+
+        return ordersPage.map(orderMapper::toResponse);
+    }
+
+    @Override
     public OrderResponse findById(UUID id) {
         Order order = ordenRepository.findById(id)
                 .orElseThrow(() -> new BusinessExeption("Orden no encontrada"));
@@ -1187,6 +1226,40 @@ public class OrderServiceImpl implements OrdenService {
                 .stream()
                 .map(orderMapper::toResponse)
                 .toList();
+    }
+
+    @Override
+    public Page<OrderResponse> findMyOrdersPaginated(String username, int page, int size, String statusGroup) {
+
+        User vendedor = userRepository.findByUsername(username)
+                .orElseThrow(() -> new BusinessExeption("Usuario no encontrado"));
+
+        List<OrdenStatus> statuses;
+        Sort sort;
+
+        if ("completed".equalsIgnoreCase(statusGroup)) {
+            statuses = List.of(OrdenStatus.COMPLETADO);
+            sort = Sort.by(Sort.Direction.DESC, "completedAt");
+        } else {
+            // default: pending group
+            statuses = List.of(
+                    OrdenStatus.PENDIENTE,
+                    OrdenStatus.CONFIRMADO,
+                    OrdenStatus.PENDING_PROMOTION_COMPLETION);
+            sort = Sort.by(Sort.Direction.DESC, "fecha");
+        }
+
+        PageRequest pageRequest = PageRequest.of(page, size, sort);
+        Page<Order> ordersPage;
+
+        if (UserUnificationUtil.isSharedUser(username)) {
+            List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(username);
+            ordersPage = ordenRepository.findByVendedorUsernameInAndEstadoIn(sharedUsernames, statuses, pageRequest);
+        } else {
+            ordersPage = ordenRepository.findByVendedorAndEstadoIn(vendedor, statuses, pageRequest);
+        }
+
+        return ordersPage.map(orderMapper::toResponse);
     }
 
     @Override

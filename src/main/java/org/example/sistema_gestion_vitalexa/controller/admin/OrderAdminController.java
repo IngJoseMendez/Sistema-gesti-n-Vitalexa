@@ -10,6 +10,7 @@ import org.example.sistema_gestion_vitalexa.enums.OrdenStatus;
 import org.example.sistema_gestion_vitalexa.exceptions.BusinessExeption;
 import org.example.sistema_gestion_vitalexa.service.InvoiceService;
 import org.example.sistema_gestion_vitalexa.service.OrdenService;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -33,6 +34,26 @@ public class OrderAdminController {
     @GetMapping
     public List<OrderResponse> findAll() {
         return ordenService.findAll();
+    }
+
+    /**
+     * GET /api/admin/orders/paginated?page=0&size=20&status=pending
+     * Retorna órdenes paginadas con metadatos (totalElements, totalPages, etc.)
+     *
+     * @param page   número de página (0-based, default 0)
+     * @param size   elementos por página (default 20, máximo 100)
+     * @param status filtro de estado: "pending", "completed", "cancelled", "all" o
+     *               nombre exacto de OrdenStatus
+     */
+    @GetMapping("/paginated")
+    public ResponseEntity<Page<OrderResponse>> findAllPaginated(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "all") String status) {
+        // Limitar el tamaño máximo de página para proteger el servidor
+        int safeSize = Math.min(size, 100);
+        Page<OrderResponse> resultado = ordenService.findAllPaginated(page, safeSize, status);
+        return ResponseEntity.ok(resultado);
     }
 
     @GetMapping("/{id}")

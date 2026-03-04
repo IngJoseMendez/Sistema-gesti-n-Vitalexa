@@ -6,6 +6,7 @@ import org.example.sistema_gestion_vitalexa.dto.CreateHistoricalInvoiceRequest;
 import org.example.sistema_gestion_vitalexa.dto.OrderRequestDto;
 import org.example.sistema_gestion_vitalexa.dto.OrderResponse;
 import org.example.sistema_gestion_vitalexa.enums.OrdenStatus;
+import org.springframework.data.domain.Page;
 
 import java.util.List;
 import java.util.UUID;
@@ -35,10 +36,33 @@ public interface OrdenService {
 
     List<OrderResponse> findAll();
 
+    /**
+     * Lista paginada de todas las órdenes (admin).
+     *
+     * @param page   número de página (0-based)
+     * @param size   elementos por página
+     * @param status filtro opcional de estado: "pending", "completed", "cancelled",
+     *               "historical", "all"
+     *               o un valor exacto de {@link OrdenStatus}
+     */
+    Page<OrderResponse> findAllPaginated(int page, int size, String status);
+
     // 🔹 VENDEDOR (solo sus órdenes)
     List<OrderResponse> findMyOrders(String username);
 
     OrderResponse findMyOrderById(UUID id, String username);
+
+    /**
+     * Lista paginada de órdenes del vendedor autenticado.
+     *
+     * @param username    usuario del vendedor
+     * @param page        número de página (0-based)
+     * @param size        elementos por página
+     * @param statusGroup "pending"
+     *                    (PENDIENTE+CONFIRMADO+PENDING_PROMOTION_COMPLETION) o
+     *                    "completed" (COMPLETADO)
+     */
+    Page<OrderResponse> findMyOrdersPaginated(String username, int page, int size, String statusGroup);
 
     OrderResponse updateOrder(UUID orderId, OrderRequestDto request);
 
