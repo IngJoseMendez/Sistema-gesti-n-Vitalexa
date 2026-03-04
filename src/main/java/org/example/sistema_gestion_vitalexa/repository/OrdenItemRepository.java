@@ -17,11 +17,15 @@ public interface OrdenItemRepository extends JpaRepository<OrderItem, UUID> {
      *
      * LÓGICA: El stock se descuenta al CREAR el pedido en este sistema.
      * Por eso:
-     *   - stockEnBD          = stock actual en base de datos (puede ser negativo)
-     *   - stockComprometido  = unidades en pedidos activos (PENDIENTE/CONFIRMADO, no despachados)
-     *   - stockFisicoReal    = stockEnBD + stockComprometido  (lo que hay en bodega físicamente)
+     * - stockEnBD = stock actual en base de datos (puede ser negativo)
+     * - stockComprometido = unidades en pedidos activos (PENDIENTE/CONFIRMADO, no
+     * despachados)
+     * - stockFisicoReal = stockEnBD + stockComprometido (lo que hay en bodega
+     * físicamente)
      *
-     * Se excluyen items de flete y bonificados del conteo de comprometido.
+     * Se excluyen items de flete del conteo de comprometido. Los bonificados SI se
+     * incluyen
+     * porque representan salidas físicas del inventario.
      * Se excluyen pedidos COMPLETADO, CANCELADO y ANULADA.
      */
     @Query("""
@@ -34,8 +38,6 @@ public interface OrdenItemRepository extends JpaRepository<OrderItem, UUID> {
                         WHEN oi.id IS NOT NULL
                              AND o.estado NOT IN (:estadosFinales)
                              AND (oi.isFreightItem = false OR oi.isFreightItem IS NULL)
-                             AND (oi.isBonified = false OR oi.isBonified IS NULL)
-                             AND (oi.isFreeItem = false OR oi.isFreeItem IS NULL)
                         THEN oi.cantidad
                         ELSE 0
                     END
@@ -45,8 +47,6 @@ public interface OrdenItemRepository extends JpaRepository<OrderItem, UUID> {
                         WHEN oi.id IS NOT NULL
                              AND o.estado NOT IN (:estadosFinales)
                              AND (oi.isFreightItem = false OR oi.isFreightItem IS NULL)
-                             AND (oi.isBonified = false OR oi.isBonified IS NULL)
-                             AND (oi.isFreeItem = false OR oi.isFreeItem IS NULL)
                         THEN oi.cantidad
                         ELSE 0
                     END
@@ -63,7 +63,8 @@ public interface OrdenItemRepository extends JpaRepository<OrderItem, UUID> {
             @Param("estadosFinales") List<OrdenStatus> estadosFinales);
 
     /**
-     * Calcula el stock comprometido (en pedidos activos) para UN producto específico.
+     * Calcula el stock comprometido (en pedidos activos) para UN producto
+     * específico.
      */
     @Query("""
             SELECT COALESCE(SUM(oi.cantidad), 0)
@@ -72,11 +73,8 @@ public interface OrdenItemRepository extends JpaRepository<OrderItem, UUID> {
             WHERE oi.product.id = :productId
               AND o.estado NOT IN (:estadosFinales)
               AND (oi.isFreightItem = false OR oi.isFreightItem IS NULL)
-              AND (oi.isBonified = false OR oi.isBonified IS NULL)
-              AND (oi.isFreeItem = false OR oi.isFreeItem IS NULL)
             """)
     Integer findStockComprometidoByProductId(
             @Param("productId") UUID productId,
             @Param("estadosFinales") List<OrdenStatus> estadosFinales);
 }
-
