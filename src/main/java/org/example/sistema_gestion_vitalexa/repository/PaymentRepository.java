@@ -56,27 +56,29 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     List<Payment> findActivePaymentsByOrderId(@Param("orderId") UUID orderId);
 
     /**
-     * Suma de pagos activos recibidos ESTE MES (paymentDate entre start/end)
-     * pero SOLO sobre órdenes cuya fecha (o.fecha) cae en el MES ANTERIOR
-     * (entre orderStart y orderEnd).
-     * Regla: recaudo de febrero = pagos recibidos en febrero de facturas de enero.
+     * Suma TODOS los pagos activos de órdenes cuya fecha (o.fecha) cae en el mes
+     * anterior (orderStart..orderEnd), SIEMPRE QUE el pago real (actualPaymentDate)
+     * haya ocurrido antes del fin del mes de nómina (payEndDate).
+     *
+     * Regla:
+     *   - Factura de enero pagada en enero   → recaudo de febrero ✔
+     *   - Factura de enero pagada en febrero  → recaudo de febrero ✔
+     *   - Factura de enero pagada en marzo    → NO entra en ningún recaudo ❌
      */
     @Query("""
             SELECT COALESCE(SUM(p.amount), 0)
             FROM Payment p
             WHERE p.order.vendedor.id = :vendedorId
             AND (p.isCancelled = false OR p.isCancelled IS NULL)
-            AND p.paymentDate >= :start
-            AND p.paymentDate < :end
             AND p.order.fecha >= :orderStart
             AND p.order.fecha < :orderEnd
+            AND (p.actualPaymentDate IS NULL OR p.actualPaymentDate < :payEndDate)
             """)
     BigDecimal sumCollectedByVendedorBetween(
             @Param("vendedorId") UUID vendedorId,
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end,
             @Param("orderStart") LocalDateTime orderStart,
-            @Param("orderEnd") LocalDateTime orderEnd);
+            @Param("orderEnd") LocalDateTime orderEnd,
+            @Param("payEndDate") java.time.LocalDate payEndDate);
 
     /**
      * Igual que el anterior pero para usuarios compartidos (NinaTorres/YicelaSandoval).
@@ -86,15 +88,13 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             FROM Payment p
             WHERE p.order.vendedor.id IN :vendedorIds
             AND (p.isCancelled = false OR p.isCancelled IS NULL)
-            AND p.paymentDate >= :start
-            AND p.paymentDate < :end
             AND p.order.fecha >= :orderStart
             AND p.order.fecha < :orderEnd
+            AND (p.actualPaymentDate IS NULL OR p.actualPaymentDate < :payEndDate)
             """)
     BigDecimal sumCollectedByVendedorIdsBetween(
             @Param("vendedorIds") List<UUID> vendedorIds,
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end,
             @Param("orderStart") LocalDateTime orderStart,
-            @Param("orderEnd") LocalDateTime orderEnd);
+            @Param("orderEnd") LocalDateTime orderEnd,
+            @Param("payEndDate") java.time.LocalDate payEndDate);
 }
