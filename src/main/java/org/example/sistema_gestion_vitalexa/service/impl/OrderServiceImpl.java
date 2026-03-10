@@ -7,6 +7,7 @@ import org.example.sistema_gestion_vitalexa.dto.AddAssortmentItemRequest;
 import org.example.sistema_gestion_vitalexa.dto.BonifiedItemRequestDTO;
 import org.example.sistema_gestion_vitalexa.dto.CompleteOrderRequest;
 import org.example.sistema_gestion_vitalexa.dto.CreateHistoricalInvoiceRequest;
+import org.example.sistema_gestion_vitalexa.dto.OrderCreationResult;
 import org.example.sistema_gestion_vitalexa.dto.OrderRequestDto;
 import org.example.sistema_gestion_vitalexa.dto.OrderResponse;
 import org.example.sistema_gestion_vitalexa.dto.OrderItemRequestDTO;
@@ -1280,7 +1281,7 @@ public class OrderServiceImpl implements OrdenService {
 
     @Override
     @Transactional
-    public OrderResponse updateOrder(UUID orderId, OrderRequestDto request) {
+    public OrderCreationResult updateOrder(UUID orderId, OrderRequestDto request) {
         Order order = ordenRepository.findById(orderId)
                 .orElseThrow(() -> new BusinessExeption("Orden no encontrada"));
 
@@ -1432,6 +1433,10 @@ public class OrderServiceImpl implements OrdenService {
         log.info("📝 Orden {}: Notas='{}', tieneItemsPromo={}, tienePromoIdsEnRequest={}, esPromocion={}",
                 orderId, currentNotes, !currentPromotionIds.isEmpty(), hasPromotions, isPromoOrder);
 
+        // Lista de items S/R detectados para split (declarada aquí para que sea
+        // accesible al final del método)
+        List<OrderItemRequestDTO> srItemsForSplit = new java.util.ArrayList<>();
+
         // AGREGAR NUEVOS ITEMS (con validación de stock y split)
         // IMPORTANTE:
         // - NO procesar items de flete como items normales
@@ -1444,15 +1449,59 @@ public class OrderServiceImpl implements OrdenService {
             List<OrderItemRequestDTO> freightItemsReq = new java.util.ArrayList<>();
             List<OrderItemRequestDTO> normalItemsReq = new java.util.ArrayList<>();
 
+            // ── CLASIFICAR S/R ──────────────────────────────────────────────────────
+            // Si la orden actual NO es de tipo S/R, detectamos si hay productos S/R entre
+            // los items nuevos para hacer split (nueva orden S/R separada).
+            boolean isSROrder = currentNotes.contains("[S/R]");
+            ProductTag srTagForUpdate = null;
+            if (!isPromoOrder && !isSROrder) {
+                try {
+                    srTagForUpdate = productTagService.getSRTagEntity();
+                } catch (Exception e) {
+                    log.warn("Etiqueta S/R no encontrada en updateOrder, continuando sin split");
+                }
+            }
+            final ProductTag srTagFinal = srTagForUpdate;
+
+            // srItemsToSplit: items S/R detectados en una orden Normal (deben ir a nueva orden)
+            // Usamos srItemsForSplit (declarada en el scope externo)
+
             request.items().forEach(itemReq -> {
                 if (Boolean.TRUE.equals(itemReq.isFreightItem())) {
                     freightItemsReq.add(itemReq);
+                    return;
+                }
+
+                // Si no hay tag S/R o la orden ya es S/R, todos los no-flete son normales
+                if (srTagFinal == null || isSROrder || isPromoOrder) {
+                    normalItemsReq.add(itemReq);
+                    return;
+                }
+
+                // Detectar si el item es S/R
+                boolean itemIsSR = false;
+                try {
+                    if (itemReq.specialProductId() != null) {
+                        SpecialProduct sp = specialProductService.findEntityById(itemReq.specialProductId());
+                        itemIsSR = sp.getTag() != null && sp.getTag().getId().equals(srTagFinal.getId());
+                    } else if (itemReq.productId() != null) {
+                        Product p = productService.findEntityById(itemReq.productId());
+                        itemIsSR = p.getTag() != null && p.getTag().getId().equals(srTagFinal.getId());
+                    }
+                } catch (Exception e) {
+                    log.warn("No se pudo determinar tag del item {}: {}", itemReq.productId(), e.getMessage());
+                }
+
+                if (itemIsSR) {
+                    srItemsForSplit.add(itemReq);
+                    log.info("🏷️ Item S/R detectado en edición de orden normal, irá a orden separada: {}", itemReq.productId());
                 } else {
                     normalItemsReq.add(itemReq);
                 }
             });
 
-            log.info("📦 Items filtrados: {} normales, {} flete", normalItemsReq.size(), freightItemsReq.size());
+            log.info("📦 Items filtrados: {} normales, {} flete, {} S/R para split",
+                    normalItemsReq.size(), freightItemsReq.size(), srItemsForSplit.size());
 
             // Procesar items de flete (PRIMERO, antes que los items normales)
             if (!freightItemsReq.isEmpty()) {
@@ -1657,7 +1706,43 @@ public class OrderServiceImpl implements OrdenService {
 
         // Guardar orden actualizada
         Order updatedOrder = ordenRepository.save(order);
-        return orderMapper.toResponse(updatedOrder);
+        OrderResponse mainResponse = orderMapper.toResponse(updatedOrder);
+
+        // ── SPLIT S/R EN EDICIÓN ─────────────────────────────────────────────────────
+        // Si se detectaron items S/R en una orden Normal, crearlos en una orden nueva
+        if (srItemsForSplit != null && !srItemsForSplit.isEmpty()) {
+            log.info("🔀 SPLIT EN EDICIÓN: Creando orden S/R con {} items separados de orden {}",
+                    srItemsForSplit.size(), orderId);
+
+            Order srOrder = new Order(updatedOrder.getVendedor(), updatedOrder.getCliente());
+            String baseNotes = request.notas() != null ? request.notas() : "";
+            srOrder.setNotas(baseNotes + " [S/R]");
+            srOrder.setIncludeFreight(false);
+
+            processOrderItems(srOrder, srItemsForSplit);
+
+            if (!srOrder.getItems().isEmpty()) {
+                Order savedSrOrder = ordenRepository.save(srOrder);
+                notificationService.sendNewOrderNotification(
+                        savedSrOrder.getId().toString(),
+                        updatedOrder.getVendedor().getUsername(),
+                        updatedOrder.getCliente() != null ? updatedOrder.getCliente().getNombre() : "Sin cliente");
+
+                // Intentar pago automático con saldo a favor
+                if (updatedOrder.getCliente() != null) {
+                    processAutomaticPayment(savedSrOrder, updatedOrder.getCliente());
+                }
+
+                log.info("✅ Orden S/R creada en split de edición: {}", savedSrOrder.getId());
+                OrderResponse srResponse = orderMapper.toResponse(savedSrOrder);
+                return new OrderCreationResult(
+                        List.of(mainResponse, srResponse),
+                        true,
+                        "Orden actualizada y orden S/R creada con los productos sin referencia");
+            }
+        }
+
+        return OrderCreationResult.single(mainResponse);
     }
 
     @Override

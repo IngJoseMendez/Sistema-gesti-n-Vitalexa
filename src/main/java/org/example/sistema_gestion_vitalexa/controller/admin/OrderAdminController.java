@@ -3,6 +3,7 @@ package org.example.sistema_gestion_vitalexa.controller.admin;
 import lombok.RequiredArgsConstructor;
 import org.example.sistema_gestion_vitalexa.dto.AddAssortmentItemRequest;
 import org.example.sistema_gestion_vitalexa.dto.CompleteOrderRequest;
+import org.example.sistema_gestion_vitalexa.dto.OrderCreationResult;
 import org.example.sistema_gestion_vitalexa.dto.OrderRequestDto;
 import org.example.sistema_gestion_vitalexa.dto.OrderResponse;
 import org.example.sistema_gestion_vitalexa.dto.UpdateEtaRequest;
@@ -85,13 +86,15 @@ public class OrderAdminController {
      * PUT /api/admin/orders/{id}
      * Editar el contenido de una orden (items, totales).
      * ADMIN y OWNER pueden editar.
+     * Si la orden es Normal y se agregan productos S/R, se hace split automático
+     * y se retorna OrderCreationResult con wasSplit=true y las dos órdenes.
      */
     @PutMapping("/{id}")
-    public ResponseEntity<OrderResponse> updateOrder(
+    public ResponseEntity<OrderCreationResult> updateOrder(
             @PathVariable UUID id,
             @RequestBody OrderRequestDto request) {
-        OrderResponse response = ordenService.updateOrder(id, request);
-        return ResponseEntity.ok(response);
+        OrderCreationResult result = ordenService.updateOrder(id, request);
+        return ResponseEntity.ok(result);
     }
 
     /**

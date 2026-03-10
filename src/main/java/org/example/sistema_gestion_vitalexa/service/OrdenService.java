@@ -3,6 +3,7 @@ package org.example.sistema_gestion_vitalexa.service;
 import org.example.sistema_gestion_vitalexa.dto.AddAssortmentItemRequest;
 import org.example.sistema_gestion_vitalexa.dto.CompleteOrderRequest;
 import org.example.sistema_gestion_vitalexa.dto.CreateHistoricalInvoiceRequest;
+import org.example.sistema_gestion_vitalexa.dto.OrderCreationResult;
 import org.example.sistema_gestion_vitalexa.dto.OrderRequestDto;
 import org.example.sistema_gestion_vitalexa.dto.OrderResponse;
 import org.example.sistema_gestion_vitalexa.enums.OrdenStatus;
@@ -64,7 +65,7 @@ public interface OrdenService {
      */
     Page<OrderResponse> findMyOrdersPaginated(String username, int page, int size, String statusGroup);
 
-    OrderResponse updateOrder(UUID orderId, OrderRequestDto request);
+    OrderCreationResult updateOrder(UUID orderId, OrderRequestDto request);
 
     // 🔹 Anular Orden (ADMIN)
     void annulOrder(UUID orderId, String reason);

@@ -91,20 +91,52 @@ public class InvoiceServiceImpl implements InvoiceService {
         // =============================================
 
         private void addCompanyHeader(Document document, boolean isSROrder) {
-                // Logo o nombre de la empresa
-                try {
-                        ImageData imageData = ImageDataFactory.create("src/main/resources/static/images/logo.png");
-                        Image logo = new Image(imageData);
-                        logo.setWidth(200);
-                        logo.setHeight(100);
-                        logo.setHorizontalAlignment(HorizontalAlignment.CENTER);
-                        document.add(logo);
-                } catch (Exception e) {
-                        // Fallback si no encuentra el logo
-                        Paragraph companyName = new Paragraph("VITALEXA");
-                }
 
-                // Watermark para facturas S/R -> REMOVIDO: Se usa estilo estándar
+                if (!isSROrder) {
+                        // ── Header profesional: Logo (izquierda) + Datos del dueño (derecha) ──
+                        Table headerTable = new Table(UnitValue.createPercentArray(new float[]{1f, 2.5f}))
+                                        .useAllAvailableWidth()
+                                        .setMarginBottom(4);
+
+                        // Celda del logo
+                        com.itextpdf.layout.element.Cell logoCell = new com.itextpdf.layout.element.Cell()
+                                        .setBorder(null)
+                                        .setPadding(2);
+                        try {
+                                ImageData imageData = ImageDataFactory.create(
+                                        new java.net.URL("https://res.cloudinary.com/dxl97cptv/image/upload/v1766743808/Black_and_Green_Flat_Illustrated_Organic_Cosmetics_Logo_200_x_200_px_200_x_100_px_1_qurn1e.png"));
+                                Image logo = new Image(imageData);
+                                logo.setWidth(90);
+                                logo.setAutoScaleHeight(true);
+                                logoCell.add(logo);
+                        } catch (Exception e) {
+                                log.warn("No se pudo cargar el logo desde URL: {}", e.getMessage());
+                                logoCell.add(new Paragraph("VITALEXA").setBold().setFontSize(16).setFontColor(BRAND_COLOR));
+                        }
+                        headerTable.addCell(logoCell);
+
+                        // Celda de datos del dueño
+                        com.itextpdf.layout.element.Cell ownerCell = new com.itextpdf.layout.element.Cell()
+                                        .setBorder(null)
+                                        .setPaddingLeft(10)
+                                        .setPaddingTop(4);
+
+                        ownerCell.add(new Paragraph("DISTRIBUCIONES VITALEXA")
+                                        .setBold().setFontSize(11).setFontColor(BRAND_COLOR).setMarginBottom(1));
+                        ownerCell.add(new Paragraph("Ventas de Productos Naturales y Cosméticos al por mayor")
+                                        .setFontSize(9).setFontColor(new DeviceRgb(80, 80, 80)).setMarginBottom(1));
+                         ownerCell.add(new Paragraph("Arnoldo Alexander Arévalo Navarro")
+                            .setFontSize(9).setFontColor(new DeviceRgb(80, 80, 80)).setMarginBottom(1));
+                        ownerCell.add(new Paragraph("NIT: 7.633.011-3")
+                                        .setFontSize(9).setFontColor(new DeviceRgb(80, 80, 80)).setMarginBottom(1));
+                        ownerCell.add(new Paragraph("Cel: 310 489 1636")
+                                        .setFontSize(9).setFontColor(new DeviceRgb(80, 80, 80)));
+                        ownerCell.add(new Paragraph("Santa Marta Magdalena")
+                            .setFontSize(9).setFontColor(new DeviceRgb(80, 80, 80)));
+                        headerTable.addCell(ownerCell);
+
+                        document.add(headerTable);
+                }
 
                 SolidLine lineDrawer = new SolidLine();
                 lineDrawer.setColor(BRAND_COLOR);
@@ -116,14 +148,14 @@ public class InvoiceServiceImpl implements InvoiceService {
 
         private void addOrderInfo(Document document, Order order, boolean isSROrder) {
 
-                // Título
-                Paragraph title = new Paragraph("FACTURA DE PEDIDO")
-                                .setFontSize(18)
-                                .setBold()
-                                .setTextAlignment(TextAlignment.CENTER)
-                                .setFontColor(BRAND_COLOR)
-                                .setMarginBottom(12);
-                document.add(title);
+//                // Título
+//                Paragraph title = new Paragraph("FACTURA DE PEDIDO")
+//                                .setFontSize(18)
+//                                .setBold()
+//                                .setTextAlignment(TextAlignment.CENTER)
+//                                .setFontColor(BRAND_COLOR)
+//                                .setMarginBottom(12);
+//                document.add(title);
 
                 DeviceRgb bg = (DeviceRgb) ColorConstants.WHITE;
 
