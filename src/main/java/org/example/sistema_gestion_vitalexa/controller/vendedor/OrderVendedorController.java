@@ -1,6 +1,7 @@
 package org.example.sistema_gestion_vitalexa.controller.vendedor;
 
 import lombok.RequiredArgsConstructor;
+import org.example.sistema_gestion_vitalexa.dto.OrderCreationResult;
 import org.example.sistema_gestion_vitalexa.dto.OrderResponse;
 import org.example.sistema_gestion_vitalexa.service.OrdenService;
 import org.springframework.data.domain.Page;
@@ -29,9 +30,9 @@ public class OrderVendedorController {
 
     private final OrdenService ordenService;
 
-    // 🔹 Crear venta
+    // 🔹 Crear venta — retorna OrderCreationResult para indicar si se hizo split S/R
     @PostMapping
-    public OrderResponse create(
+    public OrderCreationResult create(
             @Valid @RequestBody OrderRequestDto request,
             Authentication authentication) {
         String username = authentication.getName();

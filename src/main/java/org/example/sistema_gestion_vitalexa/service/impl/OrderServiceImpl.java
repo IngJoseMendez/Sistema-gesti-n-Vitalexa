@@ -61,7 +61,7 @@ public class OrderServiceImpl implements OrdenService {
     // CREATE ORDER (VENDEDOR)
     // =========================
     @Override
-    public OrderResponse createOrder(OrderRequestDto request, String username) {
+    public OrderCreationResult createOrder(OrderRequestDto request, String username) {
         // Validar que haya al menos items O promociones O bonificados
         boolean hasItems = request.items() != null && !request.items().isEmpty();
         boolean hasPromotions = request.promotionIds() != null && !request.promotionIds().isEmpty();
@@ -225,21 +225,50 @@ public class OrderServiceImpl implements OrdenService {
 
         List<UUID> promotionIds = request.promotionIds() != null ? request.promotionIds() : new java.util.ArrayList<>();
 
+        // ── CLASIFICAR bonifiedItems por S/R ──────────────────────────────────────
+        // Los bonificados también pueden ser productos S/R; en ese caso deben ir
+        // a la orden S/R separada (como bonificados, precio $0).
+        List<BonifiedItemRequestDTO> bonifiedNormalItems = new java.util.ArrayList<>();
+        List<BonifiedItemRequestDTO> bonifiedSRItems = new java.util.ArrayList<>();
+
+        if (request.bonifiedItems() != null) {
+            for (BonifiedItemRequestDTO bItem : request.bonifiedItems()) {
+                boolean isSRBonified = false;
+                if (finalSrTag != null && bItem.productId() != null) {
+                    try {
+                        Product bProduct = productService.findEntityById(bItem.productId());
+                        isSRBonified = bProduct.getTag() != null
+                                && bProduct.getTag().getId().equals(finalSrTag.getId());
+                    } catch (Exception e) {
+                        log.warn("No se pudo determinar tag del bonificado {}: {}", bItem.productId(), e.getMessage());
+                    }
+                }
+                if (isSRBonified) {
+                    bonifiedSRItems.add(bItem);
+                    log.info("🏷️ Bonificado S/R detectado, irá a orden S/R: {}", bItem.productId());
+                } else {
+                    bonifiedNormalItems.add(bItem);
+                }
+            }
+        }
+
         // Identificar qué tipos de órdenes necesitamos crear
         boolean hasNormal = !normalItems.isEmpty();
-        boolean hasSR = !srItems.isEmpty();
+        boolean hasSR = !srItems.isEmpty() || !bonifiedSRItems.isEmpty();
         boolean hasPromo = !promotionIds.isEmpty() || !promoItems.isEmpty(); // Promo activa si hay IDs o items
                                                                              // relacionados
+        boolean hasNormalContent = hasNormal || !bonifiedNormalItems.isEmpty();
 
-        int typesCount = (hasNormal ? 1 : 0) + (hasSR ? 1 : 0) + (hasPromo ? 1 : 0);
+        int typesCount = (hasNormalContent ? 1 : 0) + (hasSR ? 1 : 0) + (hasPromo ? 1 : 0);
 
         if (typesCount <= 1) {
             // Caso simple: Crear una sola orden con lo que haya
             String noteSuffix = "";
-            if (hasSR && !hasNormal && !hasPromo) {
+            if (hasSR && !hasNormalContent && !hasPromo) {
                 noteSuffix = " [S/R]";
             }
-            return createSingleOrder(vendedor, client, request, username, noteSuffix);
+            OrderResponse singleResponse = createSingleOrder(vendedor, client, request, username, noteSuffix);
+            return OrderCreationResult.single(singleResponse);
         } else {
             // Caso múltiple: Crear órdenes separadas
             // Construir descripción de flete personalizado (solo el texto base)
@@ -251,16 +280,19 @@ public class OrderServiceImpl implements OrdenService {
                     Boolean.TRUE.equals(request.isFreightBonified()),
                     freightDesc,
                     request.freightQuantity(),
-                    freightItems, // Pasar lista de items de flete
-                    request.bonifiedItems(), // Pasar lista de bonificados
+                    freightItems,
+                    bonifiedNormalItems, // Bonificados normales (van a orden Standard)
+                    bonifiedSRItems,     // Bonificados S/R (van a orden S/R)
                     username);
         }
     }
 
     /**
      * Crear órdenes separadas por tipo (Normal, S/R, Promo)
+     * bonifiedNormalItems: bonificados que van a la orden Standard
+     * bonifiedSRItems: bonificados S/R que van a la orden S/R
      */
-    private OrderResponse createMultipleOrders(
+    private OrderCreationResult createMultipleOrders(
             User vendedor,
             Client client,
             List<OrderItemRequestDTO> normalItems,
@@ -273,16 +305,19 @@ public class OrderServiceImpl implements OrdenService {
             String freightCustomText,
             Integer freightQuantity,
             List<OrderItemRequestDTO> freightItems,
-            List<BonifiedItemRequestDTO> bonifiedItems,
+            List<BonifiedItemRequestDTO> bonifiedNormalItems,
+            List<BonifiedItemRequestDTO> bonifiedSRItems,
             String username) {
 
-        OrderResponse response = null;
+        List<OrderResponse> allCreatedOrders = new java.util.ArrayList<>();
+        boolean hasSRSplit = false;
         BigDecimal totalPurchase = BigDecimal.ZERO;
         StringBuilder logMsg = new StringBuilder("Orden dividida en: ");
 
         // 1. ORDEN STANDARD (Solo Items normales - SIN Promociones aquí)
         // Las promociones van en su propia orden
-        if (!normalItems.isEmpty()) {
+        // Crear orden Standard si hay items normales O bonificados normales
+        if (!normalItems.isEmpty() || (bonifiedNormalItems != null && !bonifiedNormalItems.isEmpty())) {
             Order standardOrder = new Order(vendedor, client);
             if (notas != null && !notas.isBlank()) {
                 standardOrder.setNotas(notas + " [Standard]");
@@ -318,9 +353,9 @@ public class OrderServiceImpl implements OrdenService {
 
             processOrderItems(standardOrder, normalItems);
 
-            // Procesar bonificados si existen
-            if (bonifiedItems != null && !bonifiedItems.isEmpty()) {
-                processBonifiedItems(standardOrder, bonifiedItems);
+            // Procesar bonificados normales (no S/R) en esta orden
+            if (bonifiedNormalItems != null && !bonifiedNormalItems.isEmpty()) {
+                processBonifiedItems(standardOrder, bonifiedNormalItems);
             }
 
             Order saved = ordenRepository.save(standardOrder);
@@ -329,7 +364,7 @@ public class OrderServiceImpl implements OrdenService {
                     client != null ? client.getNombre() : "Sin cliente");
 
             totalPurchase = totalPurchase.add(saved.getTotal());
-            response = orderMapper.toResponse(saved); // Prioridad 1 para response
+            allCreatedOrders.add(orderMapper.toResponse(saved)); // Orden Standard
             logMsg.append("Standard (").append(saved.getId()).append(") ");
 
             // Intentar pagar con saldo a favor
@@ -339,7 +374,8 @@ public class OrderServiceImpl implements OrdenService {
 
         // 2. ORDEN S/R
         // Solo items que pertenecen a productos marcados con etiqueta S/R
-        if (!srItems.isEmpty()) {
+        // También incluye bonificados S/R
+        if (!srItems.isEmpty() || (bonifiedSRItems != null && !bonifiedSRItems.isEmpty())) {
             Order srOrder = new Order(vendedor, client);
             // Si solo hay S/R y Promos, pero no normal, y tenemos notas, aseguramos el tag
             // S/R
@@ -347,7 +383,14 @@ public class OrderServiceImpl implements OrdenService {
             srOrder.setNotas((notas != null ? notas : "") + suffix);
 
             // Procesar items S/R (también pueden dividirse en con/sin stock)
-            processOrderItems(srOrder, srItems);
+            if (!srItems.isEmpty()) {
+                processOrderItems(srOrder, srItems);
+            }
+
+            // Procesar bonificados S/R (precio $0)
+            if (bonifiedSRItems != null && !bonifiedSRItems.isEmpty()) {
+                processBonifiedItems(srOrder, bonifiedSRItems);
+            }
 
             if (!srOrder.getItems().isEmpty()) {
                 Order saved = ordenRepository.save(srOrder);
@@ -356,8 +399,8 @@ public class OrderServiceImpl implements OrdenService {
                         client != null ? client.getNombre() : "Sin cliente");
 
                 totalPurchase = totalPurchase.add(saved.getTotal());
-                if (response == null)
-                    response = orderMapper.toResponse(saved); // Prioridad 2
+                allCreatedOrders.add(orderMapper.toResponse(saved)); // Orden S/R
+                hasSRSplit = true;
                 logMsg.append("S/R (").append(saved.getId()).append(") ");
 
                 // Intentar pagar con saldo a favor
@@ -399,8 +442,7 @@ public class OrderServiceImpl implements OrdenService {
                         client != null ? client.getNombre() : "Sin cliente");
 
                 totalPurchase = totalPurchase.add(saved.getTotal());
-                if (response == null)
-                    response = orderMapper.toResponse(saved); // Prioridad 3
+                allCreatedOrders.add(orderMapper.toResponse(saved)); // Orden Promo
                 logMsg.append("Promo (").append(saved.getId()).append(") ");
 
                 // Intentar pagar con saldo a favor
@@ -418,7 +460,11 @@ public class OrderServiceImpl implements OrdenService {
 
         log.info("{} por vendedor {}", logMsg.toString(), username);
 
-        return response;
+        // Construir resultado con info de split
+        String message = hasSRSplit
+                ? "Orden dividida: una con productos normales y otra con productos S/R"
+                : "Órdenes creadas exitosamente";
+        return new OrderCreationResult(allCreatedOrders, hasSRSplit, message);
     }
 
     /**

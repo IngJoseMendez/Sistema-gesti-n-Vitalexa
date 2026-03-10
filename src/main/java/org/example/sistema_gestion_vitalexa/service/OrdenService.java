@@ -14,8 +14,9 @@ import java.util.UUID;
 
 public interface OrdenService {
 
-    // 🔹 Crear orden (VENDEDOR)
-    OrderResponse createOrder(OrderRequestDto request, String username);
+    // 🔹 Crear orden (VENDEDOR / ADMIN)
+    // Retorna OrderCreationResult que indica si se hizo split S/R
+    OrderCreationResult createOrder(OrderRequestDto request, String username);
 
     // 🔹 Cambiar estado (ADMIN / OWNER)
     OrderResponse cambiarEstadoOrden(UUID orderId, OrdenStatus nuevoEstado);

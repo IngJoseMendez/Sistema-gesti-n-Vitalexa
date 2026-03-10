@@ -171,13 +171,14 @@ public class OrderAdminController {
     /**
      * POST /api/admin/orders
      * Crear orden (Admin/Owner puede especificar sellerId en el body)
+     * Retorna OrderCreationResult indicando si se hizo split por productos S/R
      */
     @PostMapping
-    public ResponseEntity<OrderResponse> createOrder(
+    public ResponseEntity<OrderCreationResult> createOrder(
             @RequestBody OrderRequestDto request,
             org.springframework.security.core.Authentication authentication) {
-        OrderResponse response = ordenService.createOrder(request, authentication.getName());
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+        OrderCreationResult result = ordenService.createOrder(request, authentication.getName());
+        return new ResponseEntity<>(result, HttpStatus.CREATED);
     }
 
     /**
