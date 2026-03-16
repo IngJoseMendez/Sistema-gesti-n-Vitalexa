@@ -336,23 +336,40 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
                 BigDecimal orderTotal = order.getDiscountedTotal() != null
                                 ? order.getDiscountedTotal()
                                 : order.getTotal();
-                BigDecimal paidAmount = paymentRepository.sumPaymentsByOrderId(order.getId());
+
+                // Obtener solo pagos activos para el cálculo y la lista
+                List<Payment> activePayments = paymentRepository.findActivePaymentsByOrderId(order.getId());
+
+                BigDecimal paidAmount = activePayments.stream()
+                                .map(Payment::getAmount)
+                                .filter(java.util.Objects::nonNull)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
                 BigDecimal pendingAmount = orderTotal.subtract(paidAmount);
 
-                List<PaymentResponse> payments = paymentRepository.findByOrderId(order.getId()).stream()
+                List<PaymentResponse> payments = activePayments.stream()
                                 .map(this::toPaymentResponse)
                                 .collect(Collectors.toList());
+
+                // Determinar estado basado en montos actuales (más fiable que el campo persistido en situaciones de concurrencia)
+                String status = order.getPaymentStatus() != null ? order.getPaymentStatus().name() : PaymentStatus.PENDING.name();
+                if (pendingAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                        status = PaymentStatus.PAID.name();
+                } else if (paidAmount.compareTo(BigDecimal.ZERO) > 0) {
+                        status = PaymentStatus.PARTIAL.name();
+                } else {
+                        status = PaymentStatus.PENDING.name();
+                }
 
                 return new OrderPendingDTO(
                                 order.getId(),
                                 order.getInvoiceNumber(),
-                                getInvoiceDate(order),  // ← fecha de completado (o creación como fallback)
+                                getInvoiceDate(order),
                                 order.getTotal(),
                                 order.getDiscountedTotal(),
                                 paidAmount,
                                 pendingAmount,
-                                order.getPaymentStatus() != null ? order.getPaymentStatus().name()
-                                                : PaymentStatus.PENDING.name(),
+                                status,
                                 payments);
         }
 
