@@ -1045,45 +1045,106 @@ public class OrderServiceImpl implements OrdenService {
     }
 
     @Override
-    public Page<OrderResponse> findAllPaginated(int page, int size, String status) {
-        // Ordenar por fecha descendente por defecto
-        PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "fecha"));
+    public Page<OrderResponse> findAllPaginated(int page, int size, String status, String search, String vendedor, String cliente) {
+        List<OrdenStatus> inStatuses = null;
+        String exactStatus = status;
 
-        Page<Order> ordersPage;
-
-        if (status == null || status.isBlank() || "all".equalsIgnoreCase(status)) {
-            ordersPage = ordenRepository.findAll(pageRequest);
-        } else if ("pending".equalsIgnoreCase(status)) {
-            List<OrdenStatus> pendingStatuses = List.of(
-                    OrdenStatus.PENDIENTE,
-                    OrdenStatus.CONFIRMADO,
-                    OrdenStatus.PENDING_PROMOTION_COMPLETION);
-            ordersPage = ordenRepository.findByEstadoIn(pendingStatuses, pageRequest);
-        } else if ("completed".equalsIgnoreCase(status)) {
-            // Usar COALESCE(completedAt, fecha) para que las órdenes históricas
-            // (completedAt=NULL) se ordenen correctamente por su fecha de creación.
-            // No podemos pasar COALESCE como Sort de Spring Data, así que usamos un @Query.
-            PageRequest unpaged = PageRequest.of(page, size); // sin Sort porque lo define el @Query
-            ordersPage = ordenRepository.findCompletedOrdersSortedByEffectiveDate(unpaged);
+        if ("pending".equalsIgnoreCase(status)) {
+            inStatuses = List.of(OrdenStatus.PENDIENTE, OrdenStatus.CONFIRMADO, OrdenStatus.PENDING_PROMOTION_COMPLETION);
         } else if ("cancelled".equalsIgnoreCase(status)) {
-            List<OrdenStatus> cancelledStatuses = List.of(OrdenStatus.ANULADA, OrdenStatus.CANCELADO);
-            ordersPage = ordenRepository.findByEstadoIn(cancelledStatuses, pageRequest);
-        } else if ("historical".equalsIgnoreCase(status)) {
-            // Órdenes históricas = todas las COMPLETADAS (alias del frontend)
-            PageRequest unpaged = PageRequest.of(page, size);
-            ordersPage = ordenRepository.findCompletedOrdersSortedByEffectiveDate(unpaged);
-        } else {
-            // Intentar mapear como un OrdenStatus exacto
-            try {
-                OrdenStatus exactStatus = OrdenStatus.valueOf(status.toUpperCase());
-                ordersPage = ordenRepository.findByEstado(exactStatus, pageRequest);
-            } catch (IllegalArgumentException e) {
-                // Estado desconocido: devolver todas
-                ordersPage = ordenRepository.findAll(pageRequest);
-            }
+            inStatuses = List.of(OrdenStatus.ANULADA, OrdenStatus.CANCELADO);
         }
 
+        PageRequest pageRequest = PageRequest.of(page, size);
+        org.springframework.data.jpa.domain.Specification<Order> spec = createOrderSpecification(
+            exactStatus, inStatuses, search, vendedor, cliente, null, null
+        );
+
+        Page<Order> ordersPage = ordenRepository.findAll(spec, pageRequest);
         return ordersPage.map(orderMapper::toResponse);
+    }
+
+    private org.springframework.data.jpa.domain.Specification<Order> createOrderSpecification(
+            String exactStatus,
+            List<OrdenStatus> inStatuses,
+            String search,
+            String vendedorUsername, // admin text match
+            String clienteNombre,     // admin/vendor text match
+            List<String> vendorUsernameIn, // for shared users like Nina
+            User exactVendedorObj         // vendor exact
+    ) {
+        return (root, query, cb) -> {
+            java.util.List<jakarta.persistence.criteria.Predicate> predicates = new java.util.ArrayList<>();
+
+            if (exactStatus != null && !exactStatus.isEmpty() && !"all".equalsIgnoreCase(exactStatus)) {
+                if ("COMPLETADO".equalsIgnoreCase(exactStatus) || "historical".equalsIgnoreCase(exactStatus)) {
+                    predicates.add(cb.equal(root.get("estado"), OrdenStatus.COMPLETADO));
+                } else if (inStatuses == null) {
+                    try {
+                        OrdenStatus exact = OrdenStatus.valueOf(exactStatus.toUpperCase());
+                        predicates.add(cb.equal(root.get("estado"), exact));
+                    } catch (IllegalArgumentException e) {
+                        // Ignorar si no es válido
+                    }
+                }
+            }
+
+            if (inStatuses != null && !inStatuses.isEmpty()) {
+                predicates.add(root.get("estado").in(inStatuses));
+            }
+
+            jakarta.persistence.criteria.Join<Object, Object> vJoin = null;
+            if (exactVendedorObj != null) {
+                predicates.add(cb.equal(root.get("vendedor"), exactVendedorObj));
+            } else if (vendedorUsername != null && !vendedorUsername.isBlank()) {
+                vJoin = root.join("vendedor", jakarta.persistence.criteria.JoinType.LEFT);
+                predicates.add(cb.equal(cb.lower(vJoin.get("username")), vendedorUsername.trim().toLowerCase()));
+            } else if (vendorUsernameIn != null && !vendorUsernameIn.isEmpty()) {
+                vJoin = root.join("vendedor", jakarta.persistence.criteria.JoinType.LEFT);
+                predicates.add(vJoin.get("username").in(vendorUsernameIn));
+            }
+
+            jakarta.persistence.criteria.Join<Object, Object> cJoin = null;
+            if (clienteNombre != null && !clienteNombre.isBlank()) {
+                cJoin = root.join("cliente", jakarta.persistence.criteria.JoinType.LEFT);
+                predicates.add(cb.equal(cb.lower(cJoin.get("nombre")), clienteNombre.trim().toLowerCase()));
+            }
+
+            if (search != null && !search.isBlank()) {
+                String searchLike = "%" + search.trim().toLowerCase() + "%";
+                if (cJoin == null) cJoin = root.join("cliente", jakarta.persistence.criteria.JoinType.LEFT);
+                if (vJoin == null) vJoin = root.join("vendedor", jakarta.persistence.criteria.JoinType.LEFT);
+                
+                jakarta.persistence.criteria.Predicate invoicePred = cb.like(root.get("invoiceNumber").as(String.class), searchLike);
+                jakarta.persistence.criteria.Predicate idPred = cb.like(root.get("id").as(String.class), searchLike);
+                jakarta.persistence.criteria.Predicate cName = cb.like(cb.lower(cJoin.get("nombre")), searchLike);
+                jakarta.persistence.criteria.Predicate cRep = cb.like(cb.lower(cJoin.get("representanteLegal")), searchLike);
+                jakarta.persistence.criteria.Predicate cPhone = cb.like(cb.lower(cJoin.get("telefono")), searchLike);
+                jakarta.persistence.criteria.Predicate cAddress = cb.like(cb.lower(cJoin.get("direccion")), searchLike);
+                jakarta.persistence.criteria.Predicate cNit = cb.like(cb.lower(cJoin.get("nit")), searchLike);
+                jakarta.persistence.criteria.Predicate vName = cb.like(cb.lower(vJoin.get("username")), searchLike);
+                
+                predicates.add(cb.or(invoicePred, idPred, cName, cRep, cPhone, cAddress, cNit, vName));
+            }
+
+            // ORDERING LOGIC
+            boolean isCountQuery = query.getResultType() == Long.class || query.getResultType() == long.class;
+            
+            if (!isCountQuery) {
+                if ("COMPLETADO".equalsIgnoreCase(exactStatus) || "historical".equalsIgnoreCase(exactStatus)) {
+                    query.orderBy(
+                        cb.desc(cb.coalesce(root.get("completedAt"), root.get("fecha")))
+                    );
+                } else {
+                    query.orderBy(cb.desc(root.get("fecha")));
+                }
+            }
+            
+            // Avoid duplicates when joining
+            query.distinct(true);
+
+            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        };
     }
 
     @Override
@@ -1282,35 +1343,39 @@ public class OrderServiceImpl implements OrdenService {
     }
 
     @Override
-    public Page<OrderResponse> findMyOrdersPaginated(String username, int page, int size, String statusGroup) {
+    public Page<OrderResponse> findMyOrdersPaginated(String username, int page, int size, String statusGroup, String search, String cliente) {
 
         User vendedor = userRepository.findByUsername(username)
                 .orElseThrow(() -> new BusinessExeption("Usuario no encontrado"));
 
-        List<OrdenStatus> statuses;
-        Sort sort;
+        List<OrdenStatus> statuses = null;
+        String exactStatus = null;
 
         if ("completed".equalsIgnoreCase(statusGroup)) {
-            statuses = List.of(OrdenStatus.COMPLETADO);
-            sort = Sort.by(Sort.Direction.DESC, "completedAt");
+            exactStatus = "COMPLETADO";
         } else {
-            // default: pending group
             statuses = List.of(
                     OrdenStatus.PENDIENTE,
                     OrdenStatus.CONFIRMADO,
                     OrdenStatus.PENDING_PROMOTION_COMPLETION);
-            sort = Sort.by(Sort.Direction.DESC, "fecha");
+            exactStatus = "pending";
         }
 
-        PageRequest pageRequest = PageRequest.of(page, size, sort);
-        Page<Order> ordersPage;
+        List<String> sharedUsernames = null;
+        User exactVendedorObj = null;
 
         if (UserUnificationUtil.isSharedUser(username)) {
-            List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(username);
-            ordersPage = ordenRepository.findByVendedorUsernameInAndEstadoIn(sharedUsernames, statuses, pageRequest);
+            sharedUsernames = UserUnificationUtil.getSharedUsernames(username);
         } else {
-            ordersPage = ordenRepository.findByVendedorAndEstadoIn(vendedor, statuses, pageRequest);
+            exactVendedorObj = vendedor;
         }
+
+        PageRequest pageRequest = PageRequest.of(page, size);
+        org.springframework.data.jpa.domain.Specification<Order> spec = createOrderSpecification(
+                exactStatus, statuses, search, null, cliente, sharedUsernames, exactVendedorObj
+        );
+
+        Page<Order> ordersPage = ordenRepository.findAll(spec, pageRequest);
 
         return ordersPage.map(orderMapper::toResponse);
     }

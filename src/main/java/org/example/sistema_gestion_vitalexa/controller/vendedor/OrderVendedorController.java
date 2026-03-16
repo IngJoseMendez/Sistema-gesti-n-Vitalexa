@@ -59,10 +59,12 @@ public class OrderVendedorController {
             @RequestParam(defaultValue = "pending") String statusGroup,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String cliente,
             Authentication authentication) {
         int safeSize = Math.min(size, 50);
         Page<OrderResponse> resultado = ordenService.findMyOrdersPaginated(
-                authentication.getName(), page, safeSize, statusGroup);
+                authentication.getName(), page, safeSize, statusGroup, search, cliente);
         return ResponseEntity.ok(resultado);
     }
 

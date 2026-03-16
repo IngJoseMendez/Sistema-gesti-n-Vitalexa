@@ -50,10 +50,13 @@ public class OrderAdminController {
     public ResponseEntity<Page<OrderResponse>> findAllPaginated(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "all") String status) {
+            @RequestParam(defaultValue = "all") String status,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String vendedor,
+            @RequestParam(required = false) String cliente) {
         // Limitar el tamaño máximo de página para proteger el servidor
         int safeSize = Math.min(size, 100);
-        Page<OrderResponse> resultado = ordenService.findAllPaginated(page, safeSize, status);
+        Page<OrderResponse> resultado = ordenService.findAllPaginated(page, safeSize, status, search, vendedor, cliente);
         return ResponseEntity.ok(resultado);
     }
 

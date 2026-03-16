@@ -6,6 +6,7 @@ import org.example.sistema_gestion_vitalexa.entity.User;
 import org.example.sistema_gestion_vitalexa.enums.OrdenStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,7 +18,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface OrdenRepository extends JpaRepository<Order, UUID> {
+public interface OrdenRepository extends JpaRepository<Order, UUID>, JpaSpecificationExecutor<Order> {
         List<Order> findByVendedor(User vendedor);
 
         // For shared users (Nina/Yicela) - find orders by multiple usernames

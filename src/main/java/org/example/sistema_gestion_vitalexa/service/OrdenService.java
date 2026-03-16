@@ -41,13 +41,16 @@ public interface OrdenService {
     /**
      * Lista paginada de todas las órdenes (admin).
      *
-     * @param page   número de página (0-based)
-     * @param size   elementos por página
-     * @param status filtro opcional de estado: "pending", "completed", "cancelled",
-     *               "historical", "all"
-     *               o un valor exacto de {@link OrdenStatus}
+     * @param page     número de página (0-based)
+     * @param size     elementos por página
+     * @param status   filtro opcional de estado: "pending", "completed", "cancelled",
+     *                 "historical", "all"
+     *                 o un valor exacto de {@link OrdenStatus}
+     * @param search   filtro de texto libre
+     * @param vendedor filtro por nombre de usuario de vendedor
+     * @param cliente  filtro por nombre de cliente
      */
-    Page<OrderResponse> findAllPaginated(int page, int size, String status);
+    Page<OrderResponse> findAllPaginated(int page, int size, String status, String search, String vendedor, String cliente);
 
     // 🔹 VENDEDOR (solo sus órdenes)
     List<OrderResponse> findMyOrders(String username);
@@ -63,8 +66,10 @@ public interface OrdenService {
      * @param statusGroup "pending"
      *                    (PENDIENTE+CONFIRMADO+PENDING_PROMOTION_COMPLETION) o
      *                    "completed" (COMPLETADO)
+     * @param search      filtro de texto libre
+     * @param cliente     filtro por nombre de cliente
      */
-    Page<OrderResponse> findMyOrdersPaginated(String username, int page, int size, String statusGroup);
+    Page<OrderResponse> findMyOrdersPaginated(String username, int page, int size, String statusGroup, String search, String cliente);
 
     OrderCreationResult updateOrder(UUID orderId, OrderRequestDto request);
 
