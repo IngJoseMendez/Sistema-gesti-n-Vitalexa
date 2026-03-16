@@ -141,9 +141,10 @@ public class PayrollServiceImpl implements PayrollService {
                 // Total vendido el mes ANTERIOR (base para calcular el % de recaudo)
                 BigDecimal prevMonthTotalSold = calculateTotalSold(vendedor, prevMonth, prevYear);
 
-                // Total recaudado ESTE MES (month/year) de facturas del MES ANTERIOR
-                // (prevMonth/prevYear)
-                BigDecimal totalCollected = calculateTotalCollected(vendedor, month, year, prevMonth, prevYear);
+                // Total recaudado de facturas del MES ANTERIOR (prevMonth/prevYear).
+                // Solo se cuentan pagos cuya fecha real (actualPaymentDate) sea antes
+                // del fin del mes de nómina (month/year), para excluir pagos tardíos.
+                BigDecimal totalCollected = calculateTotalCollected(vendedor, prevMonth, prevYear, month, year);
 
                 BigDecimal collectionPct = BigDecimal.ZERO;
                 if (prevMonthTotalSold.compareTo(BigDecimal.ZERO) > 0) {
@@ -416,21 +417,26 @@ public class PayrollServiceImpl implements PayrollService {
         }
 
         /**
-         * Calcula el total recaudado DURANTE el mes de pago (paymentMonth/paymentYear)
-         * proveniente ÚNICAMENTE de órdenes cuya fecha cae en el mes anterior
-         * (orderMonth/orderYear).
+         * Calcula el total recaudado de órdenes cuya fecha cae en el mes indicado
+         * (orderMonth/orderYear), filtrando únicamente pagos cuya fecha real
+         * (actualPaymentDate) sea estrictamente anterior al inicio del mes siguiente
+         * al mes de la nómina (paymentMonth/paymentYear).
          *
-         * Usa rangos de fecha exactos para respetar el mes calendario:
-         * pago: [1-feb-2026 00:00:00 , 1-mar-2026 00:00:00)
-         * orden: [1-ene-2026 00:00:00 , 1-feb-2026 00:00:00)
+         * Reglas:
+         *   - Factura de enero pagada en enero   → recaudo de febrero ✔
+         *   - Factura de enero pagada en febrero  → recaudo de febrero ✔
+         *   - Factura de enero pagada en marzo    → NO entra en ningún recaudo ❌
+         *
+         * Rango de orden:  [1-ene-2026 00:00 , 1-feb-2026 00:00)
+         * Límite de pago: actualPaymentDate < 1-mar-2026
          */
         private BigDecimal calculateTotalCollected(User vendedor,
-                        int paymentMonth, int paymentYear,
-                        int orderMonth, int orderYear) {
-                LocalDateTime payStart = LocalDateTime.of(paymentYear, paymentMonth, 1, 0, 0, 0);
-                LocalDateTime payEnd = payStart.plusMonths(1); // exclusivo
+                        int orderMonth, int orderYear,
+                        int paymentMonth, int paymentYear) {
                 LocalDateTime orderStart = LocalDateTime.of(orderYear, orderMonth, 1, 0, 0, 0);
                 LocalDateTime orderEnd = orderStart.plusMonths(1); // exclusivo
+                // Límite superior: primer día del mes SIGUIENTE al mes de nómina
+                java.time.LocalDate payEndDate = java.time.LocalDate.of(paymentYear, paymentMonth, 1).plusMonths(1);
 
                 if (UserUnificationUtil.isSharedUser(vendedor.getUsername())) {
                         List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(vendedor.getUsername());
@@ -439,10 +445,10 @@ public class PayrollServiceImpl implements PayrollService {
                                         .map(User::getId)
                                         .collect(Collectors.toList());
                         return paymentRepository.sumCollectedByVendedorIdsBetween(
-                                        sharedIds, payStart, payEnd, orderStart, orderEnd);
+                                        sharedIds, orderStart, orderEnd, payEndDate);
                 }
                 return paymentRepository.sumCollectedByVendedorBetween(
-                                vendedor.getId(), payStart, payEnd, orderStart, orderEnd);
+                                vendedor.getId(), orderStart, orderEnd, payEndDate);
         }
 
         // ─────────────────────────────────────────────────────────────────────────
