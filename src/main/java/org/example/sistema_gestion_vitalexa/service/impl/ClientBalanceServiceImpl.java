@@ -49,9 +49,8 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
 
         @Override
         public List<ClientBalanceDTO> getAllClientBalances() {
-                return clientRepository.findAll().stream()
-                                .map(this::calculateClientBalance)
-                                .collect(Collectors.toList());
+                List<Client> clients = clientRepository.findAll();
+                return calculateBalancesInBulk(clients);
         }
 
         @Override
@@ -69,9 +68,7 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
                         clients = clientRepository.findByVendedorAsignadoId(vendedorId);
                 }
 
-                return clients.stream()
-                                .map(this::calculateClientBalance)
-                                .collect(Collectors.toList());
+                return calculateBalancesInBulk(clients);
         }
 
         @Override
@@ -83,10 +80,8 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
                 if (UserUnificationUtil.isSharedUser(vendedorUsername)) {
                         // Get clients for both shared usernames
                         List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(vendedorUsername);
-                        return clientRepository.findByVendedorAsignadoUsernameIn(sharedUsernames)
-                                        .stream()
-                                        .map(this::calculateClientBalance)
-                                        .collect(Collectors.toList());
+                        List<Client> clients = clientRepository.findByVendedorAsignadoUsernameIn(sharedUsernames);
+                        return calculateBalancesInBulk(clients);
                 }
 
                 return getClientBalancesByVendedor(vendedor.getId());
@@ -157,45 +152,104 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
         }
 
         /**
-         * Calcula el saldo completo de un cliente
+         * Calcula los saldos de múltiples clientes en bloque para optimizar rendimiento
          */
-        private ClientBalanceDTO calculateClientBalance(Client client) {
-                // Obtener órdenes completadas del cliente
-                List<Order> completedOrders = ordenRepository.findByCliente(client).stream()
-                                .filter(o -> o.getEstado() == OrdenStatus.COMPLETADO)
-                                .collect(Collectors.toList());
+        private List<ClientBalanceDTO> calculateBalancesInBulk(List<Client> clients) {
+                if (clients == null || clients.isEmpty()) {
+                        return new ArrayList<>();
+                }
 
-                // Calcular totales
+                // 1. Obtener todas las órdenes completadas de estos clientes
+                List<Order> allCompletedOrders = ordenRepository.findByClienteInAndEstado(clients, OrdenStatus.COMPLETADO);
+
+                // 2. Obtener todos los pagos activos de esas órdenes
+                java.util.Map<UUID, List<Payment>> paymentsByOrderId = new java.util.HashMap<>();
+                if (!allCompletedOrders.isEmpty()) {
+                        List<Payment> allPayments = paymentRepository.findByOrderInAndNotCancelled(allCompletedOrders);
+                        paymentsByOrderId = allPayments.stream()
+                                        .collect(Collectors.groupingBy(p -> p.getOrder().getId()));
+                }
+
+                // 3. Organizar órdenes por cliente
+                java.util.Map<UUID, List<Order>> ordersByClientId = allCompletedOrders.stream()
+                                .collect(Collectors.groupingBy(o -> o.getCliente().getId()));
+
+                // 4. Calcular saldo para cada cliente usando los datos precargados
+                final java.util.Map<UUID, List<Payment>> finalPaymentsByOrderId = paymentsByOrderId;
+                final java.util.Map<UUID, List<Order>> finalOrdersByClientId = ordersByClientId;
+
+                return clients.stream()
+                                .map(client -> calculateSingleClientBalance(client,
+                                                finalOrdersByClientId.getOrDefault(client.getId(), new ArrayList<>()),
+                                                finalPaymentsByOrderId))
+                                .collect(Collectors.toList());
+        }
+
+        private ClientBalanceDTO calculateSingleClientBalance(Client client, List<Order> completedOrders,
+                        java.util.Map<UUID, List<Payment>> paymentsByOrderId) {
+
                 BigDecimal totalOrders = completedOrders.stream()
                                 .map(o -> o.getDiscountedTotal() != null ? o.getDiscountedTotal() : o.getTotal())
                                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
                 BigDecimal totalPaid = completedOrders.stream()
-                                .map(o -> paymentRepository.sumPaymentsByOrderId(o.getId()))
+                                .map(o -> {
+                                        List<Payment> payments = paymentsByOrderId.getOrDefault(o.getId(), new ArrayList<>());
+                                        return payments.stream()
+                                                        .map(Payment::getAmount)
+                                                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                                })
                                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
                 BigDecimal initialBalance = client.getInitialBalance() != null
                                 ? client.getInitialBalance()
                                 : BigDecimal.ZERO;
 
-                // Saldo pendiente = Total órdenes - Total pagado + Saldo inicial
                 BigDecimal pendingBalance = totalOrders.subtract(totalPaid).add(initialBalance);
 
-                // TODAS las órdenes completadas con historial de pagos (no solo pendientes)
                 List<OrderPendingDTO> allOrders = completedOrders.stream()
-                                .map(this::toOrderPendingDTO)
+                                .map(o -> toOrderPendingDTOWithPreloadedPayments(o,
+                                                paymentsByOrderId.getOrDefault(o.getId(), new ArrayList<>())))
                                 .collect(Collectors.toList());
 
-                // Contar solo las que realmente están pendientes
                 int pendingOrdersCount = (int) completedOrders.stream()
-                                .filter(o -> o.getPaymentStatus() != PaymentStatus.PAID)
+                                .filter(o -> {
+                                        BigDecimal oTotal = o.getDiscountedTotal() != null ? o.getDiscountedTotal() : o.getTotal();
+                                        BigDecimal oPaid = paymentsByOrderId.getOrDefault(o.getId(), new ArrayList<>())
+                                                        .stream()
+                                                        .map(Payment::getAmount)
+                                                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                                        return oTotal.subtract(oPaid).compareTo(BigDecimal.ZERO) > 0;
+                                })
                                 .count();
 
                 // Calcular última fecha de pago
-                LocalDate lastPaymentDate = getLastPaymentDate(client.getId());
+                LocalDate lastPaymentDate = completedOrders.stream()
+                                .flatMap(o -> paymentsByOrderId.getOrDefault(o.getId(), new ArrayList<>()).stream())
+                                .map(Payment::getActualPaymentDate)
+                                .filter(java.util.Objects::nonNull)
+                                .max(LocalDate::compareTo)
+                                .orElse(null);
 
-                // Calcular días de mora
-                Integer daysOverdue = calculateDaysOverdue(client.getId());
+                // Calcular días de mora (basado en la factura más antigua pendiente)
+                Integer daysOverdue = 0;
+                LocalDate oldestPendingInvoiceDate = completedOrders.stream()
+                                .filter(o -> {
+                                        BigDecimal oTotal = o.getDiscountedTotal() != null ? o.getDiscountedTotal() : o.getTotal();
+                                        BigDecimal oPaid = paymentsByOrderId.getOrDefault(o.getId(), new ArrayList<>())
+                                                        .stream()
+                                                        .map(Payment::getAmount)
+                                                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                                        return oTotal.subtract(oPaid).compareTo(BigDecimal.ZERO) > 0;
+                                })
+                                .map(o -> getInvoiceDate(o).toLocalDate())
+                                .min(LocalDate::compareTo)
+                                .orElse(null);
+
+                if (oldestPendingInvoiceDate != null) {
+                        long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(oldestPendingInvoiceDate, LocalDate.now());
+                        daysOverdue = (int) Math.max(0, daysBetween);
+                }
 
                 return new ClientBalanceDTO(
                                 client.getId(),
@@ -210,11 +264,64 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
                                 totalOrders,
                                 totalPaid,
                                 pendingBalance,
-                                client.getBalanceFavor(), // Saldo a favor
+                                client.getBalanceFavor(),
                                 pendingOrdersCount,
                                 allOrders,
                                 lastPaymentDate,
                                 daysOverdue);
+        }
+
+        private OrderPendingDTO toOrderPendingDTOWithPreloadedPayments(Order order, List<Payment> activePayments) {
+                BigDecimal orderTotal = order.getDiscountedTotal() != null
+                                ? order.getDiscountedTotal()
+                                : order.getTotal();
+
+                BigDecimal paidAmount = activePayments.stream()
+                                .map(Payment::getAmount)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                BigDecimal pendingAmount = orderTotal.subtract(paidAmount);
+
+                List<PaymentResponse> payments = activePayments.stream()
+                                .map(this::toPaymentResponse)
+                                .collect(Collectors.toList());
+
+                // Determinar estado basado en montos actuales
+                String status = PaymentStatus.PENDING.name();
+                if (pendingAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                        status = PaymentStatus.PAID.name();
+                } else if (paidAmount.compareTo(BigDecimal.ZERO) > 0) {
+                        status = PaymentStatus.PARTIAL.name();
+                }
+
+                return new OrderPendingDTO(
+                                order.getId(),
+                                order.getInvoiceNumber(),
+                                getInvoiceDate(order),
+                                order.getTotal(),
+                                order.getDiscountedTotal(),
+                                paidAmount,
+                                pendingAmount,
+                                status,
+                                payments);
+        }
+
+        /**
+         * Calcula el saldo completo de un cliente (mantenido para compatibilidad de un solo cliente)
+         */
+        private ClientBalanceDTO calculateClientBalance(Client client) {
+                List<Order> completedOrders = ordenRepository.findByCliente(client).stream()
+                                .filter(o -> o.getEstado() == OrdenStatus.COMPLETADO)
+                                .collect(Collectors.toList());
+
+                java.util.Map<UUID, List<Payment>> paymentsByOrderId = new java.util.HashMap<>();
+                if (!completedOrders.isEmpty()) {
+                        List<Payment> allPayments = paymentRepository.findByOrderInAndNotCancelled(completedOrders);
+                        paymentsByOrderId = allPayments.stream()
+                                        .collect(Collectors.groupingBy(p -> p.getOrder().getId()));
+                }
+
+                return calculateSingleClientBalance(client, completedOrders, paymentsByOrderId);
         }
 
         /**

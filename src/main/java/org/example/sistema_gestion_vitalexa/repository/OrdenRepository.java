@@ -272,4 +272,6 @@ public interface OrdenRepository extends JpaRepository<Order, UUID>, JpaSpecific
                         @Param("vendedorIds") List<UUID> vendedorIds,
                         @Param("start") LocalDateTime start,
                         @Param("end") LocalDateTime end);
+
+        List<Order> findByClienteInAndEstado(Collection<Client> clients, OrdenStatus estado);
 }
