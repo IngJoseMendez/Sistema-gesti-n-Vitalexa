@@ -899,8 +899,23 @@ public class OrderServiceImpl implements OrdenService {
                             .specialPromotion(finalSpecialPromotion) // ✅ Link Special Promotion
                             .build();
 
+                    Integer stockAnterior = mainProduct.getStock();
+
                     // ✅ Descontar stock del mainProduct
                     mainProduct.decreaseStock(promotion.getBuyQuantity());
+
+                    try {
+                        if (mainProduct.getStock() != null) {
+                            movementService.logMovement(
+                                    mainProduct,
+                                    org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.SALE,
+                                    promotion.getBuyQuantity(),
+                                    stockAnterior,
+                                    mainProduct.getStock(),
+                                    "Venta Promoción (Surtida Principal)",
+                                    order.getVendedor() != null ? order.getVendedor().getUsername() : "System");
+                        }
+                    } catch (Exception e) {}
                     log.info("⬇️ Stock descontado para mainProduct surtido '{}': -{} (stock actual: {})",
                             mainProduct.getNombre(), promotion.getBuyQuantity(), mainProduct.getStock());
 
@@ -936,8 +951,23 @@ public class OrderServiceImpl implements OrdenService {
                                 .specialPromotion(finalSpecialPromotion) // ✅ Link Special Promotion
                                 .build();
 
+                        Integer stockAnterior = freeProduct.getStock();
+
                         // ✅ DESCUENTO DE STOCK: Permitir stock negativo (sin restricción)
                         freeProduct.decreaseStock(qty);
+
+                        try {
+                            if (freeProduct.getStock() != null) {
+                                movementService.logMovement(
+                                        freeProduct,
+                                        org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.SALE,
+                                        qty,
+                                        stockAnterior,
+                                        freeProduct.getStock(),
+                                        "Venta Promoción (Surtida Regalo)",
+                                        order.getVendedor() != null ? order.getVendedor().getUsername() : "System");
+                            }
+                        } catch (Exception e) {}
                         log.info("⬇️ Stock descontado para regalo surtido '{}': -{} (stock actual: {})",
                                 freeProduct.getNombre(), qty, freeProduct.getStock());
 
@@ -973,8 +1003,23 @@ public class OrderServiceImpl implements OrdenService {
                             .specialPromotion(finalSpecialPromotion) // ✅ Link Special Promotion
                             .build();
 
+                    Integer stockAnterior = mainProduct.getStock();
+
                     // ✅ DESCUENTO DE STOCK: Permitir stock negativo
                     mainProduct.decreaseStock(promotion.getBuyQuantity());
+
+                    try {
+                        if (mainProduct.getStock() != null) {
+                            movementService.logMovement(
+                                    mainProduct,
+                                    org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.SALE,
+                                    promotion.getBuyQuantity(),
+                                    stockAnterior,
+                                    mainProduct.getStock(),
+                                    "Venta Promoción (Fija Principal)",
+                                    order.getVendedor() != null ? order.getVendedor().getUsername() : "System");
+                        }
+                    } catch (Exception e) {}
                     log.info("⬇️ Stock descontado para producto principal '{}': -{} (stock actual: {})",
                             mainProduct.getNombre(), promotion.getBuyQuantity(), mainProduct.getStock());
 
@@ -1009,8 +1054,23 @@ public class OrderServiceImpl implements OrdenService {
                                 .specialPromotion(finalSpecialPromotion) // ✅ Link Special Promotion
                                 .build();
 
+                        Integer stockAnterior = freeProduct.getStock();
+
                         // ✅ DESCUENTO DE STOCK: Permitir stock negativo
                         freeProduct.decreaseStock(qty);
+
+                        try {
+                            if (freeProduct.getStock() != null) {
+                                movementService.logMovement(
+                                        freeProduct,
+                                        org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.SALE,
+                                        qty,
+                                        stockAnterior,
+                                        freeProduct.getStock(),
+                                        "Venta Promoción (Fija Regalo)",
+                                        order.getVendedor() != null ? order.getVendedor().getUsername() : "System");
+                            }
+                        } catch (Exception e) {}
                         log.info("⬇️ Stock descontado para regalo '{}': -{} (stock actual: {})",
                                 freeProduct.getNombre(), qty, freeProduct.getStock());
 
@@ -1077,7 +1137,7 @@ public class OrderServiceImpl implements OrdenService {
             java.util.List<jakarta.persistence.criteria.Predicate> predicates = new java.util.ArrayList<>();
 
             if (exactStatus != null && !exactStatus.isEmpty() && !"all".equalsIgnoreCase(exactStatus)) {
-                if ("COMPLETADO".equalsIgnoreCase(exactStatus) || "historical".equalsIgnoreCase(exactStatus)) {
+                if ("COMPLETADO".equalsIgnoreCase(exactStatus) || "completed".equalsIgnoreCase(exactStatus) || "historical".equalsIgnoreCase(exactStatus)) {
                     predicates.add(cb.equal(root.get("estado"), OrdenStatus.COMPLETADO));
                 } else if (inStatuses == null) {
                     try {
@@ -1115,25 +1175,40 @@ public class OrderServiceImpl implements OrdenService {
                 if (cJoin == null) cJoin = root.join("cliente", jakarta.persistence.criteria.JoinType.LEFT);
                 if (vJoin == null) vJoin = root.join("vendedor", jakarta.persistence.criteria.JoinType.LEFT);
                 
-                jakarta.persistence.criteria.Predicate invoicePred = cb.like(root.get("invoiceNumber").as(String.class), searchLike);
-                jakarta.persistence.criteria.Predicate idPred = cb.like(root.get("id").as(String.class), searchLike);
-                jakarta.persistence.criteria.Predicate cName = cb.like(cb.lower(cJoin.get("nombre")), searchLike);
-                jakarta.persistence.criteria.Predicate cRep = cb.like(cb.lower(cJoin.get("representanteLegal")), searchLike);
-                jakarta.persistence.criteria.Predicate cPhone = cb.like(cb.lower(cJoin.get("telefono")), searchLike);
-                jakarta.persistence.criteria.Predicate cAddress = cb.like(cb.lower(cJoin.get("direccion")), searchLike);
-                jakarta.persistence.criteria.Predicate cNit = cb.like(cb.lower(cJoin.get("nit")), searchLike);
-                jakarta.persistence.criteria.Predicate vName = cb.like(cb.lower(vJoin.get("username")), searchLike);
+                // Join items and product for product name search
+                jakarta.persistence.criteria.Join<Object, Object> itemsJoin = root.join("items", jakarta.persistence.criteria.JoinType.LEFT);
+                jakarta.persistence.criteria.Join<Object, Object> productJoin = itemsJoin.join("product", jakarta.persistence.criteria.JoinType.LEFT);
                 
-                predicates.add(cb.or(invoicePred, idPred, cName, cRep, cPhone, cAddress, cNit, vName));
+                java.util.List<jakarta.persistence.criteria.Predicate> orPredicates = new java.util.ArrayList<>();
+                
+                // Safe invoice number search (exact match if numeric)
+                try {
+                    Long searchNum = Long.parseLong(search.trim());
+                    orPredicates.add(cb.equal(root.get("invoiceNumber"), searchNum));
+                } catch (NumberFormatException e) {
+                    // Not a number, skip invoice search
+                }
+
+                orPredicates.add(cb.like(cb.lower(cJoin.get("nombre")), searchLike));
+                orPredicates.add(cb.like(cb.lower(cJoin.get("representanteLegal")), searchLike));
+                orPredicates.add(cb.like(cb.lower(cJoin.get("telefono")), searchLike));
+                orPredicates.add(cb.like(cb.lower(cJoin.get("direccion")), searchLike));
+                orPredicates.add(cb.like(cb.lower(cJoin.get("nit")), searchLike));
+                orPredicates.add(cb.like(cb.lower(vJoin.get("username")), searchLike));
+                orPredicates.add(cb.like(cb.lower(productJoin.get("nombre")), searchLike));
+                
+                predicates.add(cb.or(orPredicates.toArray(new jakarta.persistence.criteria.Predicate[0])));
             }
 
             // ORDERING LOGIC
             boolean isCountQuery = query.getResultType() == Long.class || query.getResultType() == long.class;
             
             if (!isCountQuery) {
-                if ("COMPLETADO".equalsIgnoreCase(exactStatus) || "historical".equalsIgnoreCase(exactStatus)) {
+                if ("COMPLETADO".equalsIgnoreCase(exactStatus) || "completed".equalsIgnoreCase(exactStatus) || "historical".equalsIgnoreCase(exactStatus)) {
+                    // PostgreSQL rejects DISTINCT + ORDER BY expression (coalesce). Use simple columns instead.
                     query.orderBy(
-                        cb.desc(cb.coalesce(root.get("completedAt"), root.get("fecha")))
+                        cb.desc(root.get("completedAt")),
+                        cb.desc(root.get("fecha"))
                     );
                 } else {
                     query.orderBy(cb.desc(root.get("fecha")));
@@ -1487,7 +1562,7 @@ public class OrderServiceImpl implements OrdenService {
             }
 
             if (stockToRestore > 0) {
-                product.increaseStock(stockToRestore);
+                increaseStockAndLog(product, stockToRestore, "Edición Orden: Restauración", order.getVendedor() != null ? order.getVendedor().getUsername() : "System");
 
                 if (Boolean.TRUE.equals(item.getIsBonified())) {
                     log.info("✅ Stock restaurado (BONIFICADO) en edición para '{}': +{}", product.getNombre(),
@@ -1670,6 +1745,8 @@ public class OrderServiceImpl implements OrdenService {
                 // LÓGICA UNIFICADA: SIEMPRE VENDER EN UNA SOLA LÍNEA (Stock negativo permitido)
                 OrderItem item = new OrderItem(product, requestedQuantity);
 
+                Integer stockAnterior = product.getStock();
+
                 // Ajustar precio y vincular specialProduct
                 if (specialProduct != null) {
                     item.setPrecioUnitario(effectivePrice);
@@ -1681,6 +1758,19 @@ public class OrderServiceImpl implements OrdenService {
                 } else {
                     product.decreaseStock(requestedQuantity);
                 }
+
+                try {
+                    if (product.getStock() != null) {
+                        movementService.logMovement(
+                                product,
+                                org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.SALE,
+                                requestedQuantity,
+                                stockAnterior,
+                                product.getStock(),
+                                "Edición Orden: Venta de item",
+                                order.getVendedor() != null ? order.getVendedor().getUsername() : "System");
+                    }
+                } catch (Exception e) {}
 
                 if (hasStock) {
                     item.setOutOfStock(false);
@@ -1996,6 +2086,24 @@ public class OrderServiceImpl implements OrdenService {
                 orderId, fechaOrden.getMonthValue(), fechaOrden.getYear());
     }
 
+    private void increaseStockAndLog(Product product, int quantity, String reason, String username) {
+        if (quantity <= 0) return;
+        Integer stockAnterior = product.getStock();
+        product.increaseStock(quantity);
+        try {
+            if (product.getStock() != null) {
+                movementService.logMovement(
+                        product,
+                        org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.RETURN,
+                        quantity,
+                        stockAnterior,
+                        product.getStock(),
+                        reason,
+                        username);
+            }
+        } catch (Exception e) {}
+    }
+
     /**
      * Restaura el stock de una lista de items.
      * Útil para anulación de órdenes y para edición (cuando se eliminan
@@ -2006,6 +2114,11 @@ public class OrderServiceImpl implements OrdenService {
      *                       buscar items relacionados, como regalos separados)
      */
     private void restoreStockForItems(List<OrderItem> itemsToRestore, List<OrderItem> contextItems) {
+        String defaultUsername = "System";
+        if (!contextItems.isEmpty() && contextItems.get(0).getOrder() != null && contextItems.get(0).getOrder().getVendedor() != null) {
+            defaultUsername = contextItems.get(0).getOrder().getVendedor().getUsername();
+        }
+
         for (OrderItem item : itemsToRestore) {
             if (item.getProduct() != null) {
                 Product product = item.getProduct();
@@ -2022,7 +2135,7 @@ public class OrderServiceImpl implements OrdenService {
                 if (!Boolean.TRUE.equals(item.getIsPromotionItem()) &&
                         !Boolean.TRUE.equals(item.getIsBonified()) &&
                         !Boolean.TRUE.equals(item.getIsFreightItem())) {
-                    product.increaseStock(item.getCantidad());
+                    increaseStockAndLog(product, item.getCantidad(), "Restauración de Item (Normal)", defaultUsername);
                     log.info("✅ Stock restaurado (NORMAL) para '{}': +{}", product.getNombre(), item.getCantidad());
                 }
 
@@ -2031,7 +2144,7 @@ public class OrderServiceImpl implements OrdenService {
                         !Boolean.TRUE.equals(item.getIsPromotionItem())) {
                     Integer cantidadDescontada = item.getCantidadDescontada() != null ? item.getCantidadDescontada()
                             : item.getCantidad();
-                    product.increaseStock(cantidadDescontada);
+                    increaseStockAndLog(product, cantidadDescontada, "Restauración de Item (Bonificado)", defaultUsername);
                     log.info("✅ Stock restaurado (BONIFICADO) para '{}': +{}", product.getNombre(), cantidadDescontada);
                 }
 
@@ -2040,7 +2153,7 @@ public class OrderServiceImpl implements OrdenService {
                 else if (Boolean.TRUE.equals(item.getIsPromotionItem()) &&
                         Boolean.TRUE.equals(item.getIsFreeItem())) {
                     // Los regalos siempre se venden a precio 0, restaurar cantidad completa
-                    product.increaseStock(item.getCantidad());
+                    increaseStockAndLog(product, item.getCantidad(), "Restauración de Item (Promo Regalo)", defaultUsername);
                     log.info("✅ Stock restaurado (PROMO GIFT - Instancia {}) para '{}': +{}",
                             item.getPromotionInstanceId(), product.getNombre(), item.getCantidad());
                 }
@@ -2050,7 +2163,7 @@ public class OrderServiceImpl implements OrdenService {
                         !Boolean.TRUE.equals(item.getIsFreeItem())) {
 
                     // 4A. Restaurar mainProduct de ESTA instancia
-                    product.increaseStock(item.getCantidad());
+                    increaseStockAndLog(product, item.getCantidad(), "Restauración de Item (Promo Principal)", defaultUsername);
                     log.info("✅ Stock restaurado (PROMO MAIN - Instancia {}) para '{}': +{}",
                             item.getPromotionInstanceId(), product.getNombre(), item.getCantidad());
 
@@ -2088,7 +2201,7 @@ public class OrderServiceImpl implements OrdenService {
                                             i.getPromotionInstanceId().equals(item.getPromotionInstanceId()));
 
                             if (!hasSeparateGiftItem) {
-                                giftProduct.increaseStock(giftQty);
+                                increaseStockAndLog(giftProduct, giftQty, "Restauración de Item (Promo Gift ref)", defaultUsername);
                                 log.info("✅ Stock restaurado (PROMO GIFT ref - Instancia {}) para '{}': +{}",
                                         item.getPromotionInstanceId(), giftProduct.getNombre(), giftQty);
                             } else {
@@ -2106,7 +2219,7 @@ public class OrderServiceImpl implements OrdenService {
                             : item.getCantidad();
 
                     if (cantidadDescontada > 0) {
-                        product.increaseStock(cantidadDescontada);
+                        increaseStockAndLog(product, cantidadDescontada, "Restauración de Item (Flete)", defaultUsername);
                         log.info("✅ Stock restaurado (FLETE) para '{}': +{}",
                                 product.getNombre(), cantidadDescontada);
                     }
@@ -2140,8 +2253,27 @@ public class OrderServiceImpl implements OrdenService {
             item.setCantidadPendiente(0);
             item.setOutOfStock(false);
 
+            // Guardar stock anterior
+            Integer stockAnterior = product.getStock();
+
             // Descontar stock (permite negativo)
             product.decreaseStock(requestedQuantity);
+
+            // Loggear movimiento
+            try {
+                if (product.getStock() != null) {
+                    movementService.logMovement(
+                            product,
+                            org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.SALE,
+                            requestedQuantity,
+                            stockAnterior,
+                            product.getStock(),
+                            "Venta Producto Bonificado",
+                            order.getVendedor() != null ? order.getVendedor().getUsername() : "System");
+                }
+            } catch (Exception e) {
+                log.warn("Error registrando movimiento de inventario bonificado: {}", e.getMessage());
+            }
 
             order.addItem(item);
 
