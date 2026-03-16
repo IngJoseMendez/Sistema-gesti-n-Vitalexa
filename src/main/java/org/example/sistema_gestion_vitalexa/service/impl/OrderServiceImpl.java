@@ -1115,7 +1115,15 @@ public class OrderServiceImpl implements OrdenService {
             inStatuses = List.of(OrdenStatus.ANULADA, OrdenStatus.CANCELADO);
         }
 
-        PageRequest pageRequest = PageRequest.of(page, size);
+        org.springframework.data.domain.Sort sort;
+        if ("COMPLETADO".equalsIgnoreCase(exactStatus) || "completed".equalsIgnoreCase(exactStatus) || "historical".equalsIgnoreCase(exactStatus)) {
+            sort = org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "completedAt")
+                    .and(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "fecha"));
+        } else {
+            sort = org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "fecha");
+        }
+
+        PageRequest pageRequest = PageRequest.of(page, size, sort);
         org.springframework.data.jpa.domain.Specification<Order> spec = createOrderSpecification(
             exactStatus, inStatuses, search, vendedor, cliente, null, null
         );
@@ -1135,6 +1143,9 @@ public class OrderServiceImpl implements OrdenService {
     ) {
         return (root, query, cb) -> {
             java.util.List<jakarta.persistence.criteria.Predicate> predicates = new java.util.ArrayList<>();
+            
+            // Ensure distinct results because we are joining collections (items)
+            query.distinct(true);
 
             if (exactStatus != null && !exactStatus.isEmpty() && !"all".equalsIgnoreCase(exactStatus)) {
                 if ("COMPLETADO".equalsIgnoreCase(exactStatus) || "completed".equalsIgnoreCase(exactStatus) || "historical".equalsIgnoreCase(exactStatus)) {
@@ -1445,7 +1456,15 @@ public class OrderServiceImpl implements OrdenService {
             exactVendedorObj = vendedor;
         }
 
-        PageRequest pageRequest = PageRequest.of(page, size);
+        org.springframework.data.domain.Sort sort;
+        if ("COMPLETADO".equalsIgnoreCase(exactStatus) || "completed".equalsIgnoreCase(exactStatus) || "historical".equalsIgnoreCase(exactStatus)) {
+            sort = org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "completedAt")
+                    .and(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "fecha"));
+        } else {
+            sort = org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "fecha");
+        }
+
+        PageRequest pageRequest = PageRequest.of(page, size, sort);
         org.springframework.data.jpa.domain.Specification<Order> spec = createOrderSpecification(
                 exactStatus, statuses, search, null, cliente, sharedUsernames, exactVendedorObj
         );
