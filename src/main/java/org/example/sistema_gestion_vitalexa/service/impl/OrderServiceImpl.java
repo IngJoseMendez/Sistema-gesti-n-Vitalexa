@@ -1115,25 +1115,13 @@ public class OrderServiceImpl implements OrdenService {
             inStatuses = List.of(OrdenStatus.ANULADA, OrdenStatus.CANCELADO);
         }
 
-        // ── MANEJO DE ORDENAMIENTO DINÁMICO ─────────────────────────────────────────
-        org.springframework.data.domain.Sort sort;
         boolean isDesc = sortOrder == null || "desc".equalsIgnoreCase(sortOrder);
-        org.springframework.data.domain.Sort.Direction direction = isDesc ? org.springframework.data.domain.Sort.Direction.DESC : org.springframework.data.domain.Sort.Direction.ASC;
 
-        if ("invoiceNumber".equalsIgnoreCase(sortBy)) {
-            sort = org.springframework.data.domain.Sort.by(direction, "invoiceNumber");
-        } else if ("cliente".equalsIgnoreCase(sortBy)) {
-            sort = org.springframework.data.domain.Sort.by(direction, "cliente.nombre");
-        } else if ("total".equalsIgnoreCase(sortBy)) {
-            sort = org.springframework.data.domain.Sort.by(direction, "total");
-        } else {
-            // Default "fecha" (Effective date: completedAt then fecha)
-            sort = org.springframework.data.domain.Sort.by(direction, "completedAt", "fecha");
-        }
-
-        PageRequest pageRequest = PageRequest.of(page, size, sort);
+        // Usamos PageRequest sin Sort porque el ordenamiento se aplica dentro del Specification
+        // via criteria API (necesario para COALESCE y NULLS LAST que Spring Data Sort no soporta).
+        PageRequest pageRequest = PageRequest.of(page, size);
         org.springframework.data.jpa.domain.Specification<Order> spec = createOrderSpecification(
-            exactStatus, inStatuses, search, vendedor, cliente, null, null
+            exactStatus, inStatuses, search, vendedor, cliente, null, null, sortBy, isDesc
         );
 
         Page<Order> ordersPage = ordenRepository.findAll(spec, pageRequest);
@@ -1149,11 +1137,28 @@ public class OrderServiceImpl implements OrdenService {
             List<String> vendorUsernameIn, // for shared users like Nina
             User exactVendedorObj         // vendor exact
     ) {
+        return createOrderSpecification(exactStatus, inStatuses, search, vendedorUsername, clienteNombre, vendorUsernameIn, exactVendedorObj, null, true);
+    }
+
+    private org.springframework.data.jpa.domain.Specification<Order> createOrderSpecification(
+            String exactStatus,
+            List<OrdenStatus> inStatuses,
+            String search,
+            String vendedorUsername,
+            String clienteNombre,
+            List<String> vendorUsernameIn,
+            User exactVendedorObj,
+            String sortBy,
+            boolean isDesc
+    ) {
         return (root, query, cb) -> {
             java.util.List<jakarta.persistence.criteria.Predicate> predicates = new java.util.ArrayList<>();
-            
-            // Ensure distinct results because we are joining collections (items)
-            query.distinct(true);
+
+            // distinct se activa solo cuando hay un join con items (búsqueda de texto)
+            // para evitar duplicados. Sin ese join, distinct no es necesario y
+            // causaría problemas con PostgreSQL al hacer ORDER BY sobre expresiones
+            // no incluidas en el SELECT (ej: COALESCE).
+            boolean needsDistinct = false;
 
             if (exactStatus != null && !exactStatus.isEmpty() && !"all".equalsIgnoreCase(exactStatus)) {
                 if ("COMPLETADO".equalsIgnoreCase(exactStatus) || "completed".equalsIgnoreCase(exactStatus) || "historical".equalsIgnoreCase(exactStatus)) {
@@ -1193,13 +1198,15 @@ public class OrderServiceImpl implements OrdenService {
                 String searchLike = "%" + search.trim().toLowerCase() + "%";
                 if (cJoin == null) cJoin = root.join("cliente", jakarta.persistence.criteria.JoinType.LEFT);
                 if (vJoin == null) vJoin = root.join("vendedor", jakarta.persistence.criteria.JoinType.LEFT);
-                
-                // Join items and product for product name search
+
+                // Join items y product para buscar por nombre de producto
+                // Este join produce duplicados, por eso activamos distinct
                 jakarta.persistence.criteria.Join<Object, Object> itemsJoin = root.join("items", jakarta.persistence.criteria.JoinType.LEFT);
                 jakarta.persistence.criteria.Join<Object, Object> productJoin = itemsJoin.join("product", jakarta.persistence.criteria.JoinType.LEFT);
-                
+                needsDistinct = true;
+
                 java.util.List<jakarta.persistence.criteria.Predicate> orPredicates = new java.util.ArrayList<>();
-                
+
                 // Safe invoice number search (exact match if numeric)
                 try {
                     Long searchNum = Long.parseLong(search.trim());
@@ -1215,16 +1222,52 @@ public class OrderServiceImpl implements OrdenService {
                 orPredicates.add(cb.like(cb.lower(cJoin.get("nit")), searchLike));
                 orPredicates.add(cb.like(cb.lower(vJoin.get("username")), searchLike));
                 orPredicates.add(cb.like(cb.lower(productJoin.get("nombre")), searchLike));
-                
+
                 predicates.add(cb.or(orPredicates.toArray(new jakarta.persistence.criteria.Predicate[0])));
             }
 
-            // ORDERING LOGIC
-            // Eliminado ordenamiento fijo aquí ya que ahora se maneja vía Pageable
-            // para permitir ordenamiento dinámico desde el frontend.
-            
-            // Avoid duplicates when joining
-            query.distinct(true);
+            // Activar DISTINCT solo cuando hay join con items (evita conflicto con ORDER BY en PostgreSQL)
+            query.distinct(needsDistinct);
+
+            // ── ORDENAMIENTO SEGURO CON NULLS LAST ──────────────────────────────────
+            // Solo aplicar ORDER BY en consultas que NO sean COUNT (las de conteo no usan order)
+            if (!query.getResultType().equals(Long.class) && !query.getResultType().equals(long.class)) {
+
+                if ("invoiceNumber".equalsIgnoreCase(sortBy)) {
+                    // NULLS LAST: órdenes sin número de factura van al final
+                    // Primero las que tienen invoiceNumber, luego las que no (pendientes sin factura)
+                    jakarta.persistence.criteria.Expression<Long> invNum = root.get("invoiceNumber");
+                    query.orderBy(
+                        cb.asc(cb.selectCase().when(cb.isNull(invNum), 1).otherwise(0)),
+                        isDesc ? cb.desc(invNum) : cb.asc(invNum)
+                    );
+                } else if ("total".equalsIgnoreCase(sortBy)) {
+                    jakarta.persistence.criteria.Expression<java.math.BigDecimal> total = root.get("total");
+                    query.orderBy(isDesc ? cb.desc(total) : cb.asc(total));
+                } else if ("cliente".equalsIgnoreCase(sortBy)) {
+                    // Necesitamos join con cliente para ordenar por nombre
+                    jakarta.persistence.criteria.Join<Object, Object> sortClienteJoin;
+                    if (cJoin != null) {
+                        sortClienteJoin = cJoin;
+                    } else {
+                        sortClienteJoin = root.join("cliente", jakarta.persistence.criteria.JoinType.LEFT);
+                    }
+                    jakarta.persistence.criteria.Expression<String> clienteNombreExpr = sortClienteJoin.get("nombre");
+                    query.orderBy(
+                        cb.asc(cb.selectCase().when(cb.isNull(clienteNombreExpr), 1).otherwise(0)),
+                        isDesc ? cb.desc(clienteNombreExpr) : cb.asc(clienteNombreExpr)
+                    );
+                } else {
+                    // DEFAULT: "fecha" — ordenar por COALESCE(completedAt, fecha) para que
+                    // las órdenes históricas sin completedAt no aparezcan primero con NULL.
+                    jakarta.persistence.criteria.Expression<java.time.LocalDateTime> completedAt = root.get("completedAt");
+                    jakarta.persistence.criteria.Expression<java.time.LocalDateTime> fecha = root.get("fecha");
+                    @SuppressWarnings("unchecked")
+                    jakarta.persistence.criteria.Expression<java.time.LocalDateTime> effectiveDate =
+                            cb.function("COALESCE", java.time.LocalDateTime.class, completedAt, fecha);
+                    query.orderBy(isDesc ? cb.desc(effectiveDate) : cb.asc(effectiveDate));
+                }
+            }
 
             return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
         };
