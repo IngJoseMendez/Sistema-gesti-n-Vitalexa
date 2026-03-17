@@ -1105,7 +1105,7 @@ public class OrderServiceImpl implements OrdenService {
     }
 
     @Override
-    public Page<OrderResponse> findAllPaginated(int page, int size, String status, String search, String vendedor, String cliente) {
+    public Page<OrderResponse> findAllPaginated(int page, int size, String status, String search, String vendedor, String cliente, String sortBy, String sortOrder) {
         List<OrdenStatus> inStatuses = null;
         String exactStatus = status;
 
@@ -1115,12 +1115,20 @@ public class OrderServiceImpl implements OrdenService {
             inStatuses = List.of(OrdenStatus.ANULADA, OrdenStatus.CANCELADO);
         }
 
+        // ── MANEJO DE ORDENAMIENTO DINÁMICO ─────────────────────────────────────────
         org.springframework.data.domain.Sort sort;
-        if ("COMPLETADO".equalsIgnoreCase(exactStatus) || "completed".equalsIgnoreCase(exactStatus) || "historical".equalsIgnoreCase(exactStatus)) {
-            sort = org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "completedAt")
-                    .and(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "fecha"));
+        boolean isDesc = sortOrder == null || "desc".equalsIgnoreCase(sortOrder);
+        org.springframework.data.domain.Sort.Direction direction = isDesc ? org.springframework.data.domain.Sort.Direction.DESC : org.springframework.data.domain.Sort.Direction.ASC;
+
+        if ("invoiceNumber".equalsIgnoreCase(sortBy)) {
+            sort = org.springframework.data.domain.Sort.by(direction, "invoiceNumber");
+        } else if ("cliente".equalsIgnoreCase(sortBy)) {
+            sort = org.springframework.data.domain.Sort.by(direction, "cliente.nombre");
+        } else if ("total".equalsIgnoreCase(sortBy)) {
+            sort = org.springframework.data.domain.Sort.by(direction, "total");
         } else {
-            sort = org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "fecha");
+            // Default "fecha" (Effective date: completedAt then fecha)
+            sort = org.springframework.data.domain.Sort.by(direction, "completedAt", "fecha");
         }
 
         PageRequest pageRequest = PageRequest.of(page, size, sort);
@@ -1212,19 +1220,8 @@ public class OrderServiceImpl implements OrdenService {
             }
 
             // ORDERING LOGIC
-            boolean isCountQuery = query.getResultType() == Long.class || query.getResultType() == long.class;
-            
-            if (!isCountQuery) {
-                if ("COMPLETADO".equalsIgnoreCase(exactStatus) || "completed".equalsIgnoreCase(exactStatus) || "historical".equalsIgnoreCase(exactStatus)) {
-                    // PostgreSQL rejects DISTINCT + ORDER BY expression (coalesce). Use simple columns instead.
-                    query.orderBy(
-                        cb.desc(root.get("completedAt")),
-                        cb.desc(root.get("fecha"))
-                    );
-                } else {
-                    query.orderBy(cb.desc(root.get("fecha")));
-                }
-            }
+            // Eliminado ordenamiento fijo aquí ya que ahora se maneja vía Pageable
+            // para permitir ordenamiento dinámico desde el frontend.
             
             // Avoid duplicates when joining
             query.distinct(true);

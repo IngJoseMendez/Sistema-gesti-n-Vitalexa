@@ -50,7 +50,7 @@ public interface OrdenService {
      * @param vendedor filtro por nombre de usuario de vendedor
      * @param cliente  filtro por nombre de cliente
      */
-    Page<OrderResponse> findAllPaginated(int page, int size, String status, String search, String vendedor, String cliente);
+    Page<OrderResponse> findAllPaginated(int page, int size, String status, String search, String vendedor, String cliente, String sortBy, String sortOrder);
 
     // 🔹 VENDEDOR (solo sus órdenes)
     List<OrderResponse> findMyOrders(String username);
