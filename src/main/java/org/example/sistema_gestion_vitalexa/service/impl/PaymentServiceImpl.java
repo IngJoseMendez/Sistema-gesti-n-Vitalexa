@@ -209,16 +209,29 @@ public class PaymentServiceImpl implements PaymentService {
         BigDecimal orderTotal = order.getDiscountedTotal() != null
                 ? order.getDiscountedTotal()
                 : order.getTotal();
-        BigDecimal totalPaid = getTotalPaidForOrder(order.getId());
+
+        // Calcular total pagado en memoria usando la colección de pagos de la orden
+        // Esto es más fiable dentro de una transacción que una consulta al repositorio
+        BigDecimal totalPaid = BigDecimal.ZERO;
+        if (order.getPayments() != null) {
+            totalPaid = order.getPayments().stream()
+                    .filter(p -> !Boolean.TRUE.equals(p.getIsCancelled()))
+                    .map(Payment::getAmount)
+                    .filter(java.util.Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
 
         PaymentStatus newStatus;
-        if (totalPaid.compareTo(BigDecimal.ZERO) == 0) {
+        if (totalPaid.compareTo(BigDecimal.ZERO) <= 0) {
             newStatus = PaymentStatus.PENDING;
         } else if (totalPaid.compareTo(orderTotal) >= 0) {
             newStatus = PaymentStatus.PAID;
         } else {
             newStatus = PaymentStatus.PARTIAL;
         }
+
+        log.debug("Actualizando estado de pago de orden {} a {}. Total orden: {}, Total pagado: {}",
+                order.getId(), newStatus, orderTotal, totalPaid);
 
         order.setPaymentStatus(newStatus);
         ordenRepository.save(order);

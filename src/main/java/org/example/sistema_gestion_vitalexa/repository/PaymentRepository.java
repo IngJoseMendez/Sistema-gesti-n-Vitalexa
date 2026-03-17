@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -80,9 +81,6 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             @Param("orderEnd") LocalDateTime orderEnd,
             @Param("payEndDate") java.time.LocalDate payEndDate);
 
-    /**
-     * Igual que el anterior pero para usuarios compartidos (NinaTorres/YicelaSandoval).
-     */
     @Query("""
             SELECT COALESCE(SUM(p.amount), 0)
             FROM Payment p
@@ -97,4 +95,7 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             @Param("orderStart") LocalDateTime orderStart,
             @Param("orderEnd") LocalDateTime orderEnd,
             @Param("payEndDate") java.time.LocalDate payEndDate);
+
+    @Query("SELECT p FROM Payment p WHERE p.order IN :orders AND (p.isCancelled = false OR p.isCancelled IS NULL)")
+    List<Payment> findByOrderInAndNotCancelled(@Param("orders") Collection<Order> orders);
 }
