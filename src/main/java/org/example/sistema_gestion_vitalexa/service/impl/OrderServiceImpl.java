@@ -417,11 +417,27 @@ public class OrderServiceImpl implements OrdenService {
             String suffix = " [Promoción]";
             promoOrder.setNotas((notas != null ? notas : "") + suffix);
 
-            // ⛔ Flete NO se aplica a órdenes de promoción
-            // El flete se aplica únicamente a la orden Standard o S/R
-            promoOrder.setIncludeFreight(false);
+            // ✅ Flete permitido en órdenes de promoción si lo solicita admin/owner
+            // Los items de flete (isFreightItem=true) son completamente independientes de
+            // los items de promoción (isPromotionItem=true) — no afectan precios ni stock promo.
+            if (includeFreight) {
+                if (vendedor.getRole() == org.example.sistema_gestion_vitalexa.enums.Role.ADMIN ||
+                        vendedor.getRole() == org.example.sistema_gestion_vitalexa.enums.Role.OWNER) {
+                    promoOrder.setIncludeFreight(true);
+                    if (isFreightBonified) promoOrder.setIsFreightBonified(true);
+                    if (freightCustomText != null) promoOrder.setFreightCustomText(freightCustomText);
+                    if (freightQuantity != null) promoOrder.setFreightQuantity(freightQuantity);
+                    // Procesar items de flete (descuenta stock del producto de flete)
+                    if (freightItems != null && !freightItems.isEmpty()) {
+                        processFreightItems(promoOrder, freightItems);
+                    }
+                    includeFreight = false; // ya aplicado, no aplicar en órdenes siguientes
+                    log.info("Flete aplicado a orden de promoción: {}", promoOrder.getId());
+                }
+            }
 
             // Agregar items que pertenecen específicamente a la promo
+            // NOTA: processOrderItems y processPromotions no son afectados por el flete
             if (!promoItems.isEmpty()) {
                 processOrderItems(promoOrder, promoItems);
             }
@@ -1235,7 +1251,6 @@ public class OrderServiceImpl implements OrdenService {
 
                 if ("invoiceNumber".equalsIgnoreCase(sortBy)) {
                     // NULLS LAST: órdenes sin número de factura van al final
-                    // Primero las que tienen invoiceNumber, luego las que no (pendientes sin factura)
                     jakarta.persistence.criteria.Expression<Long> invNum = root.get("invoiceNumber");
                     query.orderBy(
                         cb.asc(cb.selectCase().when(cb.isNull(invNum), 1).otherwise(0)),
@@ -1245,7 +1260,6 @@ public class OrderServiceImpl implements OrdenService {
                     jakarta.persistence.criteria.Expression<java.math.BigDecimal> total = root.get("total");
                     query.orderBy(isDesc ? cb.desc(total) : cb.asc(total));
                 } else if ("cliente".equalsIgnoreCase(sortBy)) {
-                    // Necesitamos join con cliente para ordenar por nombre
                     jakarta.persistence.criteria.Join<Object, Object> sortClienteJoin;
                     if (cJoin != null) {
                         sortClienteJoin = cJoin;
@@ -1258,14 +1272,28 @@ public class OrderServiceImpl implements OrdenService {
                         isDesc ? cb.desc(clienteNombreExpr) : cb.asc(clienteNombreExpr)
                     );
                 } else {
-                    // DEFAULT: "fecha" — ordenar por COALESCE(completedAt, fecha) para que
-                    // las órdenes históricas sin completedAt no aparezcan primero con NULL.
+                    // DEFAULT: "fecha"
+                    // PostgreSQL con DISTINCT no acepta expresiones computadas (COALESCE, CASE) en ORDER BY
+                    // si no están en el SELECT. Cuando hay búsqueda (needsDistinct=true), ordenamos
+                    // únicamente por campos directos del entity.
                     jakarta.persistence.criteria.Expression<java.time.LocalDateTime> completedAt = root.get("completedAt");
                     jakarta.persistence.criteria.Expression<java.time.LocalDateTime> fecha = root.get("fecha");
-                    @SuppressWarnings("unchecked")
-                    jakarta.persistence.criteria.Expression<java.time.LocalDateTime> effectiveDate =
-                            cb.function("COALESCE", java.time.LocalDateTime.class, completedAt, fecha);
-                    query.orderBy(isDesc ? cb.desc(effectiveDate) : cb.asc(effectiveDate));
+
+                    if (needsDistinct) {
+                        // Con DISTINCT: solo campos directos del entity — seguros con PostgreSQL.
+                        // completedAt como primario (null = sin completar, va después de completadas)
+                        // fecha como secundario de respaldo.
+                        query.orderBy(
+                            isDesc ? cb.desc(completedAt) : cb.asc(completedAt),
+                            isDesc ? cb.desc(fecha) : cb.asc(fecha)
+                        );
+                    } else {
+                        // Sin DISTINCT: COALESCE funciona bien para devolver siempre la mejor fecha
+                        @SuppressWarnings("unchecked")
+                        jakarta.persistence.criteria.Expression<java.time.LocalDateTime> effectiveDate =
+                                cb.function("COALESCE", java.time.LocalDateTime.class, completedAt, fecha);
+                        query.orderBy(isDesc ? cb.desc(effectiveDate) : cb.asc(effectiveDate));
+                    }
                 }
             }
 
@@ -1928,18 +1956,10 @@ public class OrderServiceImpl implements OrdenService {
 
         order.setNotas(newNotes + suffix);
 
-        // Actualizar flete - ⛔ NO permitir flete en órdenes de promoción
-        // Usar variable separada para no romper el lambda anterior que usa isPromoOrder
-        boolean isPromoForFreight = isPromoOrder
-                || (order.getNotas() != null && order.getNotas().contains("[Promoción]"));
-        if (isPromoForFreight) {
-            // Las órdenes de promoción NUNCA deben tener flete
-            order.setIncludeFreight(false);
-            order.setIsFreightBonified(false);
-            order.setFreightCustomText(null);
-            order.setFreightQuantity(1);
-            log.info("Flete ignorado para orden de promoción: {}", order.getId());
-        } else if (Boolean.TRUE.equals(request.includeFreight())) {
+        // Actualizar flete
+        // ✅ Permitido en órdenes de promoción — los items de flete (isFreightItem=true)
+        // son independientes de los items de promoción y no afectan precios ni inventario promo.
+        if (Boolean.TRUE.equals(request.includeFreight())) {
             order.setIncludeFreight(true);
             order.setIsFreightBonified(Boolean.TRUE.equals(request.isFreightBonified()));
 

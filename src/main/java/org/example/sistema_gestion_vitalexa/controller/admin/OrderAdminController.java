@@ -243,25 +243,13 @@ public class OrderAdminController {
     /**
      * POST /api/admin/orders/{id}/annul
      * Anular orden con motivo.
-     * - OWNER: puede anular cualquier orden (incluso COMPLETADAS).
-     * - ADMIN: solo puede anular órdenes que NO estén COMPLETADAS.
+     * - OWNER y ADMIN: pueden anular cualquier orden (incluso COMPLETADAS).
      */
     @PostMapping("/{id}/annul")
     public ResponseEntity<Void> annulOrder(
             @PathVariable UUID id,
             @RequestParam String reason,
             Authentication authentication) {
-
-        boolean isOwner = authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_OWNER"));
-
-        if (!isOwner) {
-            // El Admin no puede anular órdenes completadas
-            OrderResponse order = ordenService.findById(id);
-            if ("COMPLETADO".equals(order.estado())) {
-                throw new BusinessExeption("Solo el Owner puede anular una orden que ya está completada");
-            }
-        }
 
         ordenService.annulOrder(id, reason);
         return ResponseEntity.noContent().build();
