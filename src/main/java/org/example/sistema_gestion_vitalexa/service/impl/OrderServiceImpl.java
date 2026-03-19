@@ -1709,6 +1709,7 @@ public class OrderServiceImpl implements OrdenService {
         // Lista de items S/R detectados para split (declarada aquí para que sea
         // accesible al final del método)
         List<OrderItemRequestDTO> srItemsForSplit = new java.util.ArrayList<>();
+        List<BonifiedItemRequestDTO> srBonifiedItemsForSplit = new java.util.ArrayList<>();
 
         // AGREGAR NUEVOS ITEMS (con validación de stock y split)
         // IMPORTANTE:
@@ -1891,7 +1892,34 @@ public class OrderServiceImpl implements OrdenService {
 
         // PROCESAR BONIFICADOS (si la orden NO es de promo)
         if (!isPromoOrder && request.bonifiedItems() != null && !request.bonifiedItems().isEmpty()) {
-            processBonifiedItems(order, request.bonifiedItems());
+            boolean isSROrder = currentNotes.contains("[S/R]");
+            ProductTag srTagFinal = null;
+            if (!isSROrder) {
+                try {
+                    srTagFinal = productTagService.getSRTagEntity();
+                } catch (Exception e) {}
+            }
+            
+            List<BonifiedItemRequestDTO> normalBonified = new java.util.ArrayList<>();
+            
+            for (BonifiedItemRequestDTO bItem : request.bonifiedItems()) {
+                boolean itemIsSR = false;
+                if (srTagFinal != null && bItem.productId() != null) {
+                    try {
+                        Product p = productService.findEntityById(bItem.productId());
+                        itemIsSR = p.getTag() != null && p.getTag().getId().equals(srTagFinal.getId());
+                    } catch (Exception e) {}
+                }
+                
+                if (itemIsSR) {
+                    srBonifiedItemsForSplit.add(bItem);
+                    log.info("🏷️ Item Bonificado S/R detectado en edición de orden normal, irá a orden separada: {}", bItem.productId());
+                } else {
+                    normalBonified.add(bItem);
+                }
+            }
+            
+            processBonifiedItems(order, normalBonified);
         }
 
         // PROCESAR PROMOCIONES - Solo si están cambiando
@@ -1990,16 +2018,27 @@ public class OrderServiceImpl implements OrdenService {
 
         // ── SPLIT S/R EN EDICIÓN ─────────────────────────────────────────────────────
         // Si se detectaron items S/R en una orden Normal, crearlos en una orden nueva
-        if (srItemsForSplit != null && !srItemsForSplit.isEmpty()) {
-            log.info("🔀 SPLIT EN EDICIÓN: Creando orden S/R con {} items separados de orden {}",
-                    srItemsForSplit.size(), orderId);
+        boolean hasSrItems = srItemsForSplit != null && !srItemsForSplit.isEmpty();
+        boolean hasSrBonified = srBonifiedItemsForSplit != null && !srBonifiedItemsForSplit.isEmpty();
+        
+        if (hasSrItems || hasSrBonified) {
+            log.info("🔀 SPLIT EN EDICIÓN: Creando orden S/R con {} items y {} bonificados separados de orden {}",
+                    hasSrItems ? srItemsForSplit.size() : 0, 
+                    hasSrBonified ? srBonifiedItemsForSplit.size() : 0, 
+                    orderId);
 
             Order srOrder = new Order(updatedOrder.getVendedor(), updatedOrder.getCliente());
             String baseNotes = request.notas() != null ? request.notas() : "";
             srOrder.setNotas(baseNotes + " [S/R]");
             srOrder.setIncludeFreight(false);
 
-            processOrderItems(srOrder, srItemsForSplit);
+            if (hasSrItems) {
+                processOrderItems(srOrder, srItemsForSplit);
+            }
+            
+            if (hasSrBonified) {
+                processBonifiedItems(srOrder, srBonifiedItemsForSplit);
+            }
 
             if (!srOrder.getItems().isEmpty()) {
                 Order savedSrOrder = ordenRepository.save(srOrder);
