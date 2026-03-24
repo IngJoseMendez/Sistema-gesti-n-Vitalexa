@@ -64,4 +64,42 @@ public interface PaymentTransferRepository extends JpaRepository<PaymentTransfer
 
     /** Transferencias donde este vendedor es el DESTINO */
     List<PaymentTransfer> findByDestVendedorIdOrderByCreatedAtDesc(UUID destVendedorId);
+
+    /**
+     * Suma de transferencias ACTIVAS destinadas a un vendedor,
+     * excluyendo aquellas cuyo pago original proviene de ciertos clientes.
+     */
+    @Query("""
+            SELECT COALESCE(SUM(t.amount), 0)
+            FROM PaymentTransfer t
+            WHERE t.destVendedor.id = :vendedorId
+              AND t.targetMonth = :month
+              AND t.targetYear  = :year
+              AND t.isRevoked   = false
+              AND (t.payment.order.cliente IS NULL OR t.payment.order.cliente.nombre NOT IN :excludedClientNames)
+            """)
+    BigDecimal sumActiveTransfersToVendedorInMonthExcludingOriginClients(
+            @Param("vendedorId") UUID vendedorId,
+            @Param("month") int month,
+            @Param("year") int year,
+            @Param("excludedClientNames") List<String> excludedClientNames);
+
+    /**
+     * Suma de transferencias ACTIVAS para usuarios compartidos,
+     * excluyendo aquellas cuyo pago original proviene de ciertos clientes.
+     */
+    @Query("""
+            SELECT COALESCE(SUM(t.amount), 0)
+            FROM PaymentTransfer t
+            WHERE t.destVendedor.id IN :vendedorIds
+              AND t.targetMonth = :month
+              AND t.targetYear  = :year
+              AND t.isRevoked   = false
+              AND (t.payment.order.cliente IS NULL OR t.payment.order.cliente.nombre NOT IN :excludedClientNames)
+            """)
+    BigDecimal sumActiveTransfersToVendedorIdsInMonthExcludingOriginClients(
+            @Param("vendedorIds") List<UUID> vendedorIds,
+            @Param("month") int month,
+            @Param("year") int year,
+            @Param("excludedClientNames") List<String> excludedClientNames);
 }

@@ -36,6 +36,16 @@ public class PayrollServiceImpl implements PayrollService {
         private final PaymentTransferRepository paymentTransferRepository;
 
         // ─────────────────────────────────────────────────────────────────────────
+        // CONSTANTES DE NEGOCIO (COMISIÓN ESPECIAL)
+        // ─────────────────────────────────────────────────────────────────────────
+
+        private static final List<String> SPECIAL_COMMISSION_VENDORS = List.of(
+                        "NinaTorres", "MercyMaestre", "ArnoldVentas", "SerioVentas");
+
+        private static final List<String> EXCLUDED_BODEGA_CLIENTS = List.of(
+                        "Bodega Maicao", "Bodega Valledupar");
+
+        // ─────────────────────────────────────────────────────────────────────────
         // CONFIGURACIÓN
         // ─────────────────────────────────────────────────────────────────────────
 
@@ -212,10 +222,24 @@ public class PayrollServiceImpl implements PayrollService {
                         generalGoalMet = effectiveThreshold.compareTo(BigDecimal.ZERO) > 0
                                         && totalCompanySales.compareTo(effectiveThreshold) >= 0;
 
-                        generalCommissionAmount = generalGoalMet
-                                        ? effectiveThreshold.multiply(generalCommissionPct).setScale(2,
-                                                        RoundingMode.HALF_UP)
-                                        : BigDecimal.ZERO;
+                        if (SPECIAL_COMMISSION_VENDORS.contains(vendedor.getUsername())) {
+                                // Para vendedores especiales, la comisión es % sobre SU "Total Base de Nómina"
+                                // (que ya excluye bodegas y suma transferencias en totalSold)
+                                generalCommissionAmount = generalGoalMet
+                                                ? totalSold.multiply(generalCommissionPct).setScale(2,
+                                                                RoundingMode.HALF_UP)
+                                                : BigDecimal.ZERO;
+
+                                log.info("[ComisionGeneral] Vendedor ESPECIAL={} mes={}/{}: base=${} (totalSold) pct={} => ${}",
+                                                vendedor.getUsername(), month, year, totalSold,
+                                                generalCommissionPct, generalCommissionAmount);
+                        } else {
+                                // Para el resto, sigue siendo % sobre el UMBRAL (bono fijo)
+                                generalCommissionAmount = generalGoalMet
+                                                ? effectiveThreshold.multiply(generalCommissionPct).setScale(2,
+                                                                RoundingMode.HALF_UP)
+                                                : BigDecimal.ZERO;
+                        }
 
                         log.info("[ComisionGeneral] Vendedor={} mes={}/{}: ventasEmpresa=${} vs umbral${} ({}) => {}",
                                         vendedor.getUsername(), month, year,
@@ -394,25 +418,45 @@ public class PayrollServiceImpl implements PayrollService {
                 BigDecimal sold;
                 BigDecimal incomingTransfers;
 
+                boolean isSpecial = SPECIAL_COMMISSION_VENDORS.contains(vendedor.getUsername());
+
                 if (UserUnificationUtil.isSharedUser(vendedor.getUsername())) {
                         List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(vendedor.getUsername());
                         List<UUID> sharedIds = userRepository.findAll().stream()
                                         .filter(u -> sharedUsernames.contains(u.getUsername()))
                                         .map(User::getId)
                                         .collect(Collectors.toList());
-                        sold = ordenRepository.sumTotalSoldByVendedorIdsBetween(sharedIds, start, end);
-                        incomingTransfers = paymentTransferRepository
-                                        .sumActiveTransfersToVendedorIdsInMonth(sharedIds, month, year);
+
+                        if (isSpecial) {
+                                sold = ordenRepository.sumTotalSoldByVendedorIdsBetweenExcludingClients(
+                                                sharedIds, start, end, EXCLUDED_BODEGA_CLIENTS);
+                                incomingTransfers = paymentTransferRepository
+                                                .sumActiveTransfersToVendedorIdsInMonthExcludingOriginClients(
+                                                                sharedIds, month, year, EXCLUDED_BODEGA_CLIENTS);
+                        } else {
+                                sold = ordenRepository.sumTotalSoldByVendedorIdsBetween(sharedIds, start, end);
+                                incomingTransfers = paymentTransferRepository
+                                                .sumActiveTransfersToVendedorIdsInMonth(sharedIds, month, year);
+                        }
                 } else {
-                        sold = ordenRepository.sumTotalSoldByVendedorBetween(vendedor.getId(), start, end);
-                        incomingTransfers = paymentTransferRepository
-                                        .sumActiveTransfersToVendedorInMonth(vendedor.getId(), month, year);
+                        if (isSpecial) {
+                                sold = ordenRepository.sumTotalSoldByVendedorBetweenExcludingClients(
+                                                vendedor.getId(), start, end, EXCLUDED_BODEGA_CLIENTS);
+                                incomingTransfers = paymentTransferRepository
+                                                .sumActiveTransfersToVendedorInMonthExcludingOriginClients(
+                                                                vendedor.getId(), month, year, EXCLUDED_BODEGA_CLIENTS);
+                        } else {
+                                sold = ordenRepository.sumTotalSoldByVendedorBetween(vendedor.getId(), start, end);
+                                incomingTransfers = paymentTransferRepository
+                                                .sumActiveTransfersToVendedorInMonth(vendedor.getId(), month, year);
+                        }
                 }
 
                 BigDecimal totalSold = sold.add(incomingTransfers);
-                if (incomingTransfers.compareTo(BigDecimal.ZERO) > 0) {
-                        log.info("[Transferencias] Vendedor={} {}/{}: ventas propias=${} + transferencias=${} = total=${}",
-                                        vendedor.getUsername(), month, year, sold, incomingTransfers, totalSold);
+                if (incomingTransfers.compareTo(BigDecimal.ZERO) > 0 || isSpecial) {
+                        log.info("[Transferencias] Vendedor={} {}/{}: ventas propias=${} + transferencias=${} = total=${} (Special={})",
+                                        vendedor.getUsername(), month, year, sold, incomingTransfers, totalSold,
+                                        isSpecial);
                 }
                 return totalSold;
         }
@@ -420,6 +464,7 @@ public class PayrollServiceImpl implements PayrollService {
         /**
          * Calcula el total NETO vendido por el vendedor en un mes/año dado.
          * Utilizado como base para el cálculo del % de recaudo.
+         * También aplica exclusión de bodegas si es vendedor especial.
          */
         private BigDecimal calculateNetTotalSold(User vendedor, int month, int year) {
                 LocalDateTime start = LocalDateTime.of(year, month, 1, 0, 0, 0);
@@ -428,19 +473,38 @@ public class PayrollServiceImpl implements PayrollService {
                 BigDecimal sold;
                 BigDecimal incomingTransfers;
 
+                boolean isSpecial = SPECIAL_COMMISSION_VENDORS.contains(vendedor.getUsername());
+
                 if (UserUnificationUtil.isSharedUser(vendedor.getUsername())) {
                         List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(vendedor.getUsername());
                         List<UUID> sharedIds = userRepository.findAll().stream()
                                         .filter(u -> sharedUsernames.contains(u.getUsername()))
                                         .map(User::getId)
                                         .collect(Collectors.toList());
-                        sold = ordenRepository.sumNetTotalSoldByVendedorIdsBetween(sharedIds, start, end);
-                        incomingTransfers = paymentTransferRepository
-                                        .sumActiveTransfersToVendedorIdsInMonth(sharedIds, month, year);
+
+                        if (isSpecial) {
+                                sold = ordenRepository.sumNetTotalSoldByVendedorIdsBetweenExcludingClients(
+                                                sharedIds, start, end, EXCLUDED_BODEGA_CLIENTS);
+                                incomingTransfers = paymentTransferRepository
+                                                .sumActiveTransfersToVendedorIdsInMonthExcludingOriginClients(
+                                                                sharedIds, month, year, EXCLUDED_BODEGA_CLIENTS);
+                        } else {
+                                sold = ordenRepository.sumNetTotalSoldByVendedorIdsBetween(sharedIds, start, end);
+                                incomingTransfers = paymentTransferRepository
+                                                .sumActiveTransfersToVendedorIdsInMonth(sharedIds, month, year);
+                        }
                 } else {
-                        sold = ordenRepository.sumNetTotalSoldByVendedorBetween(vendedor.getId(), start, end);
-                        incomingTransfers = paymentTransferRepository
-                                        .sumActiveTransfersToVendedorInMonth(vendedor.getId(), month, year);
+                        if (isSpecial) {
+                                sold = ordenRepository.sumNetTotalSoldByVendedorBetweenExcludingClients(
+                                                vendedor.getId(), start, end, EXCLUDED_BODEGA_CLIENTS);
+                                incomingTransfers = paymentTransferRepository
+                                                .sumActiveTransfersToVendedorInMonthExcludingOriginClients(
+                                                                vendedor.getId(), month, year, EXCLUDED_BODEGA_CLIENTS);
+                        } else {
+                                sold = ordenRepository.sumNetTotalSoldByVendedorBetween(vendedor.getId(), start, end);
+                                incomingTransfers = paymentTransferRepository
+                                                .sumActiveTransfersToVendedorInMonth(vendedor.getId(), month, year);
+                        }
                 }
 
                 return sold.add(incomingTransfers);
