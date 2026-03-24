@@ -17,7 +17,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/vendedor/payroll")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('VENDEDOR')")
+@PreAuthorize("hasAnyRole('VENDEDOR','OWNER')")
 public class PayrollVendedorController {
 
     private final PayrollService payrollService;

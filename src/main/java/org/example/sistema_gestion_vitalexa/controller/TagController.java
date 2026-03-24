@@ -47,7 +47,7 @@ public class TagController {
      * POST /api/tags - Crear nueva etiqueta (solo ADMIN)
      */
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OWNER')")
     public ResponseEntity<ProductTagResponse> createTag(@RequestBody CreateProductTagRequest request) {
         ProductTagResponse response = tagService.createTag(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -57,7 +57,7 @@ public class TagController {
      * PUT /api/tags/{id} - Actualizar etiqueta (solo ADMIN, no se puede editar "S/R")
      */
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OWNER')")
     public ResponseEntity<ProductTagResponse> updateTag(
             @PathVariable UUID id,
             @RequestBody CreateProductTagRequest request
@@ -70,7 +70,7 @@ public class TagController {
      * DELETE /api/tags/{id} - Eliminar etiqueta (solo ADMIN, no se puede eliminar "S/R")
      */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OWNER')")
     public ResponseEntity<Void> deleteTag(@PathVariable UUID id) {
         tagService.deleteTag(id);
         return ResponseEntity.noContent().build();

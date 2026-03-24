@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit;
 @RestController
 @RequestMapping("/api/vendedor/promotions")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('VENDEDOR')")
+@PreAuthorize("hasAnyRole('VENDEDOR','OWNER')")
 @Slf4j
 public class PromotionVendedorController {
 

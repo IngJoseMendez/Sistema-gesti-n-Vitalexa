@@ -25,8 +25,13 @@ public class ClientAdminController {
     private final ClientExportService clientExportService;
 
     @GetMapping
-    public ResponseEntity<List<ClientResponse>> getAllClients() {
-        List<ClientResponse> clients = clientService.findAll();
+    public ResponseEntity<List<ClientResponse>> getAllClients(@RequestParam(required = false) String search) {
+        List<ClientResponse> clients;
+        if (search != null && !search.isBlank()) {
+            clients = clientService.searchClients(search);
+        } else {
+            clients = clientService.findAll();
+        }
         return ResponseEntity.ok(clients);
     }
 

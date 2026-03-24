@@ -39,4 +39,7 @@ public interface ClientService {
 
     // Get list of vendedores for dropdown
     List<VendedorSimpleDTO> getVendedores();
+
+    // Search clients by name
+    List<ClientResponse> searchClients(String search);
 }

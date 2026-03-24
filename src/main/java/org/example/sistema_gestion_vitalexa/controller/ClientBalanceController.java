@@ -42,28 +42,31 @@ public class ClientBalanceController {
     @GetMapping
     public ResponseEntity<List<ClientBalanceDTO>> getClientBalances(
             @RequestParam(required = false) UUID vendedorId,
+            @RequestParam(required = false) String search,
             Authentication auth) {
         String username = auth.getName();
         Role userRole = userService.getUserRole(username);
 
         List<ClientBalanceDTO> balances;
-        switch (userRole) {
-            case OWNER:
-            case ADMIN:
-                // Owner y Admin pueden ver todos o filtrar por vendedora
-                if (vendedorId != null) {
-                    balances = clientBalanceService.getClientBalancesByVendedor(vendedorId);
-                } else {
-                    balances = clientBalanceService.getAllClientBalances();
-                }
-                break;
-            case VENDEDOR:
-                // Vendedor solo ve sus clientes asignados
-                balances = clientBalanceService.getMyClientBalances(username);
-                break;
-            default:
-                balances = List.of();
-                break;
+        if (search != null && !search.isBlank()) {
+            balances = clientBalanceService.searchClientBalances(search);
+        } else {
+            switch (userRole) {
+                case OWNER:
+                case ADMIN:
+                    if (vendedorId != null) {
+                        balances = clientBalanceService.getClientBalancesByVendedor(vendedorId);
+                    } else {
+                        balances = clientBalanceService.getAllClientBalances();
+                    }
+                    break;
+                case VENDEDOR:
+                    balances = clientBalanceService.getMyClientBalances(username);
+                    break;
+                default:
+                    balances = List.of();
+                    break;
+            }
         }
 
         return ResponseEntity.ok(balances);

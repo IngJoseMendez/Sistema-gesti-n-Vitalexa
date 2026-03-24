@@ -15,7 +15,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/vendedor/sale-goals")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('VENDEDOR')")
+@PreAuthorize("hasAnyRole('VENDEDOR','OWNER')")
 public class SaleGoalVendedorController {
 
     private final SaleGoalService saleGoalService;

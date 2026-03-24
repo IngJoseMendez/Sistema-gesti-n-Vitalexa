@@ -89,6 +89,14 @@ public class ClientServiceImpl implements ClientService {
     }
 
     @Override
+    public List<ClientResponse> searchClients(String search) {
+        return repository.findByNombreContainingIgnoreCase(search)
+                .stream()
+                .map(clientMapper::toResponse)
+                .toList();
+    }
+
+    @Override
     public void delete(UUID id) {
         Client client = findEntityById(id);
         repository.delete(client);

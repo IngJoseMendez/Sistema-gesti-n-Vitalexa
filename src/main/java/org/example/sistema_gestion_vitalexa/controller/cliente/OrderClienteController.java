@@ -14,7 +14,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/cliente/orders")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('CLIENTE')")
+@PreAuthorize("hasAnyRole('CLIENTE','OWNER')")
 public class OrderClienteController {
 
     private final CustomerOrderService service;

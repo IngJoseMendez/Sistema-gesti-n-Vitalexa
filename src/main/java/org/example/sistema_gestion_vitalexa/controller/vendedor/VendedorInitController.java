@@ -49,7 +49,7 @@ import java.util.concurrent.TimeUnit;
 @RestController
 @RequestMapping("/api/vendedor/init")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('VENDEDOR')")
+@PreAuthorize("hasAnyRole('VENDEDOR','OWNER')")
 @Slf4j
 public class VendedorInitController {
 

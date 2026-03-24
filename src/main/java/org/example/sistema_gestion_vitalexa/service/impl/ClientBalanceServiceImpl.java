@@ -54,6 +54,12 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
         }
 
         @Override
+        public List<ClientBalanceDTO> searchClientBalances(String search) {
+                List<Client> clients = clientRepository.findByNombreContainingIgnoreCase(search);
+                return calculateBalancesInBulk(clients);
+        }
+
+        @Override
         public List<ClientBalanceDTO> getClientBalancesByVendedor(UUID vendedorId) {
                 // Get vendor to check if it's a shared user
                 User vendedor = userRepository.findById(vendedorId)

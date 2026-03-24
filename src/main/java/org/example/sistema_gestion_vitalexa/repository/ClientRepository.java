@@ -38,6 +38,9 @@ public interface ClientRepository extends JpaRepository<Client, UUID> {
     // For filtering clients by address keyword (route/location)
     List<Client> findByDireccionContainingIgnoreCase(String keyword);
 
+    // For searching clients by name
+    List<Client> findByNombreContainingIgnoreCase(String nombre);
+
     // Uniqueness validation for nombre and direccion
     boolean existsByNombre(String nombre);
 

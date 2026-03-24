@@ -18,7 +18,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/cliente/products")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('CLIENTE')")
+@PreAuthorize("hasAnyRole('CLIENTE','OWNER')")
 public class ProductClienteController {
 
     private final ProductService productService;

@@ -19,7 +19,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/empacador")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('EMPACADOR')")
+@PreAuthorize("hasAnyRole('EMPACADOR','OWNER')")
 public class EmpacadorController {
 
     private final ProductRepository productRepository;

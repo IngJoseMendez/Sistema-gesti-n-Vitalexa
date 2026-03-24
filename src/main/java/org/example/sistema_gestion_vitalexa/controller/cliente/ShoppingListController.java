@@ -11,7 +11,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/cliente/lists")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('CLIENTE')")
+@PreAuthorize("hasAnyRole('CLIENTE','OWNER')")
 public class ShoppingListController {
 
     private final ShoppingListService shoppingListService;

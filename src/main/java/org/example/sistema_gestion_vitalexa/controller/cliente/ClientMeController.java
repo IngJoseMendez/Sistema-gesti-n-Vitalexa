@@ -16,7 +16,7 @@ import java.security.Principal;
 @RequestMapping("/api/cliente/me")
 @RequiredArgsConstructor
 
-@PreAuthorize("hasRole('CLIENTE')")
+@PreAuthorize("hasAnyRole('CLIENTE','OWNER')")
 public class ClientMeController {
 
     private final ClientRepository clientRepository;

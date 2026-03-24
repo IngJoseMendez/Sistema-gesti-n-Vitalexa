@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
 @RestController
 @RequestMapping("/api/vendedor/products")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('VENDEDOR')")
+@PreAuthorize("hasAnyRole('VENDEDOR','OWNER')")
 public class ProductVendedorController {
 
     private final ProductService productService;

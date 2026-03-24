@@ -25,6 +25,11 @@ public interface ClientBalanceService {
     List<ClientBalanceDTO> getAllClientBalances();
 
     /**
+     * Obtiene los saldos buscando clientes por nombre
+     */
+    List<ClientBalanceDTO> searchClientBalances(String search);
+
+    /**
      * Obtiene los saldos de clientes de una vendedora específica
      */
     List<ClientBalanceDTO> getClientBalancesByVendedor(UUID vendedorId);
