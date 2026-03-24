@@ -35,6 +35,9 @@ public class ReportServiceImpl implements ReportService {
         private final UserRepository userRepository;
         private final PaymentRepository paymentRepository;
 
+        private static final List<String> EXCLUDED_BODEGA_CLIENTS = List.of(
+                        "Bodega Maicao", "Bodega Valledupar");
+
         @Override
         public ReportDTO getCompleteReport(LocalDate startDate, LocalDate endDate) {
                 return new ReportDTO(
@@ -61,7 +64,7 @@ public class ReportServiceImpl implements ReportService {
                 LocalDateTime start = startDate.atStartOfDay();
                 LocalDateTime end = endDate.atTime(23, 59, 59);
                 List<Order> orders = ordenRepository.findCompletedByCompletedAtBetween(start, end);
-                return buildSalesReport(orders);
+                return buildSalesReport(filterExcludedClients(orders));
         }
 
         @Override
@@ -88,7 +91,7 @@ public class ReportServiceImpl implements ReportService {
                                         .toList();
                 }
 
-                return buildSalesReport(orders);
+                return buildSalesReport(filterExcludedClients(orders));
         }
         //rebuild
         private SalesReportDTO buildSalesReport(List<Order> orders) {
@@ -166,7 +169,7 @@ public class ReportServiceImpl implements ReportService {
                                         .toList();
                 }
 
-                return buildProductReport(products, vendorOrders);
+                return buildProductReport(products, filterExcludedClients(vendorOrders));
         }
 
         @Override
@@ -176,7 +179,7 @@ public class ReportServiceImpl implements ReportService {
                 LocalDateTime start = startDate.atStartOfDay();
                 LocalDateTime end = endDate.atTime(23, 59, 59);
                 List<Order> completedOrders = ordenRepository.findCompletedByCompletedAtBetween(start, end);
-                return buildProductReport(products, completedOrders);
+                return buildProductReport(products, filterExcludedClients(completedOrders));
         }
 
         @Override
@@ -204,7 +207,7 @@ public class ReportServiceImpl implements ReportService {
                                         .toList();
                 }
 
-                return buildProductReport(products, vendorOrders);
+                return buildProductReport(products, filterExcludedClients(vendorOrders));
         }
 
         private ProductReportDTO buildProductReport(List<Product> products, List<Order> ordersForStats) {
@@ -251,7 +254,8 @@ public class ReportServiceImpl implements ReportService {
                 LocalDateTime start = startDate.atStartOfDay();
                 LocalDateTime end = endDate.atTime(23, 59, 59);
 
-                List<Order> orders = ordenRepository.findCompletedByCompletedAtBetween(start, end);
+                List<Order> orders = filterExcludedClients(
+                                ordenRepository.findCompletedByCompletedAtBetween(start, end));
 
                 // 2. Agrupar por vendedor (unificando usuarios compartidos)
                 Map<String, List<Order>> ordersByVendor = orders.stream()
@@ -337,7 +341,9 @@ public class ReportServiceImpl implements ReportService {
                                         .toList();
                 }
 
-                Set<UUID> vendorClientIds = vendorOrders.stream()
+                List<Order> filteredVendorOrders = filterExcludedClients(vendorOrders);
+
+                Set<UUID> vendorClientIds = filteredVendorOrders.stream()
                                 .map(o -> o.getCliente().getId())
                                 .collect(Collectors.toSet());
 
@@ -345,7 +351,7 @@ public class ReportServiceImpl implements ReportService {
                                 .filter(c -> vendorClientIds.contains(c.getId()))
                                 .toList();
 
-                return buildClientReport(vendorClients, vendorOrders);
+                return buildClientReport(vendorClients, filteredVendorOrders);
         }
 
         @Override
@@ -354,7 +360,7 @@ public class ReportServiceImpl implements ReportService {
                 LocalDateTime start = startDate.atStartOfDay();
                 LocalDateTime end = endDate.atTime(23, 59, 59);
                 List<Order> ordersInPeriod = ordenRepository.findCompletedByCompletedAtBetween(start, end);
-                return buildClientReport(clients, ordersInPeriod);
+                return buildClientReport(clients, filterExcludedClients(ordersInPeriod));
         }
 
         @Override
@@ -382,7 +388,9 @@ public class ReportServiceImpl implements ReportService {
                                         .toList();
                 }
 
-                Set<UUID> vendorClientIds = vendorOrders.stream()
+                List<Order> filteredVendorOrders = filterExcludedClients(vendorOrders);
+
+                Set<UUID> vendorClientIds = filteredVendorOrders.stream()
                                 .map(o -> o.getCliente().getId())
                                 .collect(Collectors.toSet());
 
@@ -390,7 +398,7 @@ public class ReportServiceImpl implements ReportService {
                                 .filter(c -> vendorClientIds.contains(c.getId()))
                                 .toList();
 
-                return buildClientReport(vendorClients, vendorOrders);
+                return buildClientReport(vendorClients, filteredVendorOrders);
         }
 
         private ClientReportDTO buildClientReport(List<Client> clients) {
@@ -439,6 +447,14 @@ public class ReportServiceImpl implements ReportService {
          */
         private LocalDateTime getOrderDate(Order o) {
                 return o.getCompletedAt() != null ? o.getCompletedAt() : o.getFecha();
+        }
+
+        private List<Order> filterExcludedClients(List<Order> orders) {
+                return orders.stream()
+                                .filter(o -> o.getCliente() == null
+                                                || o.getCliente().getNombre() == null
+                                                || !EXCLUDED_BODEGA_CLIENTS.contains(o.getCliente().getNombre()))
+                                .toList();
         }
 
         private List<DailySalesDTO> calculateDailySales(List<Order> orders) {
