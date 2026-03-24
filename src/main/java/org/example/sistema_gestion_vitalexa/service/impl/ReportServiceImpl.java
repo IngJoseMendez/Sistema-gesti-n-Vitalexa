@@ -354,6 +354,7 @@ public class ReportServiceImpl implements ReportService {
                                                         avgOrderValue);
                                 })
                                 .sorted(Comparator.comparing(VendorPerformanceDTO::totalRevenue).reversed())
+                                .limit(10)
                                 .toList();
 
                 int totalVendors = vendorIdsByGroup.size();
