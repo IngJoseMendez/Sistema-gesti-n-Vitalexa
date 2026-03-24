@@ -24,6 +24,8 @@ public class CustomerOrderService {
     private final OrdenRepository ordenRepository;
     private final ProductService productService;
     private final OrderMapper orderMapper;
+    private final InventoryMovementService movementService;
+    private final NotificationService notificationService;
 
     private Client getClientOrThrow(String username) {
         Client client = clientRepository.findByUserUsername(username)
@@ -63,7 +65,23 @@ public class CustomerOrderService {
             if (product.getStock() < itemReq.cantidad()) {
                 throw new BusinessExeption("Stock insuficiente para: " + product.getNombre());
             }
+
+            Integer stockAnterior = product.getStock();
             product.decreaseStock(itemReq.cantidad());
+
+            if (product.getStock() != null) {
+                movementService.logMovement(
+                        product,
+                        org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.SALE,
+                        itemReq.cantidad(),
+                        stockAnterior,
+                        product.getStock(),
+                        "Venta Orden (Cliente App)",
+                        username
+                );
+            }
+            notificationService.sendInventoryUpdate(product.getId().toString(), "STOCK_UPDATED");
+
             order.addItem(new OrderItem(product, itemReq.cantidad()));
         });
 
@@ -94,7 +112,24 @@ public class CustomerOrderService {
         if (order.getEstado() == OrdenStatus.CANCELADO) return orderMapper.toResponse(order);
 
         // opcional: devolver stock si quieres comportamiento “pro”
-        order.getItems().forEach(i -> i.getProduct().increaseStock(i.getCantidad()));
+        order.getItems().forEach(i -> {
+            Product product = i.getProduct();
+            Integer stockAnterior = product.getStock();
+            product.increaseStock(i.getCantidad());
+
+            if (product.getStock() != null) {
+                movementService.logMovement(
+                        product,
+                        org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.RESTOCK,
+                        i.getCantidad(),
+                        stockAnterior,
+                        product.getStock(),
+                        "Anulación Orden (Cliente App)",
+                        username
+                );
+            }
+            notificationService.sendInventoryUpdate(product.getId().toString(), "STOCK_UPDATED");
+        });
 
         order.setEstado(OrdenStatus.CANCELADO);
         Order saved = ordenRepository.save(order);
@@ -118,7 +153,22 @@ public class CustomerOrderService {
             if (!product.isActive()) throw new BusinessExeption("Producto inactivo: " + product.getNombre());
             if (product.getStock() < qty) throw new BusinessExeption("Stock insuficiente para reordenar: " + product.getNombre());
 
+            Integer stockAnterior = product.getStock();
             product.decreaseStock(qty);
+
+            if (product.getStock() != null) {
+                movementService.logMovement(
+                        product,
+                        org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.SALE,
+                        qty,
+                        stockAnterior,
+                        product.getStock(),
+                        "Reorden (Cliente App)",
+                        username
+                );
+            }
+            notificationService.sendInventoryUpdate(product.getId().toString(), "STOCK_UPDATED");
+
             copy.addItem(new OrderItem(product, qty));
         });
 

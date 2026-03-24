@@ -769,7 +769,24 @@ public class OrderServiceImpl implements OrdenService {
             item.setOutOfStock(false);
 
             // Descontar stock (permite negativo)
+            Integer stockAnterior = product.getStock();
             product.decreaseStock(requestedQuantity);
+
+            try {
+                if (product.getStock() != null) {
+                    movementService.logMovement(
+                            product,
+                            org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.SALE,
+                            requestedQuantity,
+                            stockAnterior,
+                            product.getStock(),
+                            "Venta Flete",
+                            order.getVendedor() != null ? order.getVendedor().getUsername() : "System"
+                    );
+                }
+            } catch (Exception e) {
+                log.error("Error logging freight inventory movement: {}", e.getMessage());
+            }
 
             order.addItem(item);
 
@@ -2130,7 +2147,24 @@ public class OrderServiceImpl implements OrdenService {
 
             // Decrementar stock si hay disponible
             if (hasStock) {
+                Integer stockAnterior = product.getStock();
                 product.decreaseStock(itemReq.cantidad());
+                
+                try {
+                    if (product.getStock() != null) {
+                        movementService.logMovement(
+                                product,
+                                org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.SALE,
+                                itemReq.cantidad(),
+                                stockAnterior,
+                                product.getStock(),
+                                "Venta Producto Surtido Extra",
+                                order.getVendedor() != null ? order.getVendedor().getUsername() : "System"
+                        );
+                    }
+                } catch (Exception e) {
+                    log.error("Error logging assortment inventory movement: {}", e.getMessage());
+                }
             } else {
                 log.warn("Stock insuficiente para producto surtido {}, se marcó como sin stock", product.getNombre());
             }
@@ -2315,8 +2349,8 @@ public class OrderServiceImpl implements OrdenService {
                                     .anyMatch(i -> Boolean.TRUE.equals(i.getIsPromotionItem()) &&
                                             Boolean.TRUE.equals(i.getIsFreeItem()) &&
                                             i.getProduct().getId().equals(giftProduct.getId()) &&
-                                            i.getPromotionInstanceId() != null &&
-                                            i.getPromotionInstanceId().equals(item.getPromotionInstanceId()));
+                                            ((item.getPromotionInstanceId() != null && item.getPromotionInstanceId().equals(i.getPromotionInstanceId())) || 
+                                             (item.getPromotionInstanceId() == null && i.getPromotionInstanceId() == null)));
 
                             if (!hasSeparateGiftItem) {
                                 increaseStockAndLog(giftProduct, giftQty, "Restauración de Item (Promo Gift ref)", defaultUsername);
@@ -2611,12 +2645,12 @@ public class OrderServiceImpl implements OrdenService {
             log.info("✅ Stock restaurado para item de promoción '{}': +{}", product.getNombre(), qtyToRestore);
 
             // ✅ CRÍTICO: Si es mainProduct de una promoción, también restaurar los
-            // giftItems
+            // giftItems evaluando que no existan como items separados
             if (!Boolean.TRUE.equals(itemToDelete.getIsFreeItem()) &&
                     itemToDelete.getPromotion() != null &&
                     itemToDelete.getPromotion().getGiftItems() != null) {
 
-                log.info("🔄 Restaurando stock de {} regalos de la promoción '{}'",
+                log.info("🔄 Evaluando restauración de {} regalos de la promoción '{}'",
                         itemToDelete.getPromotion().getGiftItems().size(),
                         itemToDelete.getPromotion().getNombre());
 
@@ -2626,9 +2660,21 @@ public class OrderServiceImpl implements OrdenService {
                     Product giftProduct = gift.getProduct();
                     Integer giftQty = gift.getQuantity();
 
-                    giftProduct.increaseStock(giftQty);
-                    log.info("✅ Stock restaurado para regalo '{}': +{}",
-                            giftProduct.getNombre(), giftQty);
+                    boolean hasSeparateGiftItem = order.getItems().stream()
+                            .anyMatch(i -> Boolean.TRUE.equals(i.getIsPromotionItem()) &&
+                                    Boolean.TRUE.equals(i.getIsFreeItem()) &&
+                                    i.getProduct().getId().equals(giftProduct.getId()) &&
+                                    ((itemToDelete.getPromotionInstanceId() != null && itemToDelete.getPromotionInstanceId().equals(i.getPromotionInstanceId())) || 
+                                     (itemToDelete.getPromotionInstanceId() == null && i.getPromotionInstanceId() == null)));
+
+                    if (!hasSeparateGiftItem) {
+                        giftProduct.increaseStock(giftQty);
+                        log.info("✅ Stock restaurado para regalo '{}': +{}",
+                                giftProduct.getNombre(), giftQty);
+                    } else {
+                        log.info("⏭️ Gift item separado encontrado para '{}', se restaurará mediante el ciclo normal",
+                                giftProduct.getNombre());
+                    }
                 }
             }
         }

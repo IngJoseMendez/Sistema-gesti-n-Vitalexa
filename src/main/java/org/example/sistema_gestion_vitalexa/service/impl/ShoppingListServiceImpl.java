@@ -28,6 +28,8 @@ public class ShoppingListServiceImpl implements ShoppingListService {
     private final ProductService productService;
     private final OrdenRepository ordenRepository;
     private final OrderMapper orderMapper;
+    private final org.example.sistema_gestion_vitalexa.service.InventoryMovementService movementService;
+    private final org.example.sistema_gestion_vitalexa.service.NotificationService notificationService;
 
     private Client getClientOrThrow(String username) {
         return clientRepository.findByUserUsername(username)
@@ -174,7 +176,21 @@ public class ShoppingListServiceImpl implements ShoppingListService {
             Product p = it.getProduct();
             int qty = it.getDefaultQty();
 
+            Integer stockAnterior = p.getStock();
             p.decreaseStock(qty);
+
+            if (p.getStock() != null) {
+                movementService.logMovement(
+                        p,
+                        org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.SALE,
+                        qty,
+                        stockAnterior,
+                        p.getStock(),
+                        "Venta Orden (Lista de Compras)",
+                        username
+                );
+            }
+            notificationService.sendInventoryUpdate(p.getId().toString(), "STOCK_UPDATED");
 
             OrderItem orderItem = new OrderItem(p, qty);
             order.addItem(orderItem);

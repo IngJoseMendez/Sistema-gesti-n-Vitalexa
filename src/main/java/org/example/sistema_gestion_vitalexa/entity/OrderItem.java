@@ -143,6 +143,8 @@ public class OrderItem {
         this.outOfStock = false;
         this.isPromotionItem = false;
         this.isFreeItem = false;
+        this.isBonified = false;
+        this.isFreightItem = false;
         this.cantidadDescontada = 0;
         this.cantidadPendiente = 0;
     }

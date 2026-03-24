@@ -22,6 +22,7 @@ public class ReembolsoService {
     private final UserRepository userRepository;
     private final ProductMapper productMapper;
     private final NotificationService notificationService;
+    private final InventoryMovementService movementService;
 
     @Transactional
     public ReembolsoResponse crearReembolso(ReembolsoRequest request, String username) {
@@ -46,13 +47,22 @@ public class ReembolsoService {
             Product producto = productRepository.findById(itemRequest.getProductoId())
                     .orElseThrow(() -> new RuntimeException("Producto no encontrado: " + itemRequest.getProductoId()));
 
-            if (producto.getStock() < itemRequest.getCantidad()) {
-                throw new RuntimeException("Stock insuficiente para: " + producto.getNombre() +
-                        " (disponible: " + producto.getStock() + ", solicitado: " + itemRequest.getCantidad() + ")");
-            }
-
-            producto.setStock(producto.getStock() - itemRequest.getCantidad());
+            // Permitir stock negativo eliminando la validación estricta
+            Integer stockAnterior = producto.getStock();
+            producto.decreaseStock(itemRequest.getCantidad());
             productRepository.save(producto);
+
+            if (producto.getStock() != null) {
+                movementService.logMovement(
+                        producto,
+                        org.example.sistema_gestion_vitalexa.entity.enums.InventoryMovementType.STOCK_ADJUSTMENT,
+                        itemRequest.getCantidad(),
+                        stockAnterior,
+                        producto.getStock(),
+                        "Reembolso a Empacador",
+                        username
+                );
+            }
 
             // NOTIFICAR CAMBIO DE STOCK POR REEMBOLSO
             notificationService.sendInventoryUpdate(producto.getId().toString(), "STOCK_UPDATED");
