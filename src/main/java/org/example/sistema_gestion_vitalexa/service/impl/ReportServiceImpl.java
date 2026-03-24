@@ -41,8 +41,6 @@ public class ReportServiceImpl implements ReportService {
         private static final List<String> EXCLUDED_BODEGA_VENDORS = List.of(
                         "bodegamaicao", "bodegavalledupar");
 
-        private static final List<String> SPECIAL_COMMISSION_VENDORS = List.of(
-                        "NinaTorres", "MercyMaestre", "ArnoldVentas", "SerioVentas");
 
         @Override
         public ReportDTO getCompleteReport(LocalDate startDate, LocalDate endDate) {
@@ -167,8 +165,8 @@ public class ReportServiceImpl implements ReportService {
                                 .count();
 
                 List<DailySalesDTO> dailySales = calculateDailySales(orders);
-                Map<YearMonth, BigDecimal> transfersByMonth = calculateTransfersByMonthForSpecialVendors(startDate,
-                                endDate);
+                Map<YearMonth, BigDecimal> transfersByMonth = calculateTransfersByMonthForCompanyVendors(
+                                startDate, endDate);
                 List<MonthlySalesDTO> monthlySales = calculateMonthlySales(orders, transfersByMonth);
 
                 BigDecimal totalRevenue = calculateCompanyBaseNomina(startDate, endDate);
@@ -565,8 +563,8 @@ public class ReportServiceImpl implements ReportService {
         }
 
         private BigDecimal calculateCompanyBaseNomina(LocalDate startDate, LocalDate endDate) {
-                List<UUID> specialVendorIds = resolveSpecialVendorIds();
-                if (specialVendorIds.isEmpty()) {
+                List<UUID> vendorIds = resolveCompanyVendorIds();
+                if (vendorIds.isEmpty()) {
                         return BigDecimal.ZERO;
                 }
 
@@ -580,9 +578,9 @@ public class ReportServiceImpl implements ReportService {
                         LocalDateTime monthEnd = monthStart.plusMonths(1);
 
                         BigDecimal grossSales = ordenRepository.sumTotalSoldByVendedorIdsBetween(
-                                        specialVendorIds, monthStart, monthEnd);
+                                        vendorIds, monthStart, monthEnd);
                         BigDecimal transfers = paymentTransferRepository.sumActiveTransfersToVendedorIdsInMonth(
-                                        specialVendorIds, current.getMonthValue(), current.getYear());
+                                        vendorIds, current.getMonthValue(), current.getYear());
 
                         total = total.add(grossSales).add(transfers);
                         current = current.plusMonths(1);
@@ -591,10 +589,10 @@ public class ReportServiceImpl implements ReportService {
                 return total;
         }
 
-        private Map<YearMonth, BigDecimal> calculateTransfersByMonthForSpecialVendors(
+        private Map<YearMonth, BigDecimal> calculateTransfersByMonthForCompanyVendors(
                         LocalDate startDate, LocalDate endDate) {
-                List<UUID> specialVendorIds = resolveSpecialVendorIds();
-                if (specialVendorIds.isEmpty()) {
+                List<UUID> vendorIds = resolveCompanyVendorIds();
+                if (vendorIds.isEmpty()) {
                         return Collections.emptyMap();
                 }
 
@@ -605,7 +603,7 @@ public class ReportServiceImpl implements ReportService {
                 YearMonth current = startMonth;
                 while (!current.isAfter(endMonth)) {
                         BigDecimal transfers = paymentTransferRepository.sumActiveTransfersToVendedorIdsInMonth(
-                                        specialVendorIds, current.getMonthValue(), current.getYear());
+                                        vendorIds, current.getMonthValue(), current.getYear());
                         transfersByMonth.put(current, transfers);
                         current = current.plusMonths(1);
                 }
@@ -613,18 +611,11 @@ public class ReportServiceImpl implements ReportService {
                 return transfersByMonth;
         }
 
-        private List<UUID> resolveSpecialVendorIds() {
-                Set<String> usernames = new HashSet<>();
-                for (String username : SPECIAL_COMMISSION_VENDORS) {
-                        if (UserUnificationUtil.isSharedUser(username)) {
-                                usernames.addAll(UserUnificationUtil.getSharedUsernames(username));
-                        } else {
-                                usernames.add(username);
-                        }
-                }
-
+        private List<UUID> resolveCompanyVendorIds() {
                 return userRepository.findAll().stream()
-                                .filter(u -> usernames.contains(u.getUsername()))
+                                .filter(u -> u.getUsername() != null)
+                                .filter(u -> !EXCLUDED_BODEGA_VENDORS.contains(
+                                                u.getUsername().trim().toLowerCase()))
                                 .map(User::getId)
                                 .distinct()
                                 .toList();

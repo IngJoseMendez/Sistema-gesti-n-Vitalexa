@@ -215,8 +215,8 @@ public class PayrollServiceImpl implements PayrollService {
                                 effectiveThreshold = totalGlobalGoals;
                         }
 
-                        // Ventas totales de empresa = suma de Total Base Nomina
-                        // de los vendedores especiales (ventas brutas + transferencias)
+                        // Ventas totales de empresa = suma del Total Base de Nomina
+                        // de todos los vendedores (ventas brutas + transferencias), excluyendo bodegas
                         totalCompanySales = calculateTotalCompanyBaseNomina(month, year);
 
                         // La comisión general aplica si las ventas supera el umbral efectivo
@@ -510,34 +510,30 @@ public class PayrollServiceImpl implements PayrollService {
 
         /**
          * Ventas empresa = suma del Total Base de Nomina de todos los vendedores
-         * (ventas brutas + transferencias), excluyendo bodegas. Evita doble conteo
-         * en usuarios compartidos usando un solo representante.
+         * (ventas brutas + transferencias), excluyendo bodegas.
          */
         private BigDecimal calculateTotalCompanyBaseNomina(int month, int year) {
-                Set<String> processedShared = new HashSet<>();
-                BigDecimal total = BigDecimal.ZERO;
+                LocalDateTime start = LocalDateTime.of(year, month, 1, 0, 0, 0);
+                LocalDateTime end = start.plusMonths(1);
 
-                for (User vendedor : userRepository.findAll()) {
-                        if (vendedor.getUsername() == null) {
-                                continue;
-                        }
-                        String normalized = vendedor.getUsername().trim().toLowerCase();
-                        if (EXCLUDED_BODEGA_VENDORS.contains(normalized)) {
-                                continue;
-                        }
+                List<UUID> vendorIds = userRepository.findAll().stream()
+                                .filter(u -> u.getUsername() != null)
+                                .filter(u -> !EXCLUDED_BODEGA_VENDORS.contains(
+                                                u.getUsername().trim().toLowerCase()))
+                                .map(User::getId)
+                                .distinct()
+                                .toList();
 
-                        if (UserUnificationUtil.isSharedUser(vendedor.getUsername())) {
-                                String canonical = UserUnificationUtil.getSharedUsernames(vendedor.getUsername())
-                                                .get(0);
-                                if (!processedShared.add(canonical)) {
-                                        continue;
-                                }
-                        }
-
-                        total = total.add(calculateTotalBaseNomina(vendedor, month, year));
+                if (vendorIds.isEmpty()) {
+                        return BigDecimal.ZERO;
                 }
 
-                return total;
+                BigDecimal grossSales = ordenRepository.sumTotalSoldByVendedorIdsBetween(
+                                vendorIds, start, end);
+                BigDecimal transfers = paymentTransferRepository.sumActiveTransfersToVendedorIdsInMonth(
+                                vendorIds, month, year);
+
+                return grossSales.add(transfers);
         }
 
         /**
