@@ -1005,50 +1005,12 @@ public class ReportExportServiceImpl implements ReportExportService {
                 }
             }
 
-            // Fila final: Total período Bruto y Neto
-            rowNum++;
-            Row totalBrutoRow = sheet.createRow(rowNum++);
-            Cell totalBrutoLabelCell = totalBrutoRow.createCell(9); // Shifted
-            totalBrutoLabelCell.setCellValue("TOTAL BRUTO VENDIDO:");
-            totalBrutoLabelCell.setCellStyle(headerStyle);
-
-            Cell totalBrutoValueCell = totalBrutoRow.createCell(10); // Shifted
-            totalBrutoValueCell.setCellValue(totalBrutoPeriod.doubleValue());
-            totalBrutoValueCell.setCellStyle(currencyStyle);
-
-            Row totalNetoRow = sheet.createRow(rowNum++);
-            Cell totalNetoLabelCell = totalNetoRow.createCell(9); // Shifted
-            totalNetoLabelCell.setCellValue("TOTAL NETO VENDIDO:");
-            totalNetoLabelCell.setCellStyle(headerStyle);
-
-            Cell totalNetoValueCell = totalNetoRow.createCell(10); // Shifted
-            totalNetoValueCell.setCellValue(totalNetoPeriod.doubleValue());
-            totalNetoValueCell.setCellStyle(currencyStyle);
-
-            // Fila Total Cartera
-            Row portfolioRow = sheet.createRow(rowNum++);
-            Cell portfolioLabel = portfolioRow.createCell(9);
-            portfolioLabel.setCellValue("TOTAL CARTERA:");
-            portfolioLabel.setCellStyle(headerStyle);
-
-            Cell portfolioValue = portfolioRow.createCell(10);
-            portfolioValue.setCellValue(totalPendingPeriod.doubleValue());
-            portfolioValue.setCellStyle(currencyStyle);
-
-            // Fila Total Cobrado
-            Row collectedRow = sheet.createRow(rowNum++);
-            Cell collectedLabel = collectedRow.createCell(9);
-            collectedLabel.setCellValue("TOTAL COBRADO:");
-            collectedLabel.setCellStyle(headerStyle);
-
-            Cell collectedValue = collectedRow.createCell(10);
-            collectedValue.setCellValue(totalPaidPeriod.doubleValue());
-            collectedValue.setCellStyle(currencyStyle);
-
             // ========================================
-            // SECCIÓN: TRANSFERENCIAS RECIBIDAS
-            // Muestra los montos que otros vendedores transfirieron a esta vendedora
+            // PRE-CÁLCULO DE TRANSFERENCIAS
             // ========================================
+            BigDecimal totalTransferred = BigDecimal.ZERO;
+            List<PaymentTransfer> periodTransfers = java.util.Collections.emptyList();
+            
             User destVendedor = userRepository.findAll().stream()
                     .filter(u -> u.getUsername().equals(vendor.vendedorName())
                             || (org.example.sistema_gestion_vitalexa.util.UserUnificationUtil
@@ -1065,100 +1027,138 @@ public class ReportExportServiceImpl implements ReportExportService {
                 // Filtrar por período de fechas (por fecha de creación)
                 java.time.LocalDateTime periodStart = vendor.startDate().atStartOfDay();
                 java.time.LocalDateTime periodEnd = vendor.endDate().plusDays(1).atStartOfDay();
-                List<PaymentTransfer> periodTransfers = transfers.stream()
+                periodTransfers = transfers.stream()
                         .filter(t -> !t.getIsRevoked()
                                 && t.getCreatedAt() != null
                                 && !t.getCreatedAt().isBefore(periodStart)
                                 && t.getCreatedAt().isBefore(periodEnd))
                         .toList();
+                
+                for (PaymentTransfer t : periodTransfers) {
+                    totalTransferred = totalTransferred.add(t.getAmount());
+                }
+            }
 
-                if (!periodTransfers.isEmpty()) {
-                    rowNum++;
-                    // Encabezado de sección
-                    Row transferHeaderRow = sheet.createRow(rowNum++);
-                    Cell transferSectionTitle = transferHeaderRow.createCell(0);
-                    transferSectionTitle.setCellValue(
-                            "TRANSFERENCIAS RECIBIDAS (Pagos de otros vendedores asignados a esta vendedora)");
-                    transferSectionTitle.setCellStyle(headerStyle);
-                    sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(
-                            transferHeaderRow.getRowNum(), transferHeaderRow.getRowNum(), 0, 10));
+            // ========================================
+            // IMPRESIÓN DE TOTALES GLOBALES (Alineados a la derecha)
+            // ========================================
+            rowNum++;
+            Row totalBrutoRow = sheet.createRow(rowNum++);
+            Cell totalBrutoLabelCell = totalBrutoRow.createCell(9); // Shifted
+            totalBrutoLabelCell.setCellValue("TOTAL BRUTO VENDIDO:");
+            totalBrutoLabelCell.setCellStyle(headerStyle);
+            Cell totalBrutoValueCell = totalBrutoRow.createCell(10); // Shifted
+            totalBrutoValueCell.setCellValue(totalBrutoPeriod.doubleValue());
+            totalBrutoValueCell.setCellStyle(currencyStyle);
 
-                    // Headers de la tabla de transferencias
-                    String[] tHeaders = { "Fecha Transferencia", "Vendedora Origen",
-                            "Orden / Factura", "Monto Transferido", "Mes Destino", "Año", "Motivo", "Registrado por" };
-                    Row tHeaderRow = sheet.createRow(rowNum++);
-                    for (int i = 0; i < tHeaders.length; i++) {
-                        Cell hc = tHeaderRow.createCell(i);
-                        hc.setCellValue(tHeaders[i]);
-                        hc.setCellStyle(headerStyle);
+            Row totalNetoRow = sheet.createRow(rowNum++);
+            Cell totalNetoLabelCell = totalNetoRow.createCell(9); // Shifted
+            totalNetoLabelCell.setCellValue("TOTAL NETO VENDIDO:");
+            totalNetoLabelCell.setCellStyle(headerStyle);
+            Cell totalNetoValueCell = totalNetoRow.createCell(10); // Shifted
+            totalNetoValueCell.setCellValue(totalNetoPeriod.doubleValue());
+            totalNetoValueCell.setCellStyle(currencyStyle);
+            
+            Row tTotalRow = sheet.createRow(rowNum++);
+            Cell tTotalLabel = tTotalRow.createCell(9);
+            tTotalLabel.setCellValue("TRANSFERENCIAS RECIBIDAS:");
+            tTotalLabel.setCellStyle(headerStyle);
+            Cell tTotalValue = tTotalRow.createCell(10);
+            tTotalValue.setCellValue(totalTransferred.doubleValue());
+            tTotalValue.setCellStyle(currencyStyle);
+
+            Row tGrandTotalRow = sheet.createRow(rowNum++);
+            Cell tGrandLabel = tGrandTotalRow.createCell(9);
+            tGrandLabel.setCellValue("TOTAL BASE NÓMINA (Bruto + Transf):");
+            tGrandLabel.setCellStyle(headerStyle);
+            Cell tGrandValue = tGrandTotalRow.createCell(10);
+            tGrandValue.setCellValue(totalBrutoPeriod.add(totalTransferred).doubleValue());
+            tGrandValue.setCellStyle(currencyStyle);
+
+            Row portfolioRow = sheet.createRow(rowNum++);
+            Cell portfolioLabel = portfolioRow.createCell(9);
+            portfolioLabel.setCellValue("TOTAL CARTERA:");
+            portfolioLabel.setCellStyle(headerStyle);
+            Cell portfolioValue = portfolioRow.createCell(10);
+            portfolioValue.setCellValue(totalPendingPeriod.doubleValue());
+            portfolioValue.setCellStyle(currencyStyle);
+
+            Row collectedRow = sheet.createRow(rowNum++);
+            Cell collectedLabel = collectedRow.createCell(9);
+            collectedLabel.setCellValue("TOTAL COBRADO:");
+            collectedLabel.setCellStyle(headerStyle);
+            Cell collectedValue = collectedRow.createCell(10);
+            collectedValue.setCellValue(totalPaidPeriod.doubleValue());
+            collectedValue.setCellStyle(currencyStyle);
+
+            // ========================================
+            // SECCIÓN: TABLA DETALLE DE TRANSFERENCIAS RECIBIDAS
+            // ========================================
+            if (destVendedor != null && !periodTransfers.isEmpty()) {
+                rowNum++;
+                // Encabezado de sección
+                Row transferHeaderRow = sheet.createRow(rowNum++);
+                Cell transferSectionTitle = transferHeaderRow.createCell(0);
+                transferSectionTitle.setCellValue(
+                        "DETALLE DE TRANSFERENCIAS RECIBIDAS (Pagos de otros vendedores asignados a esta vendedora)");
+                transferSectionTitle.setCellStyle(headerStyle);
+                sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(
+                        transferHeaderRow.getRowNum(), transferHeaderRow.getRowNum(), 0, 10));
+
+                // Headers de la tabla de transferencias
+                String[] tHeaders = { "Fecha Transferencia", "Vendedora Origen",
+                        "Orden / Factura", "Monto Transferido", "Mes Destino", "Año", "Motivo", "Registrado por" };
+                Row tHeaderRow = sheet.createRow(rowNum++);
+                for (int i = 0; i < tHeaders.length; i++) {
+                    Cell hc = tHeaderRow.createCell(i);
+                    hc.setCellValue(tHeaders[i]);
+                    hc.setCellStyle(headerStyle);
+                }
+
+                String[] MONTHS_ES = { "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre" };
+
+                for (PaymentTransfer t : periodTransfers) {
+                    Row tRow = sheet.createRow(rowNum++);
+
+                    // Fecha de la transferencia
+                    tRow.createCell(0).setCellValue(
+                            t.getCreatedAt()
+                                    .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
+
+                    // Vendedora origen
+                    tRow.createCell(1).setCellValue(
+                            t.getOriginVendedor() != null ? t.getOriginVendedor().getUsername() : "—");
+
+                    // Orden / Factura (del pago original)
+                    String facturaRef = "—";
+                    if (t.getPayment() != null && t.getPayment().getOrder() != null) {
+                        Long factNum = t.getPayment().getOrder().getInvoiceNumber();
+                        facturaRef = factNum != null ? "Factura #" + factNum
+                                : "Orden #" + t.getPayment().getOrder().getId().toString().substring(0, 8);
                     }
+                    tRow.createCell(2).setCellValue(facturaRef);
 
-                    BigDecimal totalTransferred = BigDecimal.ZERO;
-                    String[] MONTHS_ES = { "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-                            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre" };
+                    // Monto transferido
+                    Cell amountCell = tRow.createCell(3);
+                    amountCell.setCellValue(t.getAmount().doubleValue());
+                    amountCell.setCellStyle(currencyStyle);
 
-                    for (PaymentTransfer t : periodTransfers) {
-                        Row tRow = sheet.createRow(rowNum++);
+                    // Mes destino
+                    int tMonth = t.getTargetMonth() != null ? t.getTargetMonth() : 0;
+                    tRow.createCell(4).setCellValue(
+                            tMonth >= 1 && tMonth <= 12 ? MONTHS_ES[tMonth] : "—");
 
-                        // Fecha de la transferencia
-                        tRow.createCell(0).setCellValue(
-                                t.getCreatedAt()
-                                        .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
+                    // Año
+                    tRow.createCell(5).setCellValue(
+                            t.getTargetYear() != null ? t.getTargetYear() : 0);
 
-                        // Vendedora origen
-                        tRow.createCell(1).setCellValue(
-                                t.getOriginVendedor() != null ? t.getOriginVendedor().getUsername() : "—");
+                    // Motivo
+                    tRow.createCell(6).setCellValue(t.getReason() != null ? t.getReason() : "—");
 
-                        // Orden / Factura (del pago original)
-                        String facturaRef = "—";
-                        if (t.getPayment() != null && t.getPayment().getOrder() != null) {
-                            Long factNum = t.getPayment().getOrder().getInvoiceNumber();
-                            facturaRef = factNum != null ? "Factura #" + factNum
-                                    : "Orden #" + t.getPayment().getOrder().getId().toString().substring(0, 8);
-                        }
-                        tRow.createCell(2).setCellValue(facturaRef);
-
-                        // Monto transferido
-                        Cell amountCell = tRow.createCell(3);
-                        amountCell.setCellValue(t.getAmount().doubleValue());
-                        amountCell.setCellStyle(currencyStyle);
-                        totalTransferred = totalTransferred.add(t.getAmount());
-
-                        // Mes destino
-                        int tMonth = t.getTargetMonth() != null ? t.getTargetMonth() : 0;
-                        tRow.createCell(4).setCellValue(
-                                tMonth >= 1 && tMonth <= 12 ? MONTHS_ES[tMonth] : "—");
-
-                        // Año
-                        tRow.createCell(5).setCellValue(
-                                t.getTargetYear() != null ? t.getTargetYear() : 0);
-
-                        // Motivo
-                        tRow.createCell(6).setCellValue(t.getReason() != null ? t.getReason() : "—");
-
-                        // Registrado por
-                        tRow.createCell(7).setCellValue(
-                                t.getCreatedBy() != null ? t.getCreatedBy().getUsername() : "—");
-                    }
-
-                    // Total de transferencias recibidas
-                    rowNum++;
-                    Row tTotalRow = sheet.createRow(rowNum++);
-                    Cell tTotalLabel = tTotalRow.createCell(2);
-                    tTotalLabel.setCellValue("TOTAL TRANSFERENCIAS RECIBIDAS:");
-                    tTotalLabel.setCellStyle(headerStyle);
-                    Cell tTotalValue = tTotalRow.createCell(3);
-                    tTotalValue.setCellValue(totalTransferred.doubleValue());
-                    tTotalValue.setCellStyle(currencyStyle);
-
-                    // Total efectivo (ventas propias + transferencias)
-                    Row tGrandTotalRow = sheet.createRow(rowNum++);
-                    Cell tGrandLabel = tGrandTotalRow.createCell(2);
-                    tGrandLabel.setCellValue("TOTAL EFECTIVO (Ventas + Transferencias):");
-                    tGrandLabel.setCellStyle(headerStyle);
-                    Cell tGrandValue = tGrandTotalRow.createCell(3);
-                    tGrandValue.setCellValue(vendor.totalPeriod().add(totalTransferred).doubleValue());
-                    tGrandValue.setCellStyle(currencyStyle);
+                    // Registrado por
+                    tRow.createCell(7).setCellValue(
+                            t.getCreatedBy() != null ? t.getCreatedBy().getUsername() : "—");
                 }
             }
 
