@@ -67,7 +67,7 @@ public interface PaymentTransferRepository extends JpaRepository<PaymentTransfer
 
     /**
      * Suma de transferencias ACTIVAS destinadas a un vendedor,
-     * excluyendo aquellas cuyo pago original proviene de ciertos clientes.
+     * excluyendo aquellas cuyo vendedor ORIGEN está en la lista.
      */
     @Query("""
             SELECT COALESCE(SUM(t.amount), 0)
@@ -76,17 +76,17 @@ public interface PaymentTransferRepository extends JpaRepository<PaymentTransfer
               AND t.targetMonth = :month
               AND t.targetYear  = :year
               AND t.isRevoked   = false
-              AND (t.payment.order.cliente IS NULL OR t.payment.order.cliente.nombre NOT IN :excludedClientNames)
+              AND (t.originVendedor IS NULL OR LOWER(TRIM(t.originVendedor.username)) NOT IN :excludedVendorUsernames)
             """)
-    BigDecimal sumActiveTransfersToVendedorInMonthExcludingOriginClients(
+    BigDecimal sumActiveTransfersToVendedorInMonthExcludingOriginVendors(
             @Param("vendedorId") UUID vendedorId,
             @Param("month") int month,
             @Param("year") int year,
-            @Param("excludedClientNames") List<String> excludedClientNames);
+            @Param("excludedVendorUsernames") List<String> excludedVendorUsernames);
 
     /**
      * Suma de transferencias ACTIVAS para usuarios compartidos,
-     * excluyendo aquellas cuyo pago original proviene de ciertos clientes.
+     * excluyendo aquellas cuyo vendedor ORIGEN está en la lista.
      */
     @Query("""
             SELECT COALESCE(SUM(t.amount), 0)
@@ -95,11 +95,11 @@ public interface PaymentTransferRepository extends JpaRepository<PaymentTransfer
               AND t.targetMonth = :month
               AND t.targetYear  = :year
               AND t.isRevoked   = false
-              AND (t.payment.order.cliente IS NULL OR t.payment.order.cliente.nombre NOT IN :excludedClientNames)
+              AND (t.originVendedor IS NULL OR LOWER(TRIM(t.originVendedor.username)) NOT IN :excludedVendorUsernames)
             """)
-    BigDecimal sumActiveTransfersToVendedorIdsInMonthExcludingOriginClients(
+    BigDecimal sumActiveTransfersToVendedorIdsInMonthExcludingOriginVendors(
             @Param("vendedorIds") List<UUID> vendedorIds,
             @Param("month") int month,
             @Param("year") int year,
-            @Param("excludedClientNames") List<String> excludedClientNames);
+            @Param("excludedVendorUsernames") List<String> excludedVendorUsernames);
 }

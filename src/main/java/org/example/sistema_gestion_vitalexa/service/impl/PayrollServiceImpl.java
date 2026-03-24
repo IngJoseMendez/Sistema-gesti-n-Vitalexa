@@ -42,8 +42,8 @@ public class PayrollServiceImpl implements PayrollService {
         private static final List<String> SPECIAL_COMMISSION_VENDORS = List.of(
                         "NinaTorres", "MercyMaestre", "ArnoldVentas", "SerioVentas");
 
-        private static final List<String> EXCLUDED_BODEGA_CLIENTS = List.of(
-                        "Bodega Maicao", "Bodega Valledupar");
+        private static final List<String> EXCLUDED_BODEGA_VENDORS = List.of(
+                        "bodegamaicao", "bodegavalledupar");
 
         // ─────────────────────────────────────────────────────────────────────────
         // CONFIGURACIÓN
@@ -216,8 +216,8 @@ public class PayrollServiceImpl implements PayrollService {
                         // Ventas totales de toda la empresa ese mes (solo COMPLETADAS)
                         LocalDateTime monthStart = LocalDateTime.of(year, month, 1, 0, 0, 0);
                         LocalDateTime monthEnd = monthStart.plusMonths(1);
-                        totalCompanySales = ordenRepository.getTotalGrossRevenueBetweenExcludingClients(
-                                        monthStart, monthEnd, EXCLUDED_BODEGA_CLIENTS);
+                        totalCompanySales = ordenRepository.getTotalGrossRevenueBetweenExcludingVendors(
+                                        monthStart, monthEnd, EXCLUDED_BODEGA_VENDORS);
 
                         // La comisión general aplica si las ventas supera el umbral efectivo
                         generalGoalMet = effectiveThreshold.compareTo(BigDecimal.ZERO) > 0
@@ -430,11 +430,11 @@ public class PayrollServiceImpl implements PayrollService {
                                         .collect(Collectors.toList());
 
                         if (isSpecial) {
-                                sold = ordenRepository.sumTotalSoldByVendedorIdsBetweenExcludingClients(
-                                                sharedIds, start, end, EXCLUDED_BODEGA_CLIENTS);
+                                sold = ordenRepository.sumTotalSoldByVendedorIdsBetweenExcludingVendors(
+                                                sharedIds, start, end, EXCLUDED_BODEGA_VENDORS);
                                 incomingTransfers = paymentTransferRepository
-                                                .sumActiveTransfersToVendedorIdsInMonthExcludingOriginClients(
-                                                                sharedIds, month, year, EXCLUDED_BODEGA_CLIENTS);
+                                                .sumActiveTransfersToVendedorIdsInMonthExcludingOriginVendors(
+                                                                sharedIds, month, year, EXCLUDED_BODEGA_VENDORS);
                         } else {
                                 sold = ordenRepository.sumTotalSoldByVendedorIdsBetween(sharedIds, start, end);
                                 incomingTransfers = paymentTransferRepository
@@ -442,11 +442,11 @@ public class PayrollServiceImpl implements PayrollService {
                         }
                 } else {
                         if (isSpecial) {
-                                sold = ordenRepository.sumTotalSoldByVendedorBetweenExcludingClients(
-                                                vendedor.getId(), start, end, EXCLUDED_BODEGA_CLIENTS);
+                                sold = ordenRepository.sumTotalSoldByVendedorBetweenExcludingVendors(
+                                                vendedor.getId(), start, end, EXCLUDED_BODEGA_VENDORS);
                                 incomingTransfers = paymentTransferRepository
-                                                .sumActiveTransfersToVendedorInMonthExcludingOriginClients(
-                                                                vendedor.getId(), month, year, EXCLUDED_BODEGA_CLIENTS);
+                                                .sumActiveTransfersToVendedorInMonthExcludingOriginVendors(
+                                                                vendedor.getId(), month, year, EXCLUDED_BODEGA_VENDORS);
                         } else {
                                 sold = ordenRepository.sumTotalSoldByVendedorBetween(vendedor.getId(), start, end);
                                 incomingTransfers = paymentTransferRepository
@@ -465,7 +465,7 @@ public class PayrollServiceImpl implements PayrollService {
 
         /**
          * Total Base de Nómina = ventas BRUTAS + transferencias.
-         * Para vendedores especiales, excluye clientes bodegas tanto en ventas
+         * Para vendedores especiales, excluye vendedores bodegas tanto en ventas
          * como en transferencias para evitar doble conteo.
          */
         private BigDecimal calculateTotalBaseNomina(User vendedor, int month, int year) {
@@ -485,11 +485,11 @@ public class PayrollServiceImpl implements PayrollService {
                                         .collect(Collectors.toList());
 
                         if (isSpecial) {
-                                sold = ordenRepository.sumTotalSoldByVendedorIdsBetweenExcludingClients(
-                                                sharedIds, start, end, EXCLUDED_BODEGA_CLIENTS);
+                                sold = ordenRepository.sumTotalSoldByVendedorIdsBetweenExcludingVendors(
+                                                sharedIds, start, end, EXCLUDED_BODEGA_VENDORS);
                                 incomingTransfers = paymentTransferRepository
-                                                .sumActiveTransfersToVendedorIdsInMonthExcludingOriginClients(
-                                                                sharedIds, month, year, EXCLUDED_BODEGA_CLIENTS);
+                                                .sumActiveTransfersToVendedorIdsInMonthExcludingOriginVendors(
+                                                                sharedIds, month, year, EXCLUDED_BODEGA_VENDORS);
                         } else {
                                 sold = ordenRepository.sumTotalSoldByVendedorIdsBetween(sharedIds, start, end);
                                 incomingTransfers = paymentTransferRepository
@@ -497,11 +497,11 @@ public class PayrollServiceImpl implements PayrollService {
                         }
                 } else {
                         if (isSpecial) {
-                                sold = ordenRepository.sumTotalSoldByVendedorBetweenExcludingClients(
-                                                vendedor.getId(), start, end, EXCLUDED_BODEGA_CLIENTS);
+                                sold = ordenRepository.sumTotalSoldByVendedorBetweenExcludingVendors(
+                                                vendedor.getId(), start, end, EXCLUDED_BODEGA_VENDORS);
                                 incomingTransfers = paymentTransferRepository
-                                                .sumActiveTransfersToVendedorInMonthExcludingOriginClients(
-                                                                vendedor.getId(), month, year, EXCLUDED_BODEGA_CLIENTS);
+                                                .sumActiveTransfersToVendedorInMonthExcludingOriginVendors(
+                                                                vendedor.getId(), month, year, EXCLUDED_BODEGA_VENDORS);
                         } else {
                                 sold = ordenRepository.sumTotalSoldByVendedorBetween(vendedor.getId(), start, end);
                                 incomingTransfers = paymentTransferRepository
@@ -534,11 +534,11 @@ public class PayrollServiceImpl implements PayrollService {
                                         .collect(Collectors.toList());
 
                         if (isSpecial) {
-                                sold = ordenRepository.sumNetTotalSoldByVendedorIdsBetweenExcludingClients(
-                                                sharedIds, start, end, EXCLUDED_BODEGA_CLIENTS);
+                                sold = ordenRepository.sumNetTotalSoldByVendedorIdsBetweenExcludingVendors(
+                                                sharedIds, start, end, EXCLUDED_BODEGA_VENDORS);
                                 incomingTransfers = paymentTransferRepository
-                                                .sumActiveTransfersToVendedorIdsInMonthExcludingOriginClients(
-                                                                sharedIds, month, year, EXCLUDED_BODEGA_CLIENTS);
+                                                .sumActiveTransfersToVendedorIdsInMonthExcludingOriginVendors(
+                                                                sharedIds, month, year, EXCLUDED_BODEGA_VENDORS);
                         } else {
                                 sold = ordenRepository.sumNetTotalSoldByVendedorIdsBetween(sharedIds, start, end);
                                 incomingTransfers = paymentTransferRepository
@@ -546,11 +546,11 @@ public class PayrollServiceImpl implements PayrollService {
                         }
                 } else {
                         if (isSpecial) {
-                                sold = ordenRepository.sumNetTotalSoldByVendedorBetweenExcludingClients(
-                                                vendedor.getId(), start, end, EXCLUDED_BODEGA_CLIENTS);
+                                sold = ordenRepository.sumNetTotalSoldByVendedorBetweenExcludingVendors(
+                                                vendedor.getId(), start, end, EXCLUDED_BODEGA_VENDORS);
                                 incomingTransfers = paymentTransferRepository
-                                                .sumActiveTransfersToVendedorInMonthExcludingOriginClients(
-                                                                vendedor.getId(), month, year, EXCLUDED_BODEGA_CLIENTS);
+                                                .sumActiveTransfersToVendedorInMonthExcludingOriginVendors(
+                                                                vendedor.getId(), month, year, EXCLUDED_BODEGA_VENDORS);
                         } else {
                                 sold = ordenRepository.sumNetTotalSoldByVendedorBetween(vendedor.getId(), start, end);
                                 incomingTransfers = paymentTransferRepository

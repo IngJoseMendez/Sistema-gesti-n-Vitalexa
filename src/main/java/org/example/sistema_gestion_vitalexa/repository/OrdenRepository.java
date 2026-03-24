@@ -216,17 +216,17 @@ public interface OrdenRepository extends JpaRepository<Order, UUID>, JpaSpecific
                         SELECT COALESCE(SUM(o.total), 0)
                         FROM Order o
                         WHERE o.estado = 'COMPLETADO'
-                        AND (o.cliente IS NULL OR o.cliente.nombre NOT IN :excludedClientNames)
+                        AND (o.vendedor IS NULL OR LOWER(TRIM(o.vendedor.username)) NOT IN :excludedVendorUsernames)
                         AND (
                             (o.completedAt IS NOT NULL AND o.completedAt >= :startDate AND o.completedAt < :endDate)
                             OR
                             (o.completedAt IS NULL AND o.fecha >= :startDate AND o.fecha < :endDate)
                         )
                         """)
-        BigDecimal getTotalGrossRevenueBetweenExcludingClients(
+        BigDecimal getTotalGrossRevenueBetweenExcludingVendors(
                         @Param("startDate") LocalDateTime startDate,
                         @Param("endDate") LocalDateTime endDate,
-                        @Param("excludedClientNames") List<String> excludedClientNames);
+                        @Param("excludedVendorUsernames") List<String> excludedVendorUsernames);
 
         /**
          * Buscar orden por ID con EAGER loading de items, productos y promociones
@@ -332,49 +332,49 @@ public interface OrdenRepository extends JpaRepository<Order, UUID>, JpaSpecific
         List<Order> findByClienteInAndEstado(Collection<Client> clients, OrdenStatus estado);
 
     /**
-     * Suma total sold (gross) excluding specific clients by name.
+     * Suma total sold (gross) excluding specific vendors by username.
      */
     @Query("""
             SELECT COALESCE(SUM(o.total), 0)
             FROM Order o
             WHERE o.vendedor.id = :vendedorId
             AND o.estado = 'COMPLETADO'
-            AND (o.cliente IS NULL OR o.cliente.nombre NOT IN :excludedClientNames)
+            AND (o.vendedor IS NULL OR LOWER(TRIM(o.vendedor.username)) NOT IN :excludedVendorUsernames)
             AND (
                 (o.completedAt IS NOT NULL AND o.completedAt >= :start AND o.completedAt < :end)
                 OR
                 (o.completedAt IS NULL AND o.fecha >= :start AND o.fecha < :end)
             )
             """)
-    BigDecimal sumTotalSoldByVendedorBetweenExcludingClients(
+    BigDecimal sumTotalSoldByVendedorBetweenExcludingVendors(
             @Param("vendedorId") UUID vendedorId,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end,
-            @Param("excludedClientNames") List<String> excludedClientNames);
+            @Param("excludedVendorUsernames") List<String> excludedVendorUsernames);
 
     /**
-     * Suma total sold (gross) for shared vendors, excluding specific clients.
+     * Suma total sold (gross) for shared vendors, excluding specific vendors by username.
      */
     @Query("""
             SELECT COALESCE(SUM(o.total), 0)
             FROM Order o
             WHERE o.vendedor.id IN :vendedorIds
             AND o.estado = 'COMPLETADO'
-            AND (o.cliente IS NULL OR o.cliente.nombre NOT IN :excludedClientNames)
+            AND (o.vendedor IS NULL OR LOWER(TRIM(o.vendedor.username)) NOT IN :excludedVendorUsernames)
             AND (
                 (o.completedAt IS NOT NULL AND o.completedAt >= :start AND o.completedAt < :end)
                 OR
                 (o.completedAt IS NULL AND o.fecha >= :start AND o.fecha < :end)
             )
             """)
-    BigDecimal sumTotalSoldByVendedorIdsBetweenExcludingClients(
+    BigDecimal sumTotalSoldByVendedorIdsBetweenExcludingVendors(
             @Param("vendedorIds") List<UUID> vendedorIds,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end,
-            @Param("excludedClientNames") List<String> excludedClientNames);
+            @Param("excludedVendorUsernames") List<String> excludedVendorUsernames);
 
     /**
-     * Suma net total sold (discounted) excluding specific clients.
+     * Suma net total sold (discounted) excluding specific vendors by username.
      */
     @Query("""
             SELECT COALESCE(SUM(
@@ -383,21 +383,21 @@ public interface OrdenRepository extends JpaRepository<Order, UUID>, JpaSpecific
             FROM Order o
             WHERE o.vendedor.id = :vendedorId
             AND o.estado = 'COMPLETADO'
-            AND (o.cliente IS NULL OR o.cliente.nombre NOT IN :excludedClientNames)
+            AND (o.vendedor IS NULL OR LOWER(TRIM(o.vendedor.username)) NOT IN :excludedVendorUsernames)
             AND (
                 (o.completedAt IS NOT NULL AND o.completedAt >= :start AND o.completedAt < :end)
                 OR
                 (o.completedAt IS NULL AND o.fecha >= :start AND o.fecha < :end)
             )
             """)
-    BigDecimal sumNetTotalSoldByVendedorBetweenExcludingClients(
+    BigDecimal sumNetTotalSoldByVendedorBetweenExcludingVendors(
             @Param("vendedorId") UUID vendedorId,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end,
-            @Param("excludedClientNames") List<String> excludedClientNames);
+            @Param("excludedVendorUsernames") List<String> excludedVendorUsernames);
 
     /**
-     * Suma net total sold (discounted) for shared vendors, excluding specific clients.
+     * Suma net total sold (discounted) for shared vendors, excluding specific vendors by username.
      */
     @Query("""
             SELECT COALESCE(SUM(
@@ -406,16 +406,16 @@ public interface OrdenRepository extends JpaRepository<Order, UUID>, JpaSpecific
             FROM Order o
             WHERE o.vendedor.id IN :vendedorIds
             AND o.estado = 'COMPLETADO'
-            AND (o.cliente IS NULL OR o.cliente.nombre NOT IN :excludedClientNames)
+            AND (o.vendedor IS NULL OR LOWER(TRIM(o.vendedor.username)) NOT IN :excludedVendorUsernames)
             AND (
                 (o.completedAt IS NOT NULL AND o.completedAt >= :start AND o.completedAt < :end)
                 OR
                 (o.completedAt IS NULL AND o.fecha >= :start AND o.fecha < :end)
             )
             """)
-    BigDecimal sumNetTotalSoldByVendedorIdsBetweenExcludingClients(
+    BigDecimal sumNetTotalSoldByVendedorIdsBetweenExcludingVendors(
             @Param("vendedorIds") List<UUID> vendedorIds,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end,
-            @Param("excludedClientNames") List<String> excludedClientNames);
+            @Param("excludedVendorUsernames") List<String> excludedVendorUsernames);
 }
