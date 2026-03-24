@@ -303,52 +303,60 @@ public class ReportServiceImpl implements ReportService {
                 List<Order> orders = filterExcludedVendors(
                                 ordenRepository.findCompletedByCompletedAtBetween(start, end));
 
+                int startMonth = startDate.getMonthValue();
+                int startYear = startDate.getYear();
+                int endMonth = endDate.getMonthValue();
+                int endYear = endDate.getYear();
+
                 // 2. Agrupar por vendedor (unificando usuarios compartidos)
                 Map<String, List<Order>> ordersByVendor = orders.stream()
-                                .collect(Collectors.groupingBy(o -> {
-                                        String username = o.getVendedor().getUsername();
-                                        // If this is a shared user, use a unified key
-                                        if (UserUnificationUtil.isSharedUser(username)) {
-                                                // Use the first shared username as the canonical key
-                                                return UserUnificationUtil.getSharedUsernames(username).get(0);
-                                        }
-                                        return o.getVendedor().getId().toString();
-                                }));
+                                .collect(Collectors.groupingBy(o -> getVendorGroupKey(o.getVendedor())));
 
-                List<VendorPerformanceDTO> topVendors = ordersByVendor.entrySet().stream()
+                Map<String, Set<UUID>> vendorIdsByGroup = userRepository.findAll().stream()
+                                .filter(u -> u.getUsername() != null)
+                                .filter(u -> !EXCLUDED_BODEGA_VENDORS.contains(
+                                                u.getUsername().trim().toLowerCase()))
+                                .collect(Collectors.groupingBy(
+                                                this::getVendorGroupKey,
+                                                Collectors.mapping(User::getId, Collectors.toSet())));
+
+                List<VendorPerformanceDTO> topVendors = vendorIdsByGroup.entrySet().stream()
                                 .map(entry -> {
-                                        List<Order> vendorOrders = entry.getValue();
-                                        // Get the actual username from the first order
-                                        String actualUsername = vendorOrders.get(0).getVendedor().getUsername();
-
-                                        // If this is a shared user, use the canonical name (NinaTorres)
-                                        String vendorName;
-                                        if (UserUnificationUtil.isSharedUser(actualUsername)) {
-                                                vendorName = UserUnificationUtil.getSharedUsernames(actualUsername)
-                                                                .get(0);
-                                        } else {
-                                                vendorName = actualUsername;
-                                        }
+                                        String groupKey = entry.getKey();
+                                        Set<UUID> vendorIds = entry.getValue();
+                                        List<Order> vendorOrders = ordersByVendor.getOrDefault(groupKey, List.of());
 
                                         int totalOrders = vendorOrders.size();
-                                        BigDecimal totalRevenue = vendorOrders.stream()
+                                        BigDecimal orderRevenue = vendorOrders.stream()
                                                         .map(Order::getTotal)
                                                         .reduce(BigDecimal.ZERO, BigDecimal::add);
-                                        BigDecimal avgOrderValue = totalRevenue.divide(
-                                                        BigDecimal.valueOf(totalOrders), 2, RoundingMode.HALF_UP);
+
+                                        BigDecimal transferRevenue = vendorIds.stream()
+                                                        .map(id -> paymentTransferRepository
+                                                                        .sumActiveTransfersToVendedorInRange(
+                                                                                        id, startMonth, startYear,
+                                                                                        endMonth, endYear))
+                                                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                                        BigDecimal totalRevenue = orderRevenue.add(transferRevenue);
+                                        BigDecimal avgOrderValue = totalOrders > 0
+                                                        ? orderRevenue.divide(BigDecimal.valueOf(totalOrders), 2,
+                                                                        RoundingMode.HALF_UP)
+                                                        : BigDecimal.ZERO;
+
+                                        String vendorName = resolveVendorName(groupKey, vendorOrders, vendorIds);
 
                                         return new VendorPerformanceDTO(
-                                                        entry.getKey(),
+                                                        groupKey,
                                                         vendorName,
                                                         totalOrders,
                                                         totalRevenue,
                                                         avgOrderValue);
                                 })
                                 .sorted(Comparator.comparing(VendorPerformanceDTO::totalRevenue).reversed())
-                                .limit(10)
                                 .toList();
 
-                int totalVendors = (int) userRepository.count();
+                int totalVendors = vendorIdsByGroup.size();
 
                 return new VendorReportDTO(totalVendors, topVendors);
         }
@@ -505,6 +513,34 @@ public class ReportServiceImpl implements ReportService {
                                         return !EXCLUDED_BODEGA_VENDORS.contains(normalized);
                                 })
                                 .toList();
+        }
+
+        private String getVendorGroupKey(User vendedor) {
+                if (vendedor == null || vendedor.getUsername() == null) {
+                        return "unknown";
+                }
+                String username = vendedor.getUsername();
+                if (UserUnificationUtil.isSharedUser(username)) {
+                        return UserUnificationUtil.getSharedUsernames(username).get(0);
+                }
+                return vendedor.getId().toString();
+        }
+
+        private String resolveVendorName(String groupKey, List<Order> vendorOrders, Set<UUID> vendorIds) {
+                if (!vendorOrders.isEmpty()) {
+                        String username = vendorOrders.get(0).getVendedor().getUsername();
+                        if (UserUnificationUtil.isSharedUser(username)) {
+                                return UserUnificationUtil.getSharedUsernames(username).get(0);
+                        }
+                        return username;
+                }
+
+                return userRepository.findAll().stream()
+                                .filter(u -> vendorIds.contains(u.getId()))
+                                .map(User::getUsername)
+                                .filter(Objects::nonNull)
+                                .findFirst()
+                                .orElse(groupKey);
         }
 
         private List<DailySalesDTO> calculateDailySales(List<Order> orders) {

@@ -73,6 +73,26 @@ public interface PaymentTransferRepository extends JpaRepository<PaymentTransfer
             @Param("year") int year,
             @Param("originVendorUsernames") List<String> originVendorUsernames);
 
+    /**
+     * Suma de transferencias ACTIVAS a un vendedor en un rango de meses/años.
+     */
+    @Query("""
+            SELECT COALESCE(SUM(t.amount), 0)
+            FROM PaymentTransfer t
+            WHERE t.destVendedor.id = :vendedorId
+              AND t.isRevoked = false
+              AND (
+                    (t.targetYear > :startYear OR (t.targetYear = :startYear AND t.targetMonth >= :startMonth))
+                AND (t.targetYear < :endYear OR (t.targetYear = :endYear AND t.targetMonth <= :endMonth))
+              )
+            """)
+    BigDecimal sumActiveTransfersToVendedorInRange(
+            @Param("vendedorId") UUID vendedorId,
+            @Param("startMonth") int startMonth,
+            @Param("startYear") int startYear,
+            @Param("endMonth") int endMonth,
+            @Param("endYear") int endYear);
+
     /** Todas las transferencias de un pago (más recientes primero) */
     List<PaymentTransfer> findByPaymentIdOrderByCreatedAtDesc(UUID paymentId);
 
