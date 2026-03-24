@@ -197,7 +197,7 @@ public interface OrdenRepository extends JpaRepository<Order, UUID>, JpaSpecific
          * Usa completedAt + COALESCE(discountedTotal, total) — consistente con
          * reportes.
          */
-        @Query("""
+    @Query("""
                         SELECT COALESCE(SUM(
                             CASE WHEN o.discountedTotal IS NOT NULL THEN o.discountedTotal ELSE o.total END
                         ), 0)
@@ -211,6 +211,22 @@ public interface OrdenRepository extends JpaRepository<Order, UUID>, JpaSpecific
                         """)
         BigDecimal getTotalRevenueBetween(@Param("startDate") LocalDateTime startDate,
                         @Param("endDate") LocalDateTime endDate);
+
+        @Query("""
+                        SELECT COALESCE(SUM(o.total), 0)
+                        FROM Order o
+                        WHERE o.estado = 'COMPLETADO'
+                        AND (o.cliente IS NULL OR o.cliente.nombre NOT IN :excludedClientNames)
+                        AND (
+                            (o.completedAt IS NOT NULL AND o.completedAt >= :startDate AND o.completedAt < :endDate)
+                            OR
+                            (o.completedAt IS NULL AND o.fecha >= :startDate AND o.fecha < :endDate)
+                        )
+                        """)
+        BigDecimal getTotalGrossRevenueBetweenExcludingClients(
+                        @Param("startDate") LocalDateTime startDate,
+                        @Param("endDate") LocalDateTime endDate,
+                        @Param("excludedClientNames") List<String> excludedClientNames);
 
         /**
          * Buscar orden por ID con EAGER loading de items, productos y promociones

@@ -216,7 +216,8 @@ public class PayrollServiceImpl implements PayrollService {
                         // Ventas totales de toda la empresa ese mes (solo COMPLETADAS)
                         LocalDateTime monthStart = LocalDateTime.of(year, month, 1, 0, 0, 0);
                         LocalDateTime monthEnd = monthStart.plusMonths(1);
-                        totalCompanySales = ordenRepository.getTotalRevenueBetween(monthStart, monthEnd);
+                        totalCompanySales = ordenRepository.getTotalGrossRevenueBetweenExcludingClients(
+                                        monthStart, monthEnd, EXCLUDED_BODEGA_CLIENTS);
 
                         // La comisión general aplica si las ventas supera el umbral efectivo
                         generalGoalMet = effectiveThreshold.compareTo(BigDecimal.ZERO) > 0
