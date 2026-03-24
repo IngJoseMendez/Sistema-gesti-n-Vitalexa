@@ -1009,35 +1009,65 @@ public class ReportExportServiceImpl implements ReportExportService {
             // PRE-CÁLCULO DE TRANSFERENCIAS
             // ========================================
             BigDecimal totalTransferred = BigDecimal.ZERO;
-            List<PaymentTransfer> periodTransfers = java.util.Collections.emptyList();
+            List<PaymentTransfer> periodTransfers = new java.util.ArrayList<>();
             
-            User destVendedor = userRepository.findAll().stream()
-                    .filter(u -> u.getUsername().equals(vendor.vendedorName())
-                            || (org.example.sistema_gestion_vitalexa.util.UserUnificationUtil
-                                    .isSharedUser(u.getUsername())
-                                    && org.example.sistema_gestion_vitalexa.util.UserUnificationUtil
-                                            .getSharedUsernames(u.getUsername())
-                                            .contains(vendor.vendedorName())))
-                    .findFirst().orElse(null);
-
-            if (destVendedor != null) {
-                List<PaymentTransfer> transfers = paymentTransferRepository
-                        .findByDestVendedorIdOrderByCreatedAtDesc(destVendedor.getId());
-
-                // Filtrar por período de fechas (por fecha de creación)
-                java.time.LocalDateTime periodStart = vendor.startDate().atStartOfDay();
-                java.time.LocalDateTime periodEnd = vendor.endDate().plusDays(1).atStartOfDay();
-                periodTransfers = transfers.stream()
-                        .filter(t -> !t.getIsRevoked()
-                                && t.getCreatedAt() != null
-                                && !t.getCreatedAt().isBefore(periodStart)
-                                && t.getCreatedAt().isBefore(periodEnd))
-                        .toList();
-                
-                for (PaymentTransfer t : periodTransfers) {
-                    totalTransferred = totalTransferred.add(t.getAmount());
+            // Si es un shared user, traer todas las cuentas asociadas para que las transferencias sumen juntas
+            List<User> userList = userRepository.findAll();
+            List<User> destVendedores = new java.util.ArrayList<>();
+            
+            if (org.example.sistema_gestion_vitalexa.util.UserUnificationUtil.isSharedUser(vendor.vendedorName())) {
+                List<String> sharedNames = org.example.sistema_gestion_vitalexa.util.UserUnificationUtil.getSharedUsernames(vendor.vendedorName());
+                for (User u : userList) {
+                    if (sharedNames.contains(u.getUsername())) {
+                        destVendedores.add(u);
+                    }
+                }
+            } else {
+                for (User u : userList) {
+                    if (u.getUsername().equals(vendor.vendedorName())) {
+                        destVendedores.add(u);
+                        break;
+                    }
                 }
             }
+
+            if (!destVendedores.isEmpty()) {
+                java.time.LocalDateTime periodStart = vendor.startDate().atStartOfDay();
+                java.time.LocalDateTime periodEnd = vendor.endDate().plusDays(1).atStartOfDay();
+                
+                for (User destU : destVendedores) {
+                    List<PaymentTransfer> transfers = paymentTransferRepository
+                            .findByDestVendedorIdOrderByCreatedAtDesc(destU.getId());
+                    
+                    for (PaymentTransfer t : transfers) {
+                        // Usar filter: que no esté revocada y la fecha de creación en el rango de ventas analizado
+                        // NOTA: Para asemejar con nómina, alternativamente se podría buscar por t.getTargetMonth()
+                        // pero dado que el vendor.startDate() es flexible, usaremos el rango del reporte + targetMonth si es full month
+                        
+                        // Evaluamos compatibilidad: si la transferencia se designa dentro del "Mes Destino" 
+                        // que coincide ampliamente con el rango del reporte o su fecha de creación cae dentro.
+                        boolean isInsideDateRange = (t.getCreatedAt() != null && !t.getCreatedAt().isBefore(periodStart) && t.getCreatedAt().isBefore(periodEnd));
+                        
+                        // Validar si el targetMonth coincide con el mes de la startDate 
+                        boolean matchesTargetMonth = (t.getTargetMonth() != null && t.getTargetYear() != null 
+                                && t.getTargetMonth() == vendor.startDate().getMonthValue() 
+                                && t.getTargetYear() == vendor.startDate().getYear());
+                                
+                        if (!t.getIsRevoked() && (isInsideDateRange || matchesTargetMonth)) {
+                            // Prevenir duplicados si entra por matchesTargetMonth pero tmb está en otra query (aunq es un solo loop aca)
+                            if (!periodTransfers.contains(t)) {
+                                periodTransfers.add(t);
+                                totalTransferred = totalTransferred.add(t.getAmount());
+                            }
+                        }
+                    }
+                }
+            }
+            // Ordenar finalmente por createdAt descendente
+            periodTransfers.sort((a, b) -> {
+                if (a.getCreatedAt() == null || b.getCreatedAt() == null) return 0;
+                return b.getCreatedAt().compareTo(a.getCreatedAt());
+            });
 
             // ========================================
             // IMPRESIÓN DE TOTALES GLOBALES (Alineados a la derecha)
@@ -1094,7 +1124,7 @@ public class ReportExportServiceImpl implements ReportExportService {
             // ========================================
             // SECCIÓN: TABLA DETALLE DE TRANSFERENCIAS RECIBIDAS
             // ========================================
-            if (destVendedor != null && !periodTransfers.isEmpty()) {
+            if (!destVendedores.isEmpty() && !periodTransfers.isEmpty()) {
                 rowNum++;
                 // Encabezado de sección
                 Row transferHeaderRow = sheet.createRow(rowNum++);
