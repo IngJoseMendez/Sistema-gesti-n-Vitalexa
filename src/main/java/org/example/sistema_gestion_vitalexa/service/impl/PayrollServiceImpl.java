@@ -17,7 +17,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -507,16 +509,35 @@ public class PayrollServiceImpl implements PayrollService {
         }
 
         /**
-         * Ventas empresa = suma del Total Base de Nomina de vendedores especiales.
+         * Ventas empresa = suma del Total Base de Nomina de todos los vendedores
+         * (ventas brutas + transferencias), excluyendo bodegas. Evita doble conteo
+         * en usuarios compartidos usando un solo representante.
          */
         private BigDecimal calculateTotalCompanyBaseNomina(int month, int year) {
-                List<User> specialVendors = userRepository.findAll().stream()
-                                .filter(u -> SPECIAL_COMMISSION_VENDORS.contains(u.getUsername()))
-                                .toList();
+                Set<String> processedShared = new HashSet<>();
+                BigDecimal total = BigDecimal.ZERO;
 
-                return specialVendors.stream()
-                                .map(v -> calculateTotalBaseNomina(v, month, year))
-                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                for (User vendedor : userRepository.findAll()) {
+                        if (vendedor.getUsername() == null) {
+                                continue;
+                        }
+                        String normalized = vendedor.getUsername().trim().toLowerCase();
+                        if (EXCLUDED_BODEGA_VENDORS.contains(normalized)) {
+                                continue;
+                        }
+
+                        if (UserUnificationUtil.isSharedUser(vendedor.getUsername())) {
+                                String canonical = UserUnificationUtil.getSharedUsernames(vendedor.getUsername())
+                                                .get(0);
+                                if (!processedShared.add(canonical)) {
+                                        continue;
+                                }
+                        }
+
+                        total = total.add(calculateTotalBaseNomina(vendedor, month, year));
+                }
+
+                return total;
         }
 
         /**
