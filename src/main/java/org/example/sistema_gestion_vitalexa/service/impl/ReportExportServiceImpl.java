@@ -876,6 +876,9 @@ public class ReportExportServiceImpl implements ReportExportService {
 
             BigDecimal totalPendingPeriod = BigDecimal.ZERO;
             BigDecimal totalPaidPeriod = BigDecimal.ZERO;
+            
+            BigDecimal totalBrutoPeriod = BigDecimal.ZERO;
+            BigDecimal totalNetoPeriod = BigDecimal.ZERO;
 
             // Mapa para facturas pendientes por cliente: Cliente -> List de [InvoiceNum,
             // Fecha, Amount]
@@ -895,6 +898,9 @@ public class ReportExportServiceImpl implements ReportExportService {
                         clientTotalPending = clientTotalPending.add(inv.pendingAmount());
                         totalPendingPeriod = totalPendingPeriod.add(inv.pendingAmount());
                         totalPaidPeriod = totalPaidPeriod.add(inv.paidAmount());
+
+                        totalBrutoPeriod = totalBrutoPeriod.add(inv.valorOriginal() != null ? inv.valorOriginal() : BigDecimal.ZERO);
+                        totalNetoPeriod = totalNetoPeriod.add(inv.valorFinal() != null ? inv.valorFinal() : BigDecimal.ZERO);
 
                         // Agregar factura si tiene saldo pendiente
                         if (inv.pendingAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -999,16 +1005,25 @@ public class ReportExportServiceImpl implements ReportExportService {
                 }
             }
 
-            // Fila final: Total período
+            // Fila final: Total período Bruto y Neto
             rowNum++;
-            Row totalRow = sheet.createRow(rowNum++);
-            Cell totalLabelCell = totalRow.createCell(9); // Shifted
-            totalLabelCell.setCellValue("TOTAL VENDEDORA:");
-            totalLabelCell.setCellStyle(headerStyle);
+            Row totalBrutoRow = sheet.createRow(rowNum++);
+            Cell totalBrutoLabelCell = totalBrutoRow.createCell(9); // Shifted
+            totalBrutoLabelCell.setCellValue("TOTAL BRUTO VENDIDO:");
+            totalBrutoLabelCell.setCellStyle(headerStyle);
 
-            Cell totalValueCell = totalRow.createCell(10); // Shifted
-            totalValueCell.setCellValue(vendor.totalPeriod().doubleValue());
-            totalValueCell.setCellStyle(currencyStyle);
+            Cell totalBrutoValueCell = totalBrutoRow.createCell(10); // Shifted
+            totalBrutoValueCell.setCellValue(totalBrutoPeriod.doubleValue());
+            totalBrutoValueCell.setCellStyle(currencyStyle);
+
+            Row totalNetoRow = sheet.createRow(rowNum++);
+            Cell totalNetoLabelCell = totalNetoRow.createCell(9); // Shifted
+            totalNetoLabelCell.setCellValue("TOTAL NETO VENDIDO:");
+            totalNetoLabelCell.setCellStyle(headerStyle);
+
+            Cell totalNetoValueCell = totalNetoRow.createCell(10); // Shifted
+            totalNetoValueCell.setCellValue(totalNetoPeriod.doubleValue());
+            totalNetoValueCell.setCellStyle(currencyStyle);
 
             // Fila Total Cartera
             Row portfolioRow = sheet.createRow(rowNum++);

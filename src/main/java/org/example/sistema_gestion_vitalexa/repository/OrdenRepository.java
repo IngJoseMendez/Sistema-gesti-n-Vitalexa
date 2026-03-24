@@ -234,9 +234,7 @@ public interface OrdenRepository extends JpaRepository<Order, UUID>, JpaSpecific
          * Fallback a o.fecha para órdenes históricas sin completedAt.
          */
         @Query("""
-                        SELECT COALESCE(SUM(
-                            CASE WHEN o.discountedTotal IS NOT NULL THEN o.discountedTotal ELSE o.total END
-                        ), 0)
+                        SELECT COALESCE(SUM(o.total), 0)
                         FROM Order o
                         WHERE o.vendedor.id = :vendedorId
                         AND o.estado = 'COMPLETADO'
@@ -253,7 +251,49 @@ public interface OrdenRepository extends JpaRepository<Order, UUID>, JpaSpecific
 
         /**
          * Para nómina con usuarios compartidos (NinaTorres/YicelaSandoval).
-         * Misma lógica: completedAt + discountedTotal.
+         * Ventas brutas (sin descuento).
+         */
+        @Query("""
+                        SELECT COALESCE(SUM(o.total), 0)
+                        FROM Order o
+                        WHERE o.vendedor.id IN :vendedorIds
+                        AND o.estado = 'COMPLETADO'
+                        AND (
+                            (o.completedAt IS NOT NULL AND o.completedAt >= :start AND o.completedAt < :end)
+                            OR
+                            (o.completedAt IS NULL AND o.fecha >= :start AND o.fecha < :end)
+                        )
+                        """)
+        BigDecimal sumTotalSoldByVendedorIdsBetween(
+                        @Param("vendedorIds") List<UUID> vendedorIds,
+                        @Param("start") LocalDateTime start,
+                        @Param("end") LocalDateTime end);
+
+        /**
+         * Para cálculo de porcentaje de recaudo: suma total NETO (con descuento)
+         * de órdenes COMPLETADAS de un vendedor.
+         */
+        @Query("""
+                        SELECT COALESCE(SUM(
+                            CASE WHEN o.discountedTotal IS NOT NULL THEN o.discountedTotal ELSE o.total END
+                        ), 0)
+                        FROM Order o
+                        WHERE o.vendedor.id = :vendedorId
+                        AND o.estado = 'COMPLETADO'
+                        AND (
+                            (o.completedAt IS NOT NULL AND o.completedAt >= :start AND o.completedAt < :end)
+                            OR
+                            (o.completedAt IS NULL AND o.fecha >= :start AND o.fecha < :end)
+                        )
+                        """)
+        BigDecimal sumNetTotalSoldByVendedorBetween(
+                        @Param("vendedorId") UUID vendedorId,
+                        @Param("start") LocalDateTime start,
+                        @Param("end") LocalDateTime end);
+
+        /**
+         * Para cálculo de porcentaje de recaudo: suma total NETO (con descuento)
+         * de órdenes COMPLETADAS con usuarios compartidos.
          */
         @Query("""
                         SELECT COALESCE(SUM(
@@ -268,7 +308,7 @@ public interface OrdenRepository extends JpaRepository<Order, UUID>, JpaSpecific
                             (o.completedAt IS NULL AND o.fecha >= :start AND o.fecha < :end)
                         )
                         """)
-        BigDecimal sumTotalSoldByVendedorIdsBetween(
+        BigDecimal sumNetTotalSoldByVendedorIdsBetween(
                         @Param("vendedorIds") List<UUID> vendedorIds,
                         @Param("start") LocalDateTime start,
                         @Param("end") LocalDateTime end);

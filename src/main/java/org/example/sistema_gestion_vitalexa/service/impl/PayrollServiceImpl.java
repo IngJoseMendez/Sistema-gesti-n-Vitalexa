@@ -139,7 +139,8 @@ public class PayrollServiceImpl implements PayrollService {
                 int prevYear = prevYearMonth.getYear();
 
                 // Total vendido el mes ANTERIOR (base para calcular el % de recaudo)
-                BigDecimal prevMonthTotalSold = calculateTotalSold(vendedor, prevMonth, prevYear);
+                // Se usa el valor NETO por instrucción de negocio.
+                BigDecimal prevMonthTotalSold = calculateNetTotalSold(vendedor, prevMonth, prevYear);
 
                 // Total recaudado de facturas del MES ANTERIOR (prevMonth/prevYear).
                 // Solo se cuentan pagos cuya fecha real (actualPaymentDate) sea antes
@@ -414,6 +415,35 @@ public class PayrollServiceImpl implements PayrollService {
                                         vendedor.getUsername(), month, year, sold, incomingTransfers, totalSold);
                 }
                 return totalSold;
+        }
+
+        /**
+         * Calcula el total NETO vendido por el vendedor en un mes/año dado.
+         * Utilizado como base para el cálculo del % de recaudo.
+         */
+        private BigDecimal calculateNetTotalSold(User vendedor, int month, int year) {
+                LocalDateTime start = LocalDateTime.of(year, month, 1, 0, 0, 0);
+                LocalDateTime end = start.plusMonths(1);
+
+                BigDecimal sold;
+                BigDecimal incomingTransfers;
+
+                if (UserUnificationUtil.isSharedUser(vendedor.getUsername())) {
+                        List<String> sharedUsernames = UserUnificationUtil.getSharedUsernames(vendedor.getUsername());
+                        List<UUID> sharedIds = userRepository.findAll().stream()
+                                        .filter(u -> sharedUsernames.contains(u.getUsername()))
+                                        .map(User::getId)
+                                        .collect(Collectors.toList());
+                        sold = ordenRepository.sumNetTotalSoldByVendedorIdsBetween(sharedIds, start, end);
+                        incomingTransfers = paymentTransferRepository
+                                        .sumActiveTransfersToVendedorIdsInMonth(sharedIds, month, year);
+                } else {
+                        sold = ordenRepository.sumNetTotalSoldByVendedorBetween(vendedor.getId(), start, end);
+                        incomingTransfers = paymentTransferRepository
+                                        .sumActiveTransfersToVendedorInMonth(vendedor.getId(), month, year);
+                }
+
+                return sold.add(incomingTransfers);
         }
 
         /**
