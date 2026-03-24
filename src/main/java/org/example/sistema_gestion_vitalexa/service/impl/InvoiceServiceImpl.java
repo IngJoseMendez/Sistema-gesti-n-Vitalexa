@@ -561,8 +561,8 @@ public class InvoiceServiceImpl implements InvoiceService {
                                                         + fi.getCantidad();
 
                                         com.itextpdf.layout.element.Cell itemLabelCell = new com.itextpdf.layout.element.Cell()
-                                                        .add(new Paragraph(itemDesc).setFontSize(10).setItalic()
-                                                                        .setFontColor(ColorConstants.DARK_GRAY))
+                                                        .add(new Paragraph(itemDesc).setFontSize(13).setItalic()
+                                                                        .setFontColor(ColorConstants.RED))
                                                         .setTextAlignment(TextAlignment.RIGHT)
                                                         .setBorder(null)
                                                         .setPadding(0)
