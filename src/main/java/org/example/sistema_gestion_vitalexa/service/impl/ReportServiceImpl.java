@@ -13,6 +13,7 @@ import org.example.sistema_gestion_vitalexa.repository.OrdenRepository;
 import org.example.sistema_gestion_vitalexa.repository.ProductRepository;
 import org.example.sistema_gestion_vitalexa.repository.UserRepository;
 import org.example.sistema_gestion_vitalexa.repository.PaymentRepository;
+import org.example.sistema_gestion_vitalexa.repository.PaymentTransferRepository;
 import org.example.sistema_gestion_vitalexa.service.ReportService;
 import org.example.sistema_gestion_vitalexa.util.UserUnificationUtil;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.time.format.TextStyle;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -34,9 +36,13 @@ public class ReportServiceImpl implements ReportService {
         private final ClientRepository clientRepository;
         private final UserRepository userRepository;
         private final PaymentRepository paymentRepository;
+        private final PaymentTransferRepository paymentTransferRepository;
 
         private static final List<String> EXCLUDED_BODEGA_VENDORS = List.of(
                         "bodegamaicao", "bodegavalledupar");
+
+        private static final List<String> SPECIAL_COMMISSION_VENDORS = List.of(
+                        "NinaTorres", "MercyMaestre", "ArnoldVentas", "SerioVentas");
 
         @Override
         public ReportDTO getCompleteReport(LocalDate startDate, LocalDate endDate) {
@@ -64,7 +70,7 @@ public class ReportServiceImpl implements ReportService {
                 LocalDateTime start = startDate.atStartOfDay();
                 LocalDateTime end = endDate.atTime(23, 59, 59);
                 List<Order> orders = ordenRepository.findCompletedByCompletedAtBetween(start, end);
-                return buildSalesReport(filterExcludedVendors(orders));
+                return buildCompanySalesReport(filterExcludedVendors(orders), startDate, endDate);
         }
 
         @Override
@@ -124,6 +130,48 @@ public class ReportServiceImpl implements ReportService {
 
                 // Ventas mensuales
                 List<MonthlySalesDTO> monthlySales = calculateMonthlySales(orders);
+
+                return new SalesReportDTO(
+                                totalRevenue,
+                                averageOrderValue,
+                                totalOrders,
+                                completedOrders,
+                                pendingOrders,
+                                canceledOrders,
+                                dailySales,
+                                monthlySales);
+        }
+
+        private SalesReportDTO buildCompanySalesReport(List<Order> orders, LocalDate startDate, LocalDate endDate) {
+                BigDecimal orderRevenue = orders.stream()
+                                .filter(o -> o.getEstado() == OrdenStatus.COMPLETADO)
+                                .map(Order::getTotal)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                long completedCount = orders.stream()
+                                .filter(o -> o.getEstado() == OrdenStatus.COMPLETADO)
+                                .count();
+
+                BigDecimal averageOrderValue = completedCount > 0
+                                ? orderRevenue.divide(BigDecimal.valueOf(completedCount), 2, RoundingMode.HALF_UP)
+                                : BigDecimal.ZERO;
+
+                int totalOrders = orders.size();
+                int completedOrders = (int) completedCount;
+                int pendingOrders = (int) orders.stream()
+                                .filter(o -> o.getEstado() == OrdenStatus.PENDIENTE
+                                                || o.getEstado() == OrdenStatus.CONFIRMADO)
+                                .count();
+                int canceledOrders = (int) orders.stream()
+                                .filter(o -> o.getEstado() == OrdenStatus.CANCELADO)
+                                .count();
+
+                List<DailySalesDTO> dailySales = calculateDailySales(orders);
+                Map<YearMonth, BigDecimal> transfersByMonth = calculateTransfersByMonthForSpecialVendors(startDate,
+                                endDate);
+                List<MonthlySalesDTO> monthlySales = calculateMonthlySales(orders, transfersByMonth);
+
+                BigDecimal totalRevenue = calculateCompanyBaseNomina(startDate, endDate);
 
                 return new SalesReportDTO(
                                 totalRevenue,
@@ -481,33 +529,104 @@ public class ReportServiceImpl implements ReportService {
         }
 
         private List<MonthlySalesDTO> calculateMonthlySales(List<Order> orders) {
-                Map<String, List<Order>> ordersByMonth = orders.stream()
+                return calculateMonthlySales(orders, Collections.emptyMap());
+        }
+
+        private List<MonthlySalesDTO> calculateMonthlySales(List<Order> orders,
+                        Map<YearMonth, BigDecimal> transfersByMonth) {
+                Map<YearMonth, List<Order>> ordersByMonth = orders.stream()
                                 .filter(o -> o.getEstado() == OrdenStatus.COMPLETADO)
-                                .collect(Collectors.groupingBy(o -> getOrderDate(o).getYear() + "-" +
-                                                String.format("%02d", getOrderDate(o).getMonthValue())));
+                                .collect(Collectors.groupingBy(o -> YearMonth.from(getOrderDate(o))));
 
-                return ordersByMonth.entrySet().stream()
-                                .map(entry -> {
-                                        String[] parts = entry.getKey().split("-");
-                                        int year = Integer.parseInt(parts[0]);
-                                        int monthNum = Integer.parseInt(parts[1]);
-                                        String monthName = java.time.Month.of(monthNum)
-                                                        .getDisplayName(TextStyle.FULL, new Locale("es", "ES"));
+                Set<YearMonth> allMonths = new HashSet<>(ordersByMonth.keySet());
+                allMonths.addAll(transfersByMonth.keySet());
 
-                                        BigDecimal monthlyRevenue = entry.getValue().stream()
+                return allMonths.stream()
+                                .map(ym -> {
+                                        List<Order> monthOrders = ordersByMonth.getOrDefault(ym, List.of());
+                                        BigDecimal monthlyRevenue = monthOrders.stream()
                                                         .map(Order::getTotal)
-                                                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                                                        .reduce(BigDecimal.ZERO, BigDecimal::add)
+                                                        .add(transfersByMonth.getOrDefault(ym, BigDecimal.ZERO));
+
+                                        String monthName = java.time.Month.of(ym.getMonthValue())
+                                                        .getDisplayName(TextStyle.FULL, new Locale("es", "ES"));
 
                                         return new MonthlySalesDTO(
                                                         monthName,
-                                                        monthNum, // Add numeric month for sorting
-                                                        year,
+                                                        ym.getMonthValue(),
+                                                        ym.getYear(),
                                                         monthlyRevenue,
-                                                        entry.getValue().size());
+                                                        monthOrders.size());
                                 })
                                 .sorted(Comparator.comparing(MonthlySalesDTO::year)
-                                                .thenComparingInt(MonthlySalesDTO::monthNumber)) // Sort by numeric
-                                                                                                 // month
+                                                .thenComparingInt(MonthlySalesDTO::monthNumber))
+                                .toList();
+        }
+
+        private BigDecimal calculateCompanyBaseNomina(LocalDate startDate, LocalDate endDate) {
+                List<UUID> specialVendorIds = resolveSpecialVendorIds();
+                if (specialVendorIds.isEmpty()) {
+                        return BigDecimal.ZERO;
+                }
+
+                YearMonth startMonth = YearMonth.from(startDate);
+                YearMonth endMonth = YearMonth.from(endDate);
+
+                BigDecimal total = BigDecimal.ZERO;
+                YearMonth current = startMonth;
+                while (!current.isAfter(endMonth)) {
+                        LocalDateTime monthStart = current.atDay(1).atStartOfDay();
+                        LocalDateTime monthEnd = monthStart.plusMonths(1);
+
+                        BigDecimal grossSales = ordenRepository.sumTotalSoldByVendedorIdsBetween(
+                                        specialVendorIds, monthStart, monthEnd);
+                        BigDecimal transfers = paymentTransferRepository.sumActiveTransfersToVendedorIdsInMonth(
+                                        specialVendorIds, current.getMonthValue(), current.getYear());
+
+                        total = total.add(grossSales).add(transfers);
+                        current = current.plusMonths(1);
+                }
+
+                return total;
+        }
+
+        private Map<YearMonth, BigDecimal> calculateTransfersByMonthForSpecialVendors(
+                        LocalDate startDate, LocalDate endDate) {
+                List<UUID> specialVendorIds = resolveSpecialVendorIds();
+                if (specialVendorIds.isEmpty()) {
+                        return Collections.emptyMap();
+                }
+
+                Map<YearMonth, BigDecimal> transfersByMonth = new HashMap<>();
+                YearMonth startMonth = YearMonth.from(startDate);
+                YearMonth endMonth = YearMonth.from(endDate);
+
+                YearMonth current = startMonth;
+                while (!current.isAfter(endMonth)) {
+                        BigDecimal transfers = paymentTransferRepository.sumActiveTransfersToVendedorIdsInMonth(
+                                        specialVendorIds, current.getMonthValue(), current.getYear());
+                        transfersByMonth.put(current, transfers);
+                        current = current.plusMonths(1);
+                }
+
+                return transfersByMonth;
+        }
+
+        private List<UUID> resolveSpecialVendorIds() {
+                Set<String> usernames = new HashSet<>();
+                for (String username : SPECIAL_COMMISSION_VENDORS) {
+                        if (UserUnificationUtil.isSharedUser(username)) {
+                                usernames.addAll(UserUnificationUtil.getSharedUsernames(username));
+                        } else {
+                                usernames.add(username);
+                        }
+                }
+
+                return userRepository.findAll().stream()
+                                .filter(u -> usernames.contains(u.getUsername()))
+                                .map(User::getId)
+                                .distinct()
                                 .toList();
         }
 

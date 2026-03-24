@@ -213,11 +213,9 @@ public class PayrollServiceImpl implements PayrollService {
                                 effectiveThreshold = totalGlobalGoals;
                         }
 
-                        // Ventas totales de toda la empresa ese mes (solo COMPLETADAS)
-                        LocalDateTime monthStart = LocalDateTime.of(year, month, 1, 0, 0, 0);
-                        LocalDateTime monthEnd = monthStart.plusMonths(1);
-                        totalCompanySales = ordenRepository.getTotalGrossRevenueBetweenExcludingVendors(
-                                        monthStart, monthEnd, EXCLUDED_BODEGA_VENDORS);
+                        // Ventas totales de empresa = suma de Total Base Nomina
+                        // de los vendedores especiales (ventas brutas + transferencias)
+                        totalCompanySales = calculateTotalCompanyBaseNomina(month, year);
 
                         // La comisión general aplica si las ventas supera el umbral efectivo
                         generalGoalMet = effectiveThreshold.compareTo(BigDecimal.ZERO) > 0
@@ -433,8 +431,7 @@ public class PayrollServiceImpl implements PayrollService {
                                 sold = ordenRepository.sumTotalSoldByVendedorIdsBetweenExcludingVendors(
                                                 sharedIds, start, end, EXCLUDED_BODEGA_VENDORS);
                                 incomingTransfers = paymentTransferRepository
-                                                .sumActiveTransfersToVendedorIdsInMonthExcludingOriginVendors(
-                                                                sharedIds, month, year, EXCLUDED_BODEGA_VENDORS);
+                                                .sumActiveTransfersToVendedorIdsInMonth(sharedIds, month, year);
                         } else {
                                 sold = ordenRepository.sumTotalSoldByVendedorIdsBetween(sharedIds, start, end);
                                 incomingTransfers = paymentTransferRepository
@@ -445,8 +442,7 @@ public class PayrollServiceImpl implements PayrollService {
                                 sold = ordenRepository.sumTotalSoldByVendedorBetweenExcludingVendors(
                                                 vendedor.getId(), start, end, EXCLUDED_BODEGA_VENDORS);
                                 incomingTransfers = paymentTransferRepository
-                                                .sumActiveTransfersToVendedorInMonthExcludingOriginVendors(
-                                                                vendedor.getId(), month, year, EXCLUDED_BODEGA_VENDORS);
+                                                .sumActiveTransfersToVendedorInMonth(vendedor.getId(), month, year);
                         } else {
                                 sold = ordenRepository.sumTotalSoldByVendedorBetween(vendedor.getId(), start, end);
                                 incomingTransfers = paymentTransferRepository
@@ -488,8 +484,7 @@ public class PayrollServiceImpl implements PayrollService {
                                 sold = ordenRepository.sumTotalSoldByVendedorIdsBetweenExcludingVendors(
                                                 sharedIds, start, end, EXCLUDED_BODEGA_VENDORS);
                                 incomingTransfers = paymentTransferRepository
-                                                .sumActiveTransfersToVendedorIdsInMonthExcludingOriginVendors(
-                                                                sharedIds, month, year, EXCLUDED_BODEGA_VENDORS);
+                                                .sumActiveTransfersToVendedorIdsInMonth(sharedIds, month, year);
                         } else {
                                 sold = ordenRepository.sumTotalSoldByVendedorIdsBetween(sharedIds, start, end);
                                 incomingTransfers = paymentTransferRepository
@@ -500,8 +495,7 @@ public class PayrollServiceImpl implements PayrollService {
                                 sold = ordenRepository.sumTotalSoldByVendedorBetweenExcludingVendors(
                                                 vendedor.getId(), start, end, EXCLUDED_BODEGA_VENDORS);
                                 incomingTransfers = paymentTransferRepository
-                                                .sumActiveTransfersToVendedorInMonthExcludingOriginVendors(
-                                                                vendedor.getId(), month, year, EXCLUDED_BODEGA_VENDORS);
+                                                .sumActiveTransfersToVendedorInMonth(vendedor.getId(), month, year);
                         } else {
                                 sold = ordenRepository.sumTotalSoldByVendedorBetween(vendedor.getId(), start, end);
                                 incomingTransfers = paymentTransferRepository
@@ -510,6 +504,19 @@ public class PayrollServiceImpl implements PayrollService {
                 }
 
                 return sold.add(incomingTransfers);
+        }
+
+        /**
+         * Ventas empresa = suma del Total Base de Nomina de vendedores especiales.
+         */
+        private BigDecimal calculateTotalCompanyBaseNomina(int month, int year) {
+                List<User> specialVendors = userRepository.findAll().stream()
+                                .filter(u -> SPECIAL_COMMISSION_VENDORS.contains(u.getUsername()))
+                                .toList();
+
+                return specialVendors.stream()
+                                .map(v -> calculateTotalBaseNomina(v, month, year))
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
 
         /**
@@ -537,8 +544,7 @@ public class PayrollServiceImpl implements PayrollService {
                                 sold = ordenRepository.sumNetTotalSoldByVendedorIdsBetweenExcludingVendors(
                                                 sharedIds, start, end, EXCLUDED_BODEGA_VENDORS);
                                 incomingTransfers = paymentTransferRepository
-                                                .sumActiveTransfersToVendedorIdsInMonthExcludingOriginVendors(
-                                                                sharedIds, month, year, EXCLUDED_BODEGA_VENDORS);
+                                                .sumActiveTransfersToVendedorIdsInMonth(sharedIds, month, year);
                         } else {
                                 sold = ordenRepository.sumNetTotalSoldByVendedorIdsBetween(sharedIds, start, end);
                                 incomingTransfers = paymentTransferRepository
@@ -549,8 +555,7 @@ public class PayrollServiceImpl implements PayrollService {
                                 sold = ordenRepository.sumNetTotalSoldByVendedorBetweenExcludingVendors(
                                                 vendedor.getId(), start, end, EXCLUDED_BODEGA_VENDORS);
                                 incomingTransfers = paymentTransferRepository
-                                                .sumActiveTransfersToVendedorInMonthExcludingOriginVendors(
-                                                                vendedor.getId(), month, year, EXCLUDED_BODEGA_VENDORS);
+                                                .sumActiveTransfersToVendedorInMonth(vendedor.getId(), month, year);
                         } else {
                                 sold = ordenRepository.sumNetTotalSoldByVendedorBetween(vendedor.getId(), start, end);
                                 incomingTransfers = paymentTransferRepository
