@@ -1032,29 +1032,32 @@ public class ReportExportServiceImpl implements ReportExportService {
             }
 
             if (!destVendedores.isEmpty()) {
-                java.time.LocalDateTime periodStart = vendor.startDate().atStartOfDay();
-                java.time.LocalDateTime periodEnd = vendor.endDate().plusDays(1).atStartOfDay();
+                java.time.YearMonth reportStartMonth = java.time.YearMonth.from(vendor.startDate());
+                java.time.YearMonth reportEndMonth = java.time.YearMonth.from(vendor.endDate());
                 
                 for (User destU : destVendedores) {
                     List<PaymentTransfer> transfers = paymentTransferRepository
                             .findByDestVendedorIdOrderByCreatedAtDesc(destU.getId());
                     
                     for (PaymentTransfer t : transfers) {
-                        // Usar filter: que no esté revocada y la fecha de creación en el rango de ventas analizado
-                        // NOTA: Para asemejar con nómina, alternativamente se podría buscar por t.getTargetMonth()
-                        // pero dado que el vendor.startDate() es flexible, usaremos el rango del reporte + targetMonth si es full month
+                        if (t.getIsRevoked()) {
+                            continue;
+                        }
                         
-                        // Evaluamos compatibilidad: si la transferencia se designa dentro del "Mes Destino" 
-                        // que coincide ampliamente con el rango del reporte o su fecha de creación cae dentro.
-                        boolean isInsideDateRange = (t.getCreatedAt() != null && !t.getCreatedAt().isBefore(periodStart) && t.getCreatedAt().isBefore(periodEnd));
+                        // Determinar el Mes/Año al que pertenece la transferencia
+                        java.time.YearMonth transferMonth;
+                        if (t.getTargetMonth() != null && t.getTargetYear() != null) {
+                            transferMonth = java.time.YearMonth.of(t.getTargetYear(), t.getTargetMonth());
+                        } else if (t.getCreatedAt() != null) {
+                            transferMonth = java.time.YearMonth.from(t.getCreatedAt());
+                        } else {
+                            continue;
+                        }
                         
-                        // Validar si el targetMonth coincide con el mes de la startDate 
-                        boolean matchesTargetMonth = (t.getTargetMonth() != null && t.getTargetYear() != null 
-                                && t.getTargetMonth() == vendor.startDate().getMonthValue() 
-                                && t.getTargetYear() == vendor.startDate().getYear());
-                                
-                        if (!t.getIsRevoked() && (isInsideDateRange || matchesTargetMonth)) {
-                            // Prevenir duplicados si entra por matchesTargetMonth pero tmb está en otra query (aunq es un solo loop aca)
+                        // Verificar si transferMonth está dentro del rango inclusivo [reportStartMonth, reportEndMonth]
+                        boolean matchesTargetMonth = !transferMonth.isBefore(reportStartMonth) && !transferMonth.isAfter(reportEndMonth);
+                        
+                        if (matchesTargetMonth) {
                             if (!periodTransfers.contains(t)) {
                                 periodTransfers.add(t);
                                 totalTransferred = totalTransferred.add(t.getAmount());
