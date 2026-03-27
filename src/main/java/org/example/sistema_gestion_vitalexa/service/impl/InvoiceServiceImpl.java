@@ -48,8 +48,8 @@ public class InvoiceServiceImpl implements InvoiceService {
                         Order order = ordenRepository.findByIdWithPromotions(orderId)
                                         .orElseThrow(() -> new BusinessExeption("Orden no encontrada"));
 
-                        // Detectar si es orden S/R
-                        boolean isSROrder = order.getNotas() != null && order.getNotas().contains("[S/R]");
+                        // Detectar si es orden S/R: primero por notas, luego por tags de productos en items
+                        boolean isSROrder = isSROrderByNotesOrItems(order);
 
                         PdfWriter writer = new PdfWriter(baos);
                         PdfDocument pdf = new PdfDocument(writer);
@@ -89,6 +89,34 @@ public class InvoiceServiceImpl implements InvoiceService {
         // =============================================
         // MÉTODOS AUXILIARES PARA PDF
         // =============================================
+
+        /**
+         * Detecta si la orden es S/R revisando primero las notas ([S/R]) y luego
+         * los tags de los productos en los items. Esto garantiza retrocompatibilidad
+         * con órdenes antiguas que tienen productos S/R pero no tienen [S/R] en notas.
+         */
+        private boolean isSROrderByNotesOrItems(Order order) {
+                if (order.getNotas() != null && order.getNotas().contains("[S/R]")) {
+                        return true;
+                }
+                if (order.getItems() != null) {
+                        for (var item : order.getItems()) {
+                                if (Boolean.TRUE.equals(item.getIsPromotionItem())) continue;
+                                if (Boolean.TRUE.equals(item.getIsFreightItem())) continue;
+                                var product = item.getProduct();
+                                if (product != null && product.getTag() != null
+                                                && "S/R".equalsIgnoreCase(product.getTag().getName())) {
+                                        return true;
+                                }
+                                var sp = item.getSpecialProduct();
+                                if (sp != null && sp.getTag() != null
+                                                && "S/R".equalsIgnoreCase(sp.getTag().getName())) {
+                                        return true;
+                                }
+                        }
+                }
+                return false;
+        }
 
         private void addCompanyHeader(Document document, boolean isSROrder) {
 

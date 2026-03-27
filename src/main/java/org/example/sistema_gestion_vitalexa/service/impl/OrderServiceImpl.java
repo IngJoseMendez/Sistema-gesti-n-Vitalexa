@@ -206,13 +206,14 @@ public class OrderServiceImpl implements OrdenService {
                             && sp.getTag().getId().equals(finalSrTag.getId());
                 } else {
                     if (itemReq.productId() == null) {
-                        log.warn("Item ignorado: se interpretó como producto regular pero productId es null. Item: {}",
-                                itemReq);
-                        return;
+                        // Producto sin registro (sin productId ni specialProductId) → siempre S/R
+                        isSRProduct = finalSrTag != null; // Se clasifica como S/R si la etiqueta existe
+                        log.info("🏷️ Producto sin registro (sin ID) detectado en creación, se tratará como S/R");
+                    } else {
+                        Product product = productService.findEntityById(itemReq.productId());
+                        isSRProduct = finalSrTag != null && product.getTag() != null
+                                && product.getTag().getId().equals(finalSrTag.getId());
                     }
-                    Product product = productService.findEntityById(itemReq.productId());
-                    isSRProduct = finalSrTag != null && product.getTag() != null
-                            && product.getTag().getId().equals(finalSrTag.getId());
                 }
 
                 if (isSRProduct) {
@@ -1778,6 +1779,10 @@ public class OrderServiceImpl implements OrdenService {
                     } else if (itemReq.productId() != null) {
                         Product p = productService.findEntityById(itemReq.productId());
                         itemIsSR = p.getTag() != null && p.getTag().getId().equals(srTagFinal.getId());
+                    } else {
+                        // Producto sin registro (sin productId ni specialProductId) → siempre S/R
+                        itemIsSR = true;
+                        log.info("🏷️ Producto sin registro (sin ID) detectado en edición, se tratará como S/R");
                     }
                 } catch (Exception e) {
                     log.warn("No se pudo determinar tag del item {}: {}", itemReq.productId(), e.getMessage());
@@ -1983,6 +1988,13 @@ public class OrderServiceImpl implements OrdenService {
 
         // Actualizar notas - PRESERVAR SUFIJOS DE TIPO DE ORDEN
         String newNotes = request.notas() != null ? request.notas() : "";
+        // Limpiar sufijos de tipo que el frontend puede haber enviado (para evitar duplicados)
+        newNotes = newNotes
+                .replace(" [Standard]", "")
+                .replace(" [S/R]", "")
+                .replace(" [Promoción]", "")
+                .replace(" [HISTÓRICA]", "")
+                .trim();
 
         // Detectar y preservar sufijos de tipo de orden
         String suffix = "";
@@ -1999,7 +2011,7 @@ public class OrderServiceImpl implements OrdenService {
             suffix = " [Promoción]";
         }
 
-        order.setNotas(newNotes + suffix);
+        order.setNotas(newNotes.isBlank() ? suffix.trim() : newNotes + suffix);
 
         // Actualizar flete
         // ✅ Permitido en órdenes de promoción — los items de flete (isFreightItem=true)
@@ -2046,7 +2058,14 @@ public class OrderServiceImpl implements OrdenService {
 
             Order srOrder = new Order(updatedOrder.getVendedor(), updatedOrder.getCliente());
             String baseNotes = request.notas() != null ? request.notas() : "";
-            srOrder.setNotas(baseNotes + " [S/R]");
+            // Limpiar sufijos de tipo anteriores para que solo quede [S/R]
+            baseNotes = baseNotes
+                    .replace(" [Standard]", "")
+                    .replace(" [S/R]", "")
+                    .replace(" [Promoción]", "")
+                    .replace(" [HISTÓRICA]", "")
+                    .trim();
+            srOrder.setNotas(baseNotes.isBlank() ? "[S/R]" : baseNotes + " [S/R]");
             srOrder.setIncludeFreight(false);
 
             if (hasSrItems) {
