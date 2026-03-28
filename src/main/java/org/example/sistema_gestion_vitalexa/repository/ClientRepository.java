@@ -41,6 +41,16 @@ public interface ClientRepository extends JpaRepository<Client, UUID> {
     // For searching clients by name
     List<Client> findByNombreContainingIgnoreCase(String nombre);
 
+    // For searching clients by name, NIT, phone, email or address (used by Vicky agent)
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT c FROM Client c WHERE " +
+        "LOWER(c.nombre) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+        "LOWER(c.nit) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+        "LOWER(c.telefono) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+        "LOWER(c.email) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+        "LOWER(c.direccion) LIKE LOWER(CONCAT('%', :search, '%'))")
+    List<Client> findByMultipleFields(@org.springframework.data.repository.query.Param("search") String search);
+
     // Uniqueness validation for nombre and direccion
     boolean existsByNombre(String nombre);
 

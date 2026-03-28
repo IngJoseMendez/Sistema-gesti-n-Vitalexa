@@ -1,6 +1,7 @@
 package org.example.sistema_gestion_vitalexa.service;
 
 import org.example.sistema_gestion_vitalexa.dto.ClientBalanceDTO;
+import org.example.sistema_gestion_vitalexa.dto.ClientDebtSummaryDTO;
 import org.example.sistema_gestion_vitalexa.dto.OrderPendingDTO;
 
 import java.io.IOException;
@@ -94,7 +95,14 @@ public interface ClientBalanceService {
     Integer calculateDaysOverdue(UUID clientId);
 
     /**
-     * Obtener última fecha de pago de un cliente
+     * Obtiene la última fecha de pago de un cliente
      */
     LocalDate getLastPaymentDate(UUID clientId);
+
+    /**
+     * Resumen de deuda de cliente(s) por búsqueda de nombre/NIT/teléfono.
+     * Endpoint optimizado para el agente Vicky: consolida clientId, deuda total,
+     * días de mora, último pago y conteo de facturas en UNA sola llamada.
+     */
+    List<ClientDebtSummaryDTO> getDebtSummaryBySearch(String search);
 }

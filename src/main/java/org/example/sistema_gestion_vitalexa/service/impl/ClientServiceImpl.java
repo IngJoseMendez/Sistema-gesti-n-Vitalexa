@@ -90,7 +90,9 @@ public class ClientServiceImpl implements ClientService {
 
     @Override
     public List<ClientResponse> searchClients(String search) {
-        return repository.findByNombreContainingIgnoreCase(search)
+        // Busca por nombre, NIT, teléfono, email o dirección para que
+        // el agente Vicky encuentre clientes por cualquier identificador
+        return repository.findByMultipleFields(search)
                 .stream()
                 .map(clientMapper::toResponse)
                 .toList();

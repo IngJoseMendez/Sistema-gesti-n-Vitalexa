@@ -2,6 +2,7 @@ package org.example.sistema_gestion_vitalexa.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.example.sistema_gestion_vitalexa.dto.ClientBalanceDTO;
+import org.example.sistema_gestion_vitalexa.dto.ClientDebtSummaryDTO;
 import org.example.sistema_gestion_vitalexa.dto.OrderPendingDTO;
 import org.example.sistema_gestion_vitalexa.enums.Role;
 import org.example.sistema_gestion_vitalexa.service.ClientBalanceService;
@@ -43,6 +44,7 @@ public class ClientBalanceController {
     public ResponseEntity<List<ClientBalanceDTO>> getClientBalances(
             @RequestParam(required = false) UUID vendedorId,
             @RequestParam(required = false) String search,
+            @RequestParam(required = false, defaultValue = "false") Boolean onlyWithDebt,
             Authentication auth) {
         String username = auth.getName();
         Role userRole = userService.getUserRole(username);
@@ -69,6 +71,13 @@ public class ClientBalanceController {
             }
         }
 
+        // Filtrar solo clientes con deuda si se solicita (útil para el agente Vicky)
+        if (Boolean.TRUE.equals(onlyWithDebt)) {
+            balances = balances.stream()
+                    .filter(b -> b.pendingBalance() != null && b.pendingBalance().compareTo(java.math.BigDecimal.ZERO) > 0)
+                    .toList();
+        }
+
         return ResponseEntity.ok(balances);
     }
 
@@ -78,6 +87,21 @@ public class ClientBalanceController {
     @GetMapping("/client/{clientId}")
     public ResponseEntity<ClientBalanceDTO> getClientBalance(@PathVariable UUID clientId) {
         return ResponseEntity.ok(clientBalanceService.getClientBalance(clientId));
+    }
+
+    /**
+     * Endpoint optimizado para el agente Vicky (WhatsApp).
+     * Busca clientes por nombre, NIT, teléfono, email o dirección y devuelve
+     * su resumen de deuda completo en una sola llamada.
+     *
+     * GET /api/balances/summary?search=NOMBRE
+     * Retorna: clientId, nombre, deuda, mora, último pago, facturas pendientes.
+     */
+    @GetMapping("/summary")
+    @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
+    public ResponseEntity<List<ClientDebtSummaryDTO>> getDebtSummary(
+            @RequestParam String search) {
+        return ResponseEntity.ok(clientBalanceService.getDebtSummaryBySearch(search));
     }
 
     /**

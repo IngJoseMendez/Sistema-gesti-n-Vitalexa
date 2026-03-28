@@ -4,6 +4,7 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.sistema_gestion_vitalexa.dto.ClientBalanceDTO;
+import org.example.sistema_gestion_vitalexa.dto.ClientDebtSummaryDTO;
 import org.example.sistema_gestion_vitalexa.dto.OrderPendingDTO;
 import org.example.sistema_gestion_vitalexa.dto.PaymentResponse;
 import org.example.sistema_gestion_vitalexa.entity.Client;
@@ -818,6 +819,37 @@ public class ClientBalanceServiceImpl implements ClientBalanceService {
                         return 0;
                 }
                 return (int) java.time.temporal.ChronoUnit.DAYS.between(fechaCreacion.toLocalDate(), LocalDate.now());
+        }
+
+        /**
+         * Resumen optimizado para el agente Vicky.
+         * Busca clientes por nombre, NIT, teléfono, email o dirección y devuelve
+         * su deuda, días de mora, último pago y conteo de facturas en una sola llamada.
+         */
+        @Override
+        public List<ClientDebtSummaryDTO> getDebtSummaryBySearch(String search) {
+                List<Client> clients = clientRepository.findByMultipleFields(search);
+                if (clients.isEmpty()) {
+                        return new ArrayList<>();
+                }
+
+                // Reusar la lógica de cálculo masivo ya existente para evitar duplicar queries
+                List<ClientBalanceDTO> balances = calculateBalancesInBulk(clients);
+
+                return balances.stream()
+                        .map(b -> new ClientDebtSummaryDTO(
+                                b.clientId(),
+                                b.clientName(),
+                                b.clientPhone(),
+                                b.vendedorAsignadoName(),
+                                b.pendingBalance(),
+                                b.creditLimit(),
+                                b.balanceFavor(),
+                                b.daysOverdue(),
+                                b.lastPaymentDate(),
+                                b.pendingOrdersCount()
+                        ))
+                        .collect(Collectors.toList());
         }
 
 }
