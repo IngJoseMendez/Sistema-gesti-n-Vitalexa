@@ -1269,11 +1269,17 @@ public class OrderServiceImpl implements OrdenService {
 
                 if ("invoiceNumber".equalsIgnoreCase(sortBy)) {
                     // NULLS LAST: órdenes sin número de factura van al final
+                    // ⚠️ Con DISTINCT activo (búsqueda), PostgreSQL NO permite CASE WHEN en ORDER BY
+                    // si la expresión no está en el SELECT. Usamos solo el campo directo.
                     jakarta.persistence.criteria.Expression<Long> invNum = root.get("invoiceNumber");
-                    query.orderBy(
-                        cb.asc(cb.selectCase().when(cb.isNull(invNum), 1).otherwise(0)),
-                        isDesc ? cb.desc(invNum) : cb.asc(invNum)
-                    );
+                    if (needsDistinct) {
+                        query.orderBy(isDesc ? cb.desc(invNum) : cb.asc(invNum));
+                    } else {
+                        query.orderBy(
+                            cb.asc(cb.selectCase().when(cb.isNull(invNum), 1).otherwise(0)),
+                            isDesc ? cb.desc(invNum) : cb.asc(invNum)
+                        );
+                    }
                 } else if ("total".equalsIgnoreCase(sortBy)) {
                     jakarta.persistence.criteria.Expression<java.math.BigDecimal> total = root.get("total");
                     query.orderBy(isDesc ? cb.desc(total) : cb.asc(total));
@@ -1285,10 +1291,14 @@ public class OrderServiceImpl implements OrdenService {
                         sortClienteJoin = root.join("cliente", jakarta.persistence.criteria.JoinType.LEFT);
                     }
                     jakarta.persistence.criteria.Expression<String> clienteNombreExpr = sortClienteJoin.get("nombre");
-                    query.orderBy(
-                        cb.asc(cb.selectCase().when(cb.isNull(clienteNombreExpr), 1).otherwise(0)),
-                        isDesc ? cb.desc(clienteNombreExpr) : cb.asc(clienteNombreExpr)
-                    );
+                    if (needsDistinct) {
+                        query.orderBy(isDesc ? cb.desc(clienteNombreExpr) : cb.asc(clienteNombreExpr));
+                    } else {
+                        query.orderBy(
+                            cb.asc(cb.selectCase().when(cb.isNull(clienteNombreExpr), 1).otherwise(0)),
+                            isDesc ? cb.desc(clienteNombreExpr) : cb.asc(clienteNombreExpr)
+                        );
+                    }
                 } else {
                     // DEFAULT: "fecha"
                     // PostgreSQL con DISTINCT no acepta expresiones computadas (COALESCE, CASE) en ORDER BY
