@@ -1248,6 +1248,9 @@ public class OrderServiceImpl implements OrdenService {
                 } catch (NumberFormatException e) {
                     // Not a number, skip invoice search
                 }
+                
+                // UUID search support
+                orPredicates.add(cb.like(root.get("id").as(String.class), searchLike));
 
                 orPredicates.add(cb.like(cb.lower(cJoin.get("nombre")), searchLike));
                 orPredicates.add(cb.like(cb.lower(cJoin.get("representanteLegal")), searchLike));
