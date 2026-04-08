@@ -1613,15 +1613,20 @@ public class OrderServiceImpl implements OrdenService {
         // En la práctica, esto forzará una actualización la primera vez, migrando a
         // items con InstanceId.
         java.util.Map<UUID, OrderItem> uniqueInstances = new java.util.HashMap<>();
+        boolean[] hasOrphans = {false};
 
         order.getItems().stream()
-                .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem()) && i.getPromotion() != null)
+                .filter(i -> Boolean.TRUE.equals(i.getIsPromotionItem()))
                 .forEach(i -> {
-                    UUID key = i.getPromotionInstanceId() != null
-                            ? i.getPromotionInstanceId()
-                            : java.util.UUID.randomUUID(); // Force distinct instance for legacy items to ensure they
-                                                           // are counted
-                    uniqueInstances.putIfAbsent(key, i);
+                    if (i.getPromotion() == null && i.getSpecialPromotion() == null) {
+                        hasOrphans[0] = true;
+                    } else {
+                        UUID key = i.getPromotionInstanceId() != null
+                                ? i.getPromotionInstanceId()
+                                : java.util.UUID.randomUUID(); // Force distinct instance for legacy items to ensure they
+                                                               // are counted
+                        uniqueInstances.putIfAbsent(key, i);
+                    }
                 });
 
         java.util.List<UUID> currentPromotionIds = uniqueInstances.values().stream()
@@ -1964,7 +1969,7 @@ public class OrderServiceImpl implements OrdenService {
                 : new java.util.ArrayList<>();
 
         // 2. Verificar si hubo cambios
-        if (!currentPromotionIds.equals(requestedPromotionIds)) {
+        if (hasOrphans[0] || !currentPromotionIds.equals(requestedPromotionIds)) {
             log.info("Promociones cambiaron en orden {}: {} -> {}", orderId, currentPromotionIds,
                     requestedPromotionIds);
 
