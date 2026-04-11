@@ -116,6 +116,8 @@ public class ClientServiceImpl implements ClientService {
         client.setTelefono(request.telefono());
         client.setDireccion(request.direccion());
         client.setNit(request.nit());
+        client.setAdministrador(request.administrador());
+        client.setRepresentanteLegal(request.representanteLegal());
 
         Client updatedClient = repository.save(client);
         return clientMapper.toResponse(updatedClient);
